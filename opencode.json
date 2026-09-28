@@ -5,6 +5,11 @@
       "type": "remote",
       "url": "https://mcp.plane.so/http/mcp",
       "enabled": true
+    },
+    "supabase-DecorAR": {
+      "type": "remote",
+      "url": "https://mcp.supabase.com/mcp?project_ref=jmvhrtmhwtxqclytxbzb",
+      "enabled": true
     }
   }
 }
