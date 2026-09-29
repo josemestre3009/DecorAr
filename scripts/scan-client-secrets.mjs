@@ -30,6 +30,10 @@ const clientFiles = (await filesIn(staticDirectory)).filter((path) =>
   [".js", ".json", ".map"].includes(extname(path)),
 );
 
+if (clientFiles.length === 0) {
+  throw new Error(`Client secret scan found no artifacts in: ${staticDirectory}`);
+}
+
 for (const path of clientFiles) {
   const contents = await readFile(path, "utf8");
 

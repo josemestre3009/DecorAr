@@ -11,6 +11,24 @@ afterEach(() => {
 });
 
 describe("client secret scan", () => {
+  it("rechaza un directorio sin artefactos cliente", () => {
+    const directory = mkdtempSync(join(tmpdir(), "decorar-secret-scan-"));
+    directories.push(directory);
+
+    expect(() =>
+      execFileSync(process.execPath, ["scripts/scan-client-secrets.mjs"], {
+        cwd: process.cwd(),
+        env: {
+          ...process.env,
+          CLIENT_STATIC_DIR: directory,
+          SUPABASE_SERVICE_ROLE_KEY: "SERVICE_ROLE_SENTINEL",
+          CLOUDINARY_URL: "cloudinary://CLOUDINARY_SENTINEL",
+        },
+        stdio: "pipe",
+      }),
+    ).toThrow(/Client secret scan found no artifacts/);
+  });
+
   it("acepta artefactos cliente sin secretos", () => {
     const directory = mkdtempSync(join(tmpdir(), "decorar-secret-scan-"));
     directories.push(directory);
