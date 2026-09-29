@@ -1,0 +1,15 @@
+.git
+.github
+.next
+.opencode
+docs
+e2e
+openspec
+node_modules
+coverage
+playwright-report
+test-results
+*.tsbuildinfo
+.env*
+!.env.example
+npm-debug.log*
