@@ -37,8 +37,16 @@ La interfaz queda disponible en `http://localhost:3000`. La salud del proceso se
 
 Si el puerto 3000 del equipo está ocupado, seleccionar otro puerto sin cambiar el contenedor:
 
+Shell POSIX:
+
 ```sh
 APP_PORT=3001 docker compose up
+```
+
+PowerShell:
+
+```powershell
+$env:APP_PORT=3001; docker compose up
 ```
 
 ## Verificación
