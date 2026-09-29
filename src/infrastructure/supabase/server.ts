@@ -1,7 +1,9 @@
+import "server-only";
+
 import { createServerClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 
-import { getPublicSupabaseEnv } from "../env";
+import { getPublicSupabaseEnv } from "../../lib/env";
 
 function isReadOnlyCookieStore(error: unknown) {
   return error instanceof Error && error.message.includes("Cookies can only be modified");
