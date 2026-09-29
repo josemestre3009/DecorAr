@@ -9,10 +9,10 @@ flowchart LR
     interfaces --> application["src/modules/*/application<br/>use cases and ports"]
     application --> domain["src/modules/*/domain<br/>business rules"]
     infrastructure["src/modules/*/infrastructure<br/>business adapters"] --> application
-    sharedInfrastructure["src/infrastructure<br/>Supabase platform clients"] --> infrastructure
+    infrastructure --> sharedInfrastructure["src/infrastructure<br/>Supabase platform clients"]
     composition --> infrastructure
-    shared["src/shared<br/>domain primitives and cross-cutting ports"] --> application
-    config["src/lib<br/>framework-neutral configuration"] --> sharedInfrastructure
+    application --> shared["src/shared<br/>domain primitives and cross-cutting ports"]
+    sharedInfrastructure --> config["src/lib<br/>framework-neutral configuration"]
 ```
 
 ## Ubicaciones
