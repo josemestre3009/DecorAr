@@ -6,6 +6,7 @@ export type SessionUser = {
 export type AuthFailureCode =
   | "invalid_input"
   | "invalid_credentials"
+  | "email_not_confirmed"
   | "email_taken"
   | "weak_password"
   | "rate_limited"

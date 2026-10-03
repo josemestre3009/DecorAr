@@ -29,8 +29,8 @@ function createFakeClient(overrides: Partial<AuthMock> = {}) {
   return { auth, client: { auth } as unknown as SupabaseClient };
 }
 
-function authError(message: string, status = 400) {
-  return new AuthError(message, status);
+function authError(message: string, status = 400, code?: string) {
+  return new AuthError(message, status, code);
 }
 
 async function expectFailure(promise: Promise<{ ok: boolean; error?: AuthFailure }>) {
@@ -119,6 +119,59 @@ describe("adaptador de sesión Supabase", () => {
 
     expect(failure.code).toBe("weak_password");
     expect(failure.field).toBe("password");
+  });
+
+  it("informa que falta confirmar el correo en lugar de un mensaje genérico", async () => {
+    const { client } = createFakeClient({
+      signInWithPassword: vi.fn(async () => ({
+        data: {},
+        error: authError("Email not confirmed", 400, "email_not_confirmed"),
+      })),
+    });
+    const gateway = createSessionGateway(client);
+
+    const failure = await expectFailure(
+      gateway.authenticate({ email: "persona@example.com", password: "secreto" }),
+    );
+
+    expect(failure.code).toBe("email_not_confirmed");
+    expect(failure.message).toContain("Confirma tu correo");
+    // El correo tecleado es correcto, así que el mensaje es de formulario y no
+    // debe señalar un campo como si el valor introducido estuviera mal.
+    expect(failure.field).toBeUndefined();
+  });
+
+  it("usa el código estable de Supabase en lugar del texto en inglés del error", async () => {
+    const { client } = createFakeClient({
+      signInWithPassword: vi.fn(async () => ({
+        data: {},
+        error: authError("Credenciales no válidas", 400, "invalid_credentials"),
+      })),
+    });
+    const gateway = createSessionGateway(client);
+
+    const failure = await expectFailure(
+      gateway.authenticate({ email: "persona@example.com", password: "mala" }),
+    );
+
+    expect(failure.code).toBe("invalid_credentials");
+    expect(failure.field).toBeUndefined();
+  });
+
+  it("mapea el límite de peticiones por código aunque el estado no sea 429", async () => {
+    const { client } = createFakeClient({
+      signUp: vi.fn(async () => ({
+        data: {},
+        error: authError("Request rate limited", 400, "over_request_rate_limit"),
+      })),
+    });
+    const gateway = createSessionGateway(client);
+
+    const failure = await expectFailure(
+      gateway.register({ email: "persona@example.com", password: "secreto" }),
+    );
+
+    expect(failure.code).toBe("rate_limited");
   });
 
   it("traduce un error desconocido a un mensaje genérico", async () => {

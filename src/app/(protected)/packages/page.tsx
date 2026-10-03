@@ -1,8 +1,7 @@
 import type { Metadata } from "next";
-import { redirect } from "next/navigation";
 
 import { signOutAction } from "@/app/actions";
-import { createSessionDependencies } from "@/composition/server";
+import { requireSessionUser } from "@/composition/session-guard";
 
 export const metadata: Metadata = {
   title: "Paquetes · DecorAR",
@@ -13,13 +12,9 @@ type PackagesPageProps = {
 };
 
 export default async function PackagesPage({ searchParams }: PackagesPageProps) {
-  const { auth } = await createSessionDependencies();
-  const user = await auth.currentUser();
-
-  // El proxy ya redirige a /login; esta comprobación evita depender sólo de él.
-  if (!user) {
-    redirect("/login");
-  }
+  // El proxy redirige a /login y el layout del grupo revalida la identidad; esta
+  // llamada comparte esa misma validación gracias a cache(), no repite la red.
+  const user = await requireSessionUser();
 
   const { logout } = await searchParams;
   const logoutFailed = logout === "error";

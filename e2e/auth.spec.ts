@@ -163,17 +163,20 @@ test.describe("formulario accesible y responsive", () => {
   await expect(submit).toBeEnabled();
 });
 
-test("asocia cada error a su campo con aria-describedby", async ({ page }) => {
-    await page.goto("/signup");
-    await fillCredentials(page, "persona@example.com", "");
-    await page.getByRole("button", { name: "Crear cuenta" }).click();
+test("asocia cada error a su campo con aria-describedby y lo anuncia", async ({ page }) => {
+  await page.goto("/signup");
+  await fillCredentials(page, "persona@example.com", "");
+  await page.getByRole("button", { name: "Crear cuenta" }).click();
 
-    await expect(page.getByText("Escribe tu contraseña.")).toBeVisible();
-    await expect(page.getByLabel("Contraseña")).toHaveAttribute(
-      "aria-describedby",
-      "password-error",
-    );
-  });
+  await expect(page.getByText("Escribe tu contraseña.")).toBeVisible();
+  await expect(page.getByLabel("Contraseña")).toHaveAttribute(
+    "aria-describedby",
+    "password-error",
+  );
+  // El foco sigue en el botón tras el envío, así que el mensaje necesita su
+  // propia región viva para que un lector de pantalla lo anuncie.
+  await expect(page.locator("#password-error")).toHaveAttribute("role", "alert");
+});
 });
 
 test.describe("sesión real", () => {

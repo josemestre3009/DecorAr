@@ -8,11 +8,57 @@ import type { AuthFailure, RegistrationOutcome, SessionUser } from "../../shared
 
 type SessionClient = SupabaseClient;
 
+/**
+ * Códigos de error que Supabase devuelve estables, a diferencia de `message`,
+ * que es texto en inglés y puede cambiar o traducirse. Se consultedan primero y
+ * el texto queda como respaldo para las respuestas que llegan sin código.
+ */
+const FAILURES_BY_CODE: Readonly<Record<string, AuthFailure>> = {
+  email_not_confirmed: {
+    code: "email_not_confirmed",
+    message: "Confirma tu correo antes de iniciar sesión.",
+  },
+  invalid_credentials: {
+    code: "invalid_credentials",
+    message: "El correo o la contraseña no son correctos.",
+  },
+  email_exists: {
+    code: "email_taken",
+    message: "Ya existe una cuenta con ese correo. Intenta iniciar sesión.",
+    field: "email",
+  },
+  user_already_exists: {
+    code: "email_taken",
+    message: "Ya existe una cuenta con ese correo. Intenta iniciar sesión.",
+    field: "email",
+  },
+  weak_password: {
+    code: "weak_password",
+    message: "La contraseña es demasiado corta. Usa al menos 6 caracteres.",
+    field: "password",
+  },
+  over_request_rate_limit: {
+    code: "rate_limited",
+    message: "Has intentado demasiadas veces. Espera un momento e inténtalo de nuevo.",
+  },
+  over_email_send_rate_limit: {
+    code: "rate_limited",
+    message: "Has intentado demasiadas veces. Espera un momento e inténtalo de nuevo.",
+  },
+};
+
 function toSessionUser(user: { id: string; email?: string }): SessionUser {
   return { id: user.id, email: user.email ?? "" };
 }
 
 function toFailure(error: AuthError): AuthFailure {
+  const byCode = error.code ? FAILURES_BY_CODE[error.code] : undefined;
+
+  if (byCode) {
+    return byCode;
+  }
+
+  // Respaldo por texto para las respuestas que llegan sin código estable.
   const detail = error.message.toLowerCase();
 
   if (error.status === 429 || detail.includes("too many") || detail.includes("rate limit")) {

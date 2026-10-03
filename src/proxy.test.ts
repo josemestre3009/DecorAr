@@ -63,6 +63,13 @@ describe("proxy de sesión", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("deja pasar la portada sin sesión", async () => {
+    const response = await proxy(request("/"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
   it("redirige a /login cuando una ruta protegida se abre sin sesión", async () => {
     const response = await proxy(request("/packages"));
 
@@ -72,6 +79,25 @@ describe("proxy de sesión", () => {
 
   it("redirige también las subrutas del catálogo", async () => {
     const response = await proxy(request("/packages/12"));
+
+    expect(response.status).toBe(307);
+    expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+  });
+
+  // Rutas que traen DECOR-18, DECOR-19 y DECOR-20. Ninguna está en la lista de
+  // rutas públicas, así que nacen protegidas sin tocar el proxy.
+  it.each(["/catalog", "/configurador", "/ar"])(
+    "redirige %s a /login aunque todavía no exista la página",
+    async (pathname) => {
+      const response = await proxy(request(pathname));
+
+      expect(response.status).toBe(307);
+      expect(response.headers.get("location")).toBe("http://localhost:3000/login");
+    },
+  );
+
+  it("no confunde un prefijo público con uno que sólo lo empieza", async () => {
+    const response = await proxy(request("/login-helper"));
 
     expect(response.status).toBe(307);
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");

@@ -14,7 +14,7 @@ const { authMock, redirectMock } = vi.hoisted(() => ({
 
 vi.mock("next/navigation", () => ({ redirect: redirectMock }));
 vi.mock("@/composition/server", () => ({
-  createSessionDependencies: vi.fn(async () => ({ auth: authMock, supabase: {} })),
+  createSessionDependencies: vi.fn(async () => ({ auth: authMock })),
 }));
 
 const { initialAuthFormState } = await import("./auth-form-state");

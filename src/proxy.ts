@@ -4,18 +4,28 @@ import { NextResponse, type NextRequest } from "next/server";
 import { getPublicSupabaseEnv } from "./lib/env";
 
 const LOGIN_PATH = "/login";
-const PROTECTED_PAGE_PREFIXES = ["/packages"];
 
-function isProtectedPage(pathname: string): boolean {
+// Se declara lo público, no lo protegido: una página nueva nace protegida y sólo
+// queda accesible sin sesión si alguien la añade aquí a propósito. La lista
+// complementaria, `/api`, se trata aparte porque no la redirige este archivo.
+const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"];
+
+function isApiRoute(pathname: string): boolean {
   // Las rutas de API nunca se redirigen aquí: las validan sus Route Handlers,
   // que responden 401 en JSON en lugar de devolver una redirección.
-  if (pathname.startsWith("/api/")) {
-    return false;
-  }
+  return pathname === "/api" || pathname.startsWith("/api/");
+}
 
-  return PROTECTED_PAGE_PREFIXES.some(
-    (prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`),
-  );
+function isPublicPage(pathname: string): boolean {
+  return PUBLIC_PAGE_PREFIXES.some((prefix) => {
+    // "/" representa la portada, no el sitio entero: si devolviera true para
+    // cualquier ruta, el proxy dejaría de proteger nada.
+    if (prefix === "/") {
+      return pathname === "/";
+    }
+
+    return pathname === prefix || pathname.startsWith(`${prefix}/`);
+  });
 }
 
 function applyHeaders(response: NextResponse, headers: Record<string, string>) {
@@ -57,7 +67,7 @@ export async function proxy(request: NextRequest) {
   const isAuthenticated = Boolean(data?.claims?.sub);
   const { pathname } = request.nextUrl;
 
-  if (isAuthenticated || !isProtectedPage(pathname)) {
+  if (isAuthenticated || isApiRoute(pathname) || isPublicPage(pathname)) {
     return applyHeaders(response, pendingHeaders);
   }
 

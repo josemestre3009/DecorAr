@@ -19,3 +19,7 @@ El acceso a la autenticación en código de servidor SHALL concentrarse en un ad
 #### Scenario: Operation de autenticación desde una interfaz
 - **WHEN** una interfaz, una Server Action o un Route Handler necesita registrar, autenticar, cerrar o inspeccionar una sesión
 - **THEN** delega en los casos de uso de aplicación y el adaptador de infraestructura implementa el puerto
+
+#### Scenario: La composición no expone el cliente crudo
+- **WHEN** se resuelve una dependencia de sesión en la composición del servidor
+- **THEN** devuelve únicamente los casos de uso, de modo que ninguna interfaz pueda leer cookies de sesión sin validarlas contra el servidor de autenticación

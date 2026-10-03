@@ -62,8 +62,13 @@ export function AuthForm({ mode, action }: AuthFormProps) {
             required
             type="email"
           />
+          {/*
+            role="alert" porque el error se inserta tras el envío y el foco sigue
+            en el botón: aria-describedby lo relaciona con el campo, pero un
+            lector de pantalla no lo anuncia.
+          */}
           {emailError ? (
-            <p className="auth-error" id="email-error">
+            <p className="auth-error" id="email-error" role="alert">
               {emailError}
             </p>
           ) : null}
@@ -84,7 +89,7 @@ export function AuthForm({ mode, action }: AuthFormProps) {
             type="password"
           />
           {passwordError ? (
-            <p className="auth-error" id="password-error">
+            <p className="auth-error" id="password-error" role="alert">
               {passwordError}
             </p>
           ) : null}

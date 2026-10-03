@@ -44,6 +44,34 @@ La documentación oficial de Supabase se contradice: la guía de cliente server-
 
 Se usan ambos donde corresponde. `getClaims()` valida por JWKS con caché compartida y no hace una llamada de red por petición, que es lo apropiado para mantener la sesión viva. `getUser()` siempre contacta al servidor de autenticación y es lo apropiado antes de ejecutar una operación, porque no depende de que RLS esté configurado.
 
+**Alcance de la afirmación "sin coste de red".** Sólo es cierta con claves de firma asimétricas. El proyecto las usa, y se comprobó consultando `GET /auth/v1/.well-known/jwks.json`, que devuelve una clave `ES256`. Con la clave simétrica heredada (HS256), `getClaims()` recurre a `getUser()` y sí paga una llamada de red por petición. Con claves asimétricas, la única descarga es la del JWKS en el primer acierto de caché, y Supabase lo cachea diez minutos en el edge. Se documenta como una afirmación condicional para que no se lea como una propiedad de la librería.
+
+### Las rutas se protegen por defecto, no por lista
+La primera versión declaraba `PROTECTED_PAGE_PREFIXES = ["/packages"]`, la única página protegida que existía en ese momento. Eso hace que la siguiente página nazca pública hasta que alguien recuerde añadirla, que es un fallo latente en lugar de uno visible: el catálogo, el configurador y la experiencia AR están previstos pero todavía no se han construido, así que la regla antigua los habría dejado públicos en su primer commit.
+
+`src/proxy.test.ts` ejercita esas tres rutas por adelantado, antes de que existan, para que la regla quede fijada en el momento en que sus tareas (DECOR-20, DECOR-27 y DECOR-28) las construyan.
+
+Se invierte a `PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"]`: todo lo que no esté en esa lista y no sea una ruta de API exige sesión. Una página pública nueva requiere una decisión explícita; una protegida nueva no requiere ninguna.
+
+**Consecuencia aceptada:** una ruta inexistente devuelve una redirección al inicio de sesión en lugar de un 404 para quien no tiene sesión. Se prefiere no revelar qué rutas existen. `/api` sigue exenta porque un cliente HTTP espera `401` en JSON y sus Route Handlers validan la identidad por su cuenta.
+
+### La revalidación vive en una frontera del grupo de rutas, no en cada página
+`getClaims()` valida la firma del token, así que un token todavía vigente puede atravesar el proxy aunque la sesión se haya cerrado en otro dispositivo. Detectar eso exige `getUser()`, y pedirlo en cada página es una regla que cada página nueva puede olvidar.
+
+`src/composition/session-guard.ts` expone `getCurrentSessionUser()` y `requireSessionUser()`, ambos envueltos en `cache()` de React para que el layout y la página compartan una sola llamada `getUser()` por navegación. El layout de `(protected)/` los invoca, de modo que el grupo entero hereda la comprobación y cada página nueva queda protegida sin escribirla.
+
+**Alternativa considerada:** una función `requireSession()` que cada página llame explícitamente. Se descartó porque reproduce el problema que se quería evitar: la protección depende de que cada página la recuerde. El coste es un layout más y una convención de grupos, que `src/app/route-inventory.test.ts` verifica.
+
+### La composición devuelve los casos de uso y nada más
+`createSessionDependencies()` exponía `{ supabase, auth }`. Nadie usaba `supabase`, pero dejarlo disponible invitaba a que un Route Handler nuevo leyera cookies con `getSession()` sin validarlas, saltándose `SessionGateway` y el diseño de una sola puerta de acceso. Se devuelve únicamente `{ auth }` y el cliente crudo se queda dentro de la composición.
+
+### Los errores se mapean por código, no por texto
+`toFailure()` comparaba `error.message` en inglés. Supabase ofrece `error.code`, estable e independiente del idioma: `email_not_confirmed`, `invalid_credentials`, `email_exists`, `user_already_exists`, `weak_password`, `over_request_rate_limit`. Se consulta primero una tabla de códigos y el texto queda como respaldo para las respuestas que llegan sin código.
+
+**Consecuencia:** una cuenta registrada sin confirmar su correo recibe "Confirma tu correo antes de iniciar sesión" en lugar de un mensaje genérico, que es un recorrido normal del producto. Va a nivel de formulario y no señala un campo, porque el correo introducido es correcto.
+
+**Sobre `email_taken`:** con la confirmación de correo activa, Supabase ofusca el registro duplicado y devuelve éxito sin error, así que el código no es observable en este proyecto. Se conserva el mapeo porque vuelve a ser necesario si se desactiva la confirmación de correo o si la cuenta se creó enlazada a otro proveedor, y se documenta que hoy no se alcanza.
+
 ### Se propaga el segundo argumento de `setAll`
 
 En `@supabase/ssr` 0.12, `SetAllCookies` recibe `(cookies, headers)` y la librería entrega `Cache-Control: private, no-cache, no-store, must-revalidate, max-age=0`, `Expires: 0` y `Pragma: no-cache` en la primera escritura. La implementación existente declara un solo parámetro, por lo que TypeScript no señala el problema y los encabezados se descartan en silencio.

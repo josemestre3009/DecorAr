@@ -2,7 +2,7 @@
 
 Cada tarea indica el comando de verificación con el que se comprueba. El proyecto expone `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`; `npm run build` ejecuta además el escaneo de secretos con valores centinela.
 
-Estado de la entrega: secciones 1 a 9 implementadas. Queda pendiente la validación manual de los escenarios que dependen de una cuenta confirmada en el proyecto Supabase.
+Estado de la entrega: secciones 1 a 10 implementadas. Queda pendiente la validación manual de los escenarios que dependen de una cuenta confirmada en el proyecto Supabase.
 
 ## 1. Dominio y contratos
 
@@ -143,3 +143,42 @@ Tres desviaciones se registraron y corrigieron durante el cierre:
 
 - El acceso a las pantallas de autenticación desde la portada pertenece a DECOR-20 ("Portada y CTA"). DECOR-38 no modifica `src/app/page.tsx`.
 - El endpoint de referencia vive en `/api/session` y no en `/api/modules`: el catálogo, su envelope de errores y su fixture pertenecen a DECOR-20, DECOR-27 y DECOR-28.
+
+## 10. Correcciones de la revisión de Jose
+
+Las cuatro observaciones de la revisión de Jose (F1 a F4) y sus tres preguntas quedaron resueltas en la misma rama, sin commits intermedios.
+
+- [x] 10.1 Invertir `src/proxy.ts` a `PUBLIC_PAGE_PREFIXES` para que una página nueva nazca protegida en lugar de pública.
+- [x] 10.2 Crear `src/composition/session-guard.ts` con `getCurrentSessionUser()` y `requireSessionUser()`, memorizados con `cache()` de React.
+- [x] 10.3 Crear `src/app/(protected)/layout.tsx` como frontera única y mover a `packages/page.tsx` la resolución de la identidad.
+- [x] 10.4 Añadir `src/composition/session-guard.test.ts` y `src/app/route-inventory.test.ts`, más los casos de `/catalog`, `/configurador` y `/ar` en `src/proxy.test.ts`. Esas tres rutas se fijan por adelantado: todavía no existen como `page.tsx`, las construyen DECOR-20, DECOR-27 y DECOR-28, y la prueba evita que la regla vuelva a dejarlas públicas cuando lleguen.
+- [x] 10.5 Añadir `email_not_confirmed` a `AuthFailureCode` y mapear por `error.code` antes que por el texto en inglés, conservando el texto como respaldo.
+- [x] 10.6 Añadir `role="alert"` a los errores de campo de `src/app/(public)/auth-form.tsx` y su aserción en `e2e/auth.spec.ts`.
+- [x] 10.7 Devolver únicamente `{ auth }` en `createSessionDependencies()` y ajustar el doble de `src/app/actions.test.ts`.
+- [x] 10.8 Ajustar el escenario de credenciales incorrectas en el delta spec, porque el fallo no identifica un campo y `aria-describedby` resultaría engañoso.
+- [x] 10.9 Verificar: `npm run typecheck`, `npm run lint`, `npm test`, `npm run build` y `npm run test:e2e`.
+
+### Respuestas a las preguntas de la revisión
+
+| Pregunta | Respuesta |
+|---|---|
+| ¿Asimétricas o HS256? | Asimétricas. `GET /auth/v1/.well-known/jwks.json` del proyecto devuelve una clave `ES256`, así que `getClaims()` verifica localmente. La afirmación "sin coste de red" queda documentada como condicional: con HS256 la librería recurre a `getUser()` y sí paga red. |
+| La spec pide `aria-describedby` para credenciales incorrectas | Se ajusta la spec, no el código. El fallo no dice si el correo o la contraseña están mal, de modo que atribuirlo a un campo sería engañoso. `aria-describedby` se reserva para los fallos que sí identifican un campo. |
+| ¿`email_taken` es observable? | No con la confirmación de correo activa: Supabase ofusca el registro duplicado y devuelve éxito sin error. El mapeo se conserva por si se desactiva la confirmación o la cuenta viene enlazada de otro proveedor, y se documenta que hoy no se alcanza. |
+
+### Evidencia de la verificación automática tras las correcciones
+
+```text
+npm run typecheck  sin errores
+npm run lint       sin errores ni advertencias
+npm test           15 archivos, 149 pruebas
+npm run build      exit 0, escaneo de secretos superado en 10 artefactos
+                   /login y /signup estáticas, /packages y /api/session dinámicas
+                   ƒ Proxy (Middleware)
+npm run test:e2e   16 pruebas
+                   sin credenciales: 13 pasan y 3 se omiten
+                   con credenciales: 15 pasan y 1 se omite (el de registro,
+                   que consume la cuota del servicio de correo)
+```
+
+Las tres corridas autenticadas se ejecutaron con una cuenta efímera creada por la admin API con `email_confirm: true`, que no consume la cuota del correo, y se eliminó al terminar. Cubren el recorrido completo con el layout de `(protected)/`: inicio de sesión, persistencia tras recargar, cierre de sesión, respuesta 401 sin sesión y respuesta 200 con sesión.
