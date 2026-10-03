@@ -86,6 +86,26 @@ Las operaciones que deben modificar varias tablas de forma atómica, como actual
 
 El cliente recibe actualizaciones del presupuesto mediante Broadcast privado de Supabase Realtime. No se exponen directamente cambios de las tablas internas mediante `postgres_changes`.
 
+### 2.2.2 Ciclo de vida de la sesión SSR y límites conocidos
+
+La sesión se resuelve siempre en el servidor. El cliente de Supabase para SSR se crea una vez por petición y se apoya en las cookies de la petición; en el navegador se usa el patrón `getAll`/`setAll`, que exige asignar todas las cookies leídas y no permitir que la petición alive el almacen de cookies del servidor.
+
+El refresco del token ocurre de forma perezosa, cuando un consumer llama por primera vez a la sesión. La validación se reparte según el coste y la fiabilidad de cada punto de entrada:
+
+- `src/proxy.ts` usa `getClaims()`, que verifica la firma del token sin coste de red, para decidir si una página protegida continúa o redirige a `/login`. No redirige las rutas de API porque un cliente HTTP espera un `401` en JSON y no una redirección de navegador.
+- Los Route Handlers y las Server Actions validan la identidad con `getUser()`, que sí consulta el servidor de autenticación. `getSession()` no se usa para autorizar, porque leer la cookie no garantiza que el token siga siendo válido.
+
+El cliente server propaga los encabezados `Cache-Control`, `Expires` y `Pragma` que entrega la librería a través del callback `setAll`, y el proxy los adjunta a la respuesta que reenvía.
+
+Límites conocidos que conviene no ocultar:
+
+- El escáner de arquitectura recorre todo el árbol `src/`, pero `src/proxy.ts` queda fuera de las capas que clasifica y `layerOf("src/proxy.ts")` devuelve `null`. El archivo no tiene reglas automáticas que lo protejan y depende de la revisión manual.
+- En React Server Components y Server Actions el callback `setAll` no puede fijar encabezados de respuesta, porque ese contexto no dispone de un `NextResponse` que modificar. Las cookies sí se escriben mediante `next/headers`; los encabezados anti-caché están garantizados en el proxy y en los Route Handlers. En las páginas se conserva la marca `ƒ (Dynamic) server-rendered on demand`, de modo que la respuesta no se sirve desde la caché estática de Next.js.
+- El cliente browser deja las cookies de sesión legibles desde JavaScript (`httpOnly: false`) y con una vigencia de 400 días, que es lo que exige `@supabase/ssr` para su refresco automático. La Session Access Token y la Refresh Token quedan expuestas ante un XSS.
+- La persistencia de la sesión se demuestra en el navegador, pero el aislamiento real de datos entre dos usuarios todavía no puede probarse: las políticas de RLS, los fixtures A/B y los usuarios de prueba pertenecen a DECOR-30 (Luis), cuya frontera con esta tarea es explícita: Luis crea las políticas y los fixtures, y DECOR-38 aporta la sesión SSR y la UI.
+- `currentUser()` no distingue "no hay sesión" de "el proveedor no respondió": cualquier error de `getUser()`, incluido un `429` por límite de peticiones, se traduce en `null` y por tanto en `401`. Es una decisión que falla cerrada, correcta para no conceder acceso, pero produce falsos negativos cuando Supabase está saturado. Por eso `playwright.config.ts` serializa la suite: los escenarios autenticados comparten una cuenta real y en paralelo el proveedor limita las respuestas.
+- El proyecto de Supabase exige confirmar el correo y el servicio interno de correo es best-effort con cuota baja. El registro se trata como un éxito pendiente de confirmación, nunca como un fallo, y la entrega del correo no se puede garantizar de forma automatizada.
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid
