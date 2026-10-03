@@ -210,6 +210,108 @@ a {
   max-width: 34rem;
 }
 
+.auth-page {
+  display: flex;
+  justify-content: center;
+  min-height: 100vh;
+  padding: clamp(1.25rem, 6vw, 4rem) clamp(1.25rem, 5vw, 5rem);
+}
+
+.auth {
+  max-width: 26rem;
+  width: 100%;
+}
+
+.auth-title {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 8vw, 2.75rem);
+  font-weight: 500;
+  letter-spacing: -0.03em;
+  line-height: 1.05;
+  margin: 0 0 1.75rem;
+}
+
+.auth-form {
+  display: grid;
+  gap: 1.15rem;
+}
+
+.auth-field {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.auth-label {
+  font-size: 0.9rem;
+  font-weight: 650;
+}
+
+.auth-input {
+  background: #fff;
+  border: 1px solid color-mix(in srgb, var(--ink) 35%, transparent);
+  border-radius: 0.6rem;
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 1rem;
+  padding: 0.75rem 0.9rem;
+  width: 100%;
+}
+
+.auth-input[aria-invalid="true"] {
+  border-color: var(--clay);
+}
+
+.auth-error {
+  color: var(--clay);
+  font-size: 0.85rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.auth-notice {
+  background: color-mix(in srgb, var(--leaf) 12%, transparent);
+  border-radius: 0.6rem;
+  color: var(--leaf);
+  font-size: 0.9rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+  padding: 0.75rem 0.9rem;
+}
+
+.auth-submit {
+  background: var(--ink);
+  border: none;
+  border-radius: 999px;
+  color: var(--lime);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 1rem;
+  font-weight: 700;
+  padding: 0.95rem 1.35rem;
+}
+
+.auth-submit[disabled] {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.auth-switch {
+  font-size: 0.9rem;
+  margin: 1.5rem 0 0;
+}
+
+.auth-link {
+  color: var(--leaf);
+  font-weight: 650;
+}
+
+.auth-input:focus-visible,
+.auth-submit:focus-visible,
+.auth-link:focus-visible {
+  outline: 3px solid var(--clay);
+  outline-offset: 2px;
+}
+
 @media (max-width: 760px) {
   .status {
     display: none;
