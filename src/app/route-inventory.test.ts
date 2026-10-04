@@ -31,13 +31,33 @@ function toRoute(file: string): string {
 
 function callsRequiredSessionGuard(source: string): boolean {
   const file = ts.createSourceFile("page.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  const guardNames = new Set<string>();
   let found = false;
+
+  for (const statement of file.statements) {
+    if (
+      !ts.isImportDeclaration(statement) ||
+      !ts.isStringLiteral(statement.moduleSpecifier) ||
+      statement.moduleSpecifier.text !== "@/composition/session-guard" ||
+      !statement.importClause?.namedBindings ||
+      !ts.isNamedImports(statement.importClause.namedBindings)
+    ) {
+      continue;
+    }
+
+    for (const element of statement.importClause.namedBindings.elements) {
+      if ((element.propertyName ?? element.name).text === "requireSessionUser") {
+        guardNames.add(element.name.text);
+      }
+    }
+  }
 
   function visit(node: ts.Node) {
     if (
       ts.isCallExpression(node) &&
       ts.isIdentifier(node.expression) &&
-      node.expression.text === "requireSessionUser"
+      guardNames.has(node.expression.text) &&
+      ts.isAwaitExpression(node.parent)
     ) {
       found = true;
       return;
@@ -88,8 +108,25 @@ describe("inventario de rutas de página", () => {
   });
 
   it("sólo acepta una llamada ejecutable al guard obligatorio", () => {
-    expect(callsRequiredSessionGuard("await requireSessionUser();")).toBe(true);
-    expect(callsRequiredSessionGuard("await getCurrentSessionUser();")).toBe(false);
+    const guardImport = 'import { requireSessionUser } from "@/composition/session-guard";\n';
+
+    expect(callsRequiredSessionGuard(`${guardImport}await requireSessionUser();`)).toBe(true);
+    expect(
+      callsRequiredSessionGuard(
+        'import { requireSessionUser as guard } from "@/composition/session-guard";\nawait guard();',
+      ),
+    ).toBe(true);
+    expect(callsRequiredSessionGuard(`${guardImport}requireSessionUser();`)).toBe(false);
+    expect(callsRequiredSessionGuard(`${guardImport}void requireSessionUser();`)).toBe(false);
+    expect(callsRequiredSessionGuard(`${guardImport}await getCurrentSessionUser();`)).toBe(false);
+    expect(callsRequiredSessionGuard("const requireSessionUser = async () => {};\nawait requireSessionUser();")).toBe(
+      false,
+    );
+    expect(
+      callsRequiredSessionGuard(
+        'import { requireSessionUser } from "other-module";\nawait requireSessionUser();',
+      ),
+    ).toBe(false);
     expect(callsRequiredSessionGuard("// requireSessionUser()")).toBe(false);
     expect(callsRequiredSessionGuard('const example = "requireSessionUser()";')).toBe(false);
   });

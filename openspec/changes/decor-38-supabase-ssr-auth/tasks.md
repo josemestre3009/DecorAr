@@ -145,6 +145,7 @@ Tres desviaciones se registraron y corrigieron durante el cierre:
 - [x] 12.2 Exigir una llamada ejecutable y directa a `requireSessionUser()` en cada página de `(protected)`.
 - [x] 12.3 Añadir regresiones que rechacen `getCurrentSessionUser()`, comentarios y literales de texto.
 - [x] 12.4 Verificar: `npm test -- src/app/route-inventory.test.ts` (3 pruebas), `npm run typecheck`, `npm run lint`, `npm test` (15 archivos, 156 pruebas) y `npm run build` (exit 0).
+- [x] 12.5 Endurecer el detector para exigir el import desde `@/composition/session-guard` y `await`, aceptando aliases y rechazando funciones homónimas, imports ajenos y promesas ignoradas.
 
 ### Límites de alcance respetados
 
