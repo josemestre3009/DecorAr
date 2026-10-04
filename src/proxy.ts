@@ -10,6 +10,10 @@ const LOGIN_PATH = "/login";
 // complementaria, `/api`, se trata aparte porque no la redirige este archivo.
 const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"];
 
+// El healthcheck del contenedor (DECOR-37) no lleva sesión ni debe depender de
+// que Supabase esté configurado o responda: se atiende sin crear el cliente.
+const HEALTH_PATH = "/api/health";
+
 function isApiRoute(pathname: string): boolean {
   // Las rutas de API nunca se redirigen aquí: las validan sus Route Handlers,
   // que responden 401 en JSON en lugar de devolver una redirección.
@@ -37,6 +41,10 @@ function applyHeaders(response: NextResponse, headers: Record<string, string>) {
 }
 
 export async function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname === HEALTH_PATH) {
+    return NextResponse.next();
+  }
+
   let response = NextResponse.next({ request });
   const pendingHeaders: Record<string, string> = {};
   const { url, publishableKey } = getPublicSupabaseEnv();

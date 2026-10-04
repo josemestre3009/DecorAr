@@ -10,9 +10,14 @@ type SessionClient = SupabaseClient;
 
 /**
  * Códigos de error que Supabase devuelve estables, a diferencia de `message`,
- * que es texto en inglés y puede cambiar o traducirse. Se consultedan primero y
+ * que es texto en inglés y puede cambiar o traducirse. Se consultan primero y
  * el texto queda como respaldo para las respuestas que llegan sin código.
  */
+// Supabase emite `weak_password` por longitud, por tipos de carácter exigidos
+// o por aparecer en filtraciones conocidas: el mensaje no presupone la causa.
+const WEAK_PASSWORD_MESSAGE =
+  "La contraseña no es lo bastante segura. Usa una más larga o combina letras, números y símbolos.";
+
 const FAILURES_BY_CODE: Readonly<Record<string, AuthFailure>> = {
   email_not_confirmed: {
     code: "email_not_confirmed",
@@ -34,8 +39,17 @@ const FAILURES_BY_CODE: Readonly<Record<string, AuthFailure>> = {
   },
   weak_password: {
     code: "weak_password",
-    message: "La contraseña es demasiado corta. Usa al menos 6 caracteres.",
+    message: WEAK_PASSWORD_MESSAGE,
     field: "password",
+  },
+  email_address_invalid: {
+    code: "invalid_input",
+    message: "No podemos usar ese correo. Revisa que esté bien escrito o usa otro.",
+    field: "email",
+  },
+  signup_disabled: {
+    code: "unknown",
+    message: "El registro de cuentas nuevas no está disponible en este momento.",
   },
   over_request_rate_limit: {
     code: "rate_limited",
@@ -86,7 +100,7 @@ function toFailure(error: AuthError): AuthFailure {
   if (detail.includes("password")) {
     return {
       code: "weak_password",
-      message: "La contraseña es demasiado corta. Usa al menos 6 caracteres.",
+      message: WEAK_PASSWORD_MESSAGE,
       field: "password",
     };
   }

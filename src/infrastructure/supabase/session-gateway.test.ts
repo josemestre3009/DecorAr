@@ -121,6 +121,58 @@ describe("adaptador de sesión Supabase", () => {
     expect(failure.field).toBe("password");
   });
 
+  it("no presupone la longitud cuando la contraseña es débil por otra causa", async () => {
+    const { client } = createFakeClient({
+      signUp: vi.fn(async () => ({
+        data: {},
+        error: authError("Password is known to be weak and easy to guess", 422, "weak_password"),
+      })),
+    });
+    const gateway = createSessionGateway(client);
+
+    const failure = await expectFailure(
+      gateway.register({ email: "persona@example.com", password: "contraseña123" }),
+    );
+
+    expect(failure.code).toBe("weak_password");
+    expect(failure.field).toBe("password");
+    expect(failure.message).not.toMatch(/corta|caracteres/);
+  });
+
+  it("asocia al campo email un correo que Supabase rechaza", async () => {
+    const { client } = createFakeClient({
+      signUp: vi.fn(async () => ({
+        data: {},
+        error: authError("Email address is invalid", 400, "email_address_invalid"),
+      })),
+    });
+    const gateway = createSessionGateway(client);
+
+    const failure = await expectFailure(
+      gateway.register({ email: "persona@example.com", password: "secreto" }),
+    );
+
+    expect(failure.code).toBe("invalid_input");
+    expect(failure.field).toBe("email");
+  });
+
+  it("explica que el registro está desactivado en lugar de un mensaje genérico", async () => {
+    const { client } = createFakeClient({
+      signUp: vi.fn(async () => ({
+        data: {},
+        error: authError("Signups not allowed for this instance", 422, "signup_disabled"),
+      })),
+    });
+    const gateway = createSessionGateway(client);
+
+    const failure = await expectFailure(
+      gateway.register({ email: "persona@example.com", password: "secreto" }),
+    );
+
+    expect(failure.message).toMatch(/registro/);
+    expect(failure.field).toBeUndefined();
+  });
+
   it("informa que falta confirmar el correo en lugar de un mensaje genérico", async () => {
     const { client } = createFakeClient({
       signInWithPassword: vi.fn(async () => ({

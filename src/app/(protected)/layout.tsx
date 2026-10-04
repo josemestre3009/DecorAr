@@ -7,13 +7,13 @@ type ProtectedLayoutProps = {
 };
 
 /**
- * Frontera única de las rutas protegidas. `src/proxy.ts` redirige al login a
- * quien no tiene sesión, pero su validación de claims no comprueba que la sesión
- * siga viva en el servidor de autenticación; este layout sí lo hace, con
- * `getUser()` a través del caso de uso.
+ * Revalida la identidad en las navegaciones completas del grupo `(protected)`.
  *
- * Al vivir aquí, una página nueva que se añada bajo `(protected)/` queda
- * protegida sin tener que repetir la comprobación.
+ * No es la frontera de autorización: en Next 16 los layouts no se vuelven a
+ * ejecutar en la navegación del cliente y no impiden que la página se ejecute
+ * (guía de autenticación, "Layouts and auth checks"). Por eso cada página
+ * protegida llama también a `requireSessionUser()`, y
+ * `src/app/route-inventory.test.ts` falla si alguna lo omite.
  */
 export default async function ProtectedLayout({ children }: ProtectedLayoutProps) {
   await requireSessionUser();

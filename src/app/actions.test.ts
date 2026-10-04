@@ -79,6 +79,7 @@ describe("Server Actions de autenticación", () => {
       status: "error",
       message: "Ya existe una cuenta con ese correo. Intenta iniciar sesión.",
       field: "email",
+      email: "persona@example.com",
     });
     expect(redirectMock).not.toHaveBeenCalled();
   });
@@ -105,6 +106,7 @@ describe("Server Actions de autenticación", () => {
       status: "error",
       message: "El correo o la contraseña no son correctos.",
       field: undefined,
+      email: "persona@example.com",
     });
     expect(redirectMock).not.toHaveBeenCalled();
   });
@@ -117,6 +119,17 @@ describe("Server Actions de autenticación", () => {
     const state = await signInAction(initialAuthFormState, credentials("persona@example.com", ""));
 
     expect(state.field).toBe("password");
+  });
+
+  it("devuelve el correo tal como se escribió para reponerlo, nunca la contraseña", async () => {
+    authMock.signIn.mockResolvedValue(
+      err({ code: "invalid_input", message: "El correo electrónico no tiene un formato válido.", field: "email" }),
+    );
+
+    const state = await signInAction(initialAuthFormState, credentials(" Persona@ ", "secreto"));
+
+    expect(state.email).toBe(" Persona@ ");
+    expect(JSON.stringify(state)).not.toContain("secreto");
   });
 
   it("cierra sesión y envía a /login", async () => {

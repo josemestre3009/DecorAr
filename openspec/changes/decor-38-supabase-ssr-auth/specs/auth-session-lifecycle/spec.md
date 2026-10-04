@@ -29,7 +29,7 @@ La aplicación SHALL refrescar la sesión en cada navegación antes de que se re
 - **THEN** la aplicación descarta la sesión y exige autenticación de nuevo
 
 ### Requirement: Protección de rutas de página
-La aplicación SHALL proteger por defecto toda ruta de página que no esté declarada como pública, redirigiendo a la pantalla de inicio de sesión cuando una persona sin sesión la abra, y SHALL revalidar la identidad contra el servidor de autenticación en una frontera común a todas las páginas protegidas. La portada y las pantallas de autenticación SHALL permanecer públicas.
+La aplicación SHALL proteger por defecto toda ruta de página que no esté declarada como pública, redirigiendo a la pantalla de inicio de sesión cuando una persona sin sesión la abra, y SHALL revalidar la identidad contra el servidor de autenticación en cada página protegida, con una regla automática que impida añadir una página protegida sin esa comprobación. La portada y las pantallas de autenticación SHALL permanecer públicas.
 
 #### Scenario: Ruta protegida sin sesión
 - **WHEN** una persona sin sesión abre una ruta del catálogo, el configurador o la experiencia AR
@@ -44,8 +44,12 @@ La aplicación SHALL proteger por defecto toda ruta de página que no esté decl
 - **THEN** exige una sesión válida sin necesidad de modificar el proxy
 
 #### Scenario: Página protegida nueva
-- **WHEN** se añade una página dentro del grupo que declara las rutas protegidas
-- **THEN** la frontera común valida su identidad y la página no repite la comprobación
+- **WHEN** se añade una página dentro del grupo que declara las rutas protegidas sin validar la identidad
+- **THEN** la suite de pruebas falla hasta que la página llame a la verificación de sesión compartida
+
+#### Scenario: Navegación del cliente entre páginas protegidas
+- **WHEN** una persona navega sin recargar de una página protegida a otra
+- **THEN** la página de destino valida la identidad aunque el layout del grupo no vuelva a ejecutarse
 
 #### Scenario: Sesión revocada en otro dispositivo
 - **WHEN** una persona navega por una página protegida con un token todavía vigente cuya sesión ya no existe en el servidor de autenticación
@@ -72,6 +76,10 @@ La aplicación SHALL mostrar mensajes comprensibles en español cuando el regist
 #### Scenario: Fallo que identifica un campo
 - **WHEN** el fallo señala un campo concreto, como un correo con formato inválido o una contraseña demasiado corta
 - **THEN** el mensaje se relaciona con ese campo mediante `aria-describedby` y además se anuncia, porque el foco permanece en el botón tras el envío
+
+#### Scenario: Correo conservado tras un fallo
+- **WHEN** el registro o el inicio de sesión fallan
+- **THEN** el correo escrito permanece en su campo y la contraseña se vacía
 
 #### Scenario: Cuenta sin confirmar
 - **WHEN** una persona inicia sesión antes de confirmar el correo con el que se registró

@@ -7,8 +7,8 @@ import type { AuthFailure } from "@/shared/domain/session";
 
 import type { AuthFormState } from "./auth-form-state";
 
-function toFormState(failure: AuthFailure): AuthFormState {
-  return { status: "error", message: failure.message, field: failure.field };
+function toFormState(failure: AuthFailure, email: string): AuthFormState {
+  return { status: "error", message: failure.message, field: failure.field, email };
 }
 
 function readCredentials(formData: FormData) {
@@ -23,10 +23,11 @@ export async function signUpAction(
   formData: FormData,
 ): Promise<AuthFormState> {
   const { auth } = await createSessionDependencies();
-  const result = await auth.signUp(readCredentials(formData));
+  const credentials = readCredentials(formData);
+  const result = await auth.signUp(credentials);
 
   if (!result.ok) {
-    return toFormState(result.error);
+    return toFormState(result.error, credentials.email);
   }
 
   // El proyecto exige confirmar el correo: es un éxito pendiente, no un error.
@@ -45,10 +46,11 @@ export async function signInAction(
   formData: FormData,
 ): Promise<AuthFormState> {
   const { auth } = await createSessionDependencies();
-  const result = await auth.signIn(readCredentials(formData));
+  const credentials = readCredentials(formData);
+  const result = await auth.signIn(credentials);
 
   if (!result.ok) {
-    return toFormState(result.error);
+    return toFormState(result.error, credentials.email);
   }
 
   redirect("/packages");

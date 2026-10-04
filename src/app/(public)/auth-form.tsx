@@ -57,6 +57,7 @@ export function AuthForm({ mode, action }: AuthFormProps) {
             aria-invalid={emailError ? true : undefined}
             autoComplete="email"
             className="auth-input"
+            defaultValue={state.email}
             id="email"
             name="email"
             required

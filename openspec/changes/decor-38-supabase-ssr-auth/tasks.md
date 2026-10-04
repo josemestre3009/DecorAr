@@ -182,3 +182,25 @@ npm run test:e2e   16 pruebas
 ```
 
 Las tres corridas autenticadas se ejecutaron con una cuenta efímera creada por la admin API con `email_confirm: true`, que no consume la cuota del correo, y se eliminó al terminar. Cubren el recorrido completo con el layout de `(protected)/`: inicio de sesión, persistencia tras recargar, cierre de sesión, respuesta 401 sin sesión y respuesta 200 con sesión.
+
+## 11. Autorrevisión posterior a las correcciones
+
+Al revisar `8b4533f` contra la guía de autenticación de Next 16 aparecieron un hueco en la corrección de F1 y un defecto del formulario.
+
+- [x] 11.1 El layout de `(protected)/` no es una frontera de autorización: no se vuelve a ejecutar en la navegación del cliente ni impide que la página se ejecute. Cada página protegida llama a `requireSessionUser()` y `src/app/route-inventory.test.ts` falla si alguna lo omite. Se comprobó creando temporalmente una página protegida sin la llamada: la prueba falló y la página se eliminó.
+- [x] 11.2 React 19 vaciaba el correo tras un fallo. La Server Action devuelve el correo escrito y el campo lo usa como `defaultValue`; la contraseña nunca se devuelve. Las aserciones E2E fallaban antes del cambio y pasan después.
+- [x] 11.3 `weak_password` deja de presuponer la longitud; se mapean `email_address_invalid` (campo de correo) y `signup_disabled`.
+- [x] 11.4 `/api/health` se atiende en el proxy antes de crear el cliente de Supabase.
+- [x] 11.5 El inventario de rutas reconoce `page.{tsx,ts,jsx,js,mdx}`.
+
+### Evidencia de la verificación tras la autorrevisión
+
+```text
+npm run typecheck  sin errores
+npm run lint       sin errores ni advertencias
+npm test           15 archivos, 155 pruebas
+npm run build      exit 0, escaneo de secretos superado en 10 artefactos
+npm run test:e2e   16 pruebas sin credenciales: 13 pasan y 3 se omiten
+```
+
+Las tres pruebas autenticadas no se repitieron en esta ronda porque no hay credenciales E2E configuradas en la máquina.

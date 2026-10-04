@@ -55,18 +55,28 @@ Se invierte a `PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"]`: todo lo que n
 
 **Consecuencia aceptada:** una ruta inexistente devuelve una redirección al inicio de sesión en lugar de un 404 para quien no tiene sesión. Se prefiere no revelar qué rutas existen. `/api` sigue exenta porque un cliente HTTP espera `401` en JSON y sus Route Handlers validan la identidad por su cuenta.
 
-### La revalidación vive en una frontera del grupo de rutas, no en cada página
-`getClaims()` valida la firma del token, así que un token todavía vigente puede atravesar el proxy aunque la sesión se haya cerrado en otro dispositivo. Detectar eso exige `getUser()`, y pedirlo en cada página es una regla que cada página nueva puede olvidar.
+### La revalidación vive en cada página protegida y una prueba la exige
+`getClaims()` valida la firma del token, así que un token todavía vigente puede atravesar el proxy aunque la sesión se haya cerrado en otro dispositivo. Detectar eso exige `getUser()`.
 
-`src/composition/session-guard.ts` expone `getCurrentSessionUser()` y `requireSessionUser()`, ambos envueltos en `cache()` de React para que el layout y la página compartan una sola llamada `getUser()` por navegación. El layout de `(protected)/` los invoca, de modo que el grupo entero hereda la comprobación y cada página nueva queda protegida sin escribirla.
+La primera corrección puso esa comprobación sólo en `src/app/(protected)/layout.tsx`, con la idea de que el grupo entero la heredara. La guía de autenticación de Next 16 (`node_modules/next/dist/docs/01-app/02-guides/authentication.md`, "Layouts and auth checks") lo desaconseja por dos razones: por el Partial Rendering, los layouts no se vuelven a ejecutar en la navegación del cliente, y un layout no impide que la página hermana se ejecute ni que aparezca en el RSC payload. Con sólo el layout, navegar con `<Link>` de una página protegida a otra ejecutaría el proxy (`getClaims()`) y la página, pero no `getUser()`.
 
-**Alternativa considerada:** una función `requireSession()` que cada página llame explícitamente. Se descartó porque reproduce el problema que se quería evitar: la protección depende de que cada página la recuerde. El coste es un layout más y una convención de grupos, que `src/app/route-inventory.test.ts` verifica.
+Por eso cada página de `(protected)/` llama a `requireSessionUser()`. `src/composition/session-guard.ts` expone `getCurrentSessionUser()` y `requireSessionUser()`, envueltos en `cache()` de React para que, en una carga completa, el layout y la página compartan una sola llamada `getUser()`. El layout se conserva porque cubre las cargas completas sin coste adicional, pero no es la frontera de autorización.
+
+Para que la regla no dependa de memoria, `src/app/route-inventory.test.ts` falla si una página de `(protected)/` no contiene una llamada a `requireSessionUser()` o `getCurrentSessionUser()`. Es una comprobación textual: detecta el olvido, no demuestra que la llamada se ejecute antes de leer datos. Las Server Actions que operen en nombre del usuario tampoco pasan por el layout y deben validar la identidad por su cuenta.
 
 ### La composición devuelve los casos de uso y nada más
 `createSessionDependencies()` exponía `{ supabase, auth }`. Nadie usaba `supabase`, pero dejarlo disponible invitaba a que un Route Handler nuevo leyera cookies con `getSession()` sin validarlas, saltándose `SessionGateway` y el diseño de una sola puerta de acceso. Se devuelve únicamente `{ auth }` y el cliente crudo se queda dentro de la composición.
 
 ### Los errores se mapean por código, no por texto
 `toFailure()` comparaba `error.message` en inglés. Supabase ofrece `error.code`, estable e independiente del idioma: `email_not_confirmed`, `invalid_credentials`, `email_exists`, `user_already_exists`, `weak_password`, `over_request_rate_limit`. Se consulta primero una tabla de códigos y el texto queda como respaldo para las respuestas que llegan sin código.
+
+La tabla también cubre `email_address_invalid`, que se asocia al campo de correo, y `signup_disabled`. El mensaje de `weak_password` no presupone la causa, porque Supabase lo emite por longitud, por tipos de carácter exigidos o por aparecer en filtraciones conocidas.
+
+### El formulario repone el correo tras un fallo
+React 19 vacía los campos no controlados de un `<form action={fn}>` cuando la acción termina, también cuando devuelve un error. Sin reponerlo, la persona tenía que reescribir el correo tras "credenciales incorrectas" y `aria-invalid` quedaba sobre un campo vacío. La Server Action devuelve el correo tal como se escribió y el campo lo usa como `defaultValue`. La contraseña nunca se devuelve.
+
+### El healthcheck no pasa por Supabase
+`/api/health` lo consulta el healthcheck del contenedor (DECOR-37). `src/proxy.ts` lo atiende antes de crear el cliente, de modo que no depende de las variables de Supabase ni de `getClaims()`.
 
 **Consecuencia:** una cuenta registrada sin confirmar su correo recibe "Confirma tu correo antes de iniciar sesión" en lugar de un mensaje genérico, que es un recorrido normal del producto. Va a nivel de formulario y no señala un campo, porque el correo introducido es correcto.
 

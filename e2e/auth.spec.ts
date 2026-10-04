@@ -52,6 +52,9 @@ test.describe("validación sin llamar al proveedor", () => {
 
     await expect(page.getByText("El correo electrónico no tiene un formato válido.")).toBeVisible();
     await expect(page.getByLabel("Correo electrónico")).toHaveAttribute("aria-invalid", "true");
+    // React 19 vacía los campos no controlados al terminar la acción: el correo
+    // debe seguir ahí para que la persona lo corrija en lugar de reescribirlo.
+    await expect(page.getByLabel("Correo electrónico")).toHaveValue("persona@");
     // Tras la respuesta el botón vuelve a estar usable: cubre la recuperación.
     await expect(page.getByRole("button", { name: "Entrar" })).toBeEnabled();
     await expect(page).toHaveURL(/\/login$/);
@@ -65,6 +68,7 @@ test.describe("validación sin llamar al proveedor", () => {
 
     await expect(page.getByText("Escribe tu contraseña.")).toBeVisible();
     await expect(page.getByLabel("Contraseña")).toHaveAttribute("aria-invalid", "true");
+    await expect(page.getByLabel("Correo electrónico")).toHaveValue("persona@example.com");
   });
 
   test("enlaza el login con el registro en ambos sentidos", async ({ page }) => {

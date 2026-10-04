@@ -119,6 +119,17 @@ describe("proxy de sesión", () => {
     expect(response.headers.get("location")).toBeNull();
   });
 
+  it("atiende el healthcheck sin crear el cliente ni exigir las variables de Supabase", async () => {
+    delete process.env.NEXT_PUBLIC_SUPABASE_URL;
+    delete process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
+
+    const response = await proxy(request("/api/health"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+    expect(captured.options).toBeUndefined();
+  });
+
   it("escribe en la petición las cookies que la librería refrescó", async () => {
     const nextRequest = request("/packages");
     await proxy(nextRequest);

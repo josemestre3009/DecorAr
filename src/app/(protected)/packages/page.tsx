@@ -12,8 +12,9 @@ type PackagesPageProps = {
 };
 
 export default async function PackagesPage({ searchParams }: PackagesPageProps) {
-  // El proxy redirige a /login y el layout del grupo revalida la identidad; esta
-  // llamada comparte esa misma validación gracias a cache(), no repite la red.
+  // Esta llamada es la verificación efectiva: el layout no se ejecuta en la
+  // navegación del cliente. En una carga completa comparte con él una sola
+  // llamada getUser() gracias a cache().
   const user = await requireSessionUser();
 
   const { logout } = await searchParams;
