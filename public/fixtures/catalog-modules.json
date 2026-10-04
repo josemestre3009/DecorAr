@@ -1,0 +1,44 @@
+[
+  {
+    "id": "c1000000-0000-4000-8000-000000000001",
+    "name": "Mesa redonda",
+    "priceCop": 250000,
+    "areaM2": 4,
+    "widthM": 2,
+    "heightM": 1,
+    "depthM": 2,
+    "glbUrl": "https://example.com/models/mesa.glb",
+    "usdzUrl": "https://example.com/models/mesa.usdz",
+    "posterUrl": "https://example.com/posters/mesa.webp",
+    "assetId": "mesa",
+    "version": 1
+  },
+  {
+    "id": "c1000000-0000-4000-8000-000000000002",
+    "name": "Arco floral",
+    "priceCop": 200000,
+    "areaM2": 2,
+    "widthM": 2,
+    "heightM": 2.4,
+    "depthM": 1,
+    "glbUrl": "https://example.com/models/arco.glb",
+    "usdzUrl": "https://example.com/models/arco.usdz",
+    "posterUrl": "https://example.com/posters/arco.webp",
+    "assetId": "arco",
+    "version": 1
+  },
+  {
+    "id": "c1000000-0000-4000-8000-000000000003",
+    "name": "Pista de baile",
+    "priceCop": 600000,
+    "areaM2": 16,
+    "widthM": 4,
+    "heightM": 0.1,
+    "depthM": 4,
+    "glbUrl": "https://example.com/models/pista.glb",
+    "usdzUrl": "https://example.com/models/pista.usdz",
+    "posterUrl": "https://example.com/posters/pista.webp",
+    "assetId": "pista",
+    "version": 1
+  }
+]
