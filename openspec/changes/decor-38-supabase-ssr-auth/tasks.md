@@ -139,6 +139,13 @@ Tres desviaciones se registraron y corrigieron durante el cierre:
 | Expiración del token de acceso | Comprobado | Manual de Mei en el navegador (9.5) |
 | Cierre de sesión en otro dispositivo | Comprobado | Manual de Mei en el navegador (9.5) |
 
+## 12. Corrección de re-review F5
+
+- [x] 12.1 Sustituir la coincidencia textual del inventario por análisis AST con la API de TypeScript ya instalada.
+- [x] 12.2 Exigir una llamada ejecutable y directa a `requireSessionUser()` en cada página de `(protected)`.
+- [x] 12.3 Añadir regresiones que rechacen `getCurrentSessionUser()`, comentarios y literales de texto.
+- [x] 12.4 Verificar: `npm test -- src/app/route-inventory.test.ts` (3 pruebas), `npm run typecheck`, `npm run lint`, `npm test` (15 archivos, 156 pruebas) y `npm run build` (exit 0).
+
 ### Límites de alcance respetados
 
 - El acceso a las pantallas de autenticación desde la portada pertenece a DECOR-20 ("Portada y CTA"). DECOR-38 no modifica `src/app/page.tsx`.

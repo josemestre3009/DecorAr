@@ -1,6 +1,7 @@
 import { readdir, readFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
+import ts from "typescript";
 import { describe, expect, it } from "vitest";
 
 const APP_ROOT = resolve("src/app");
@@ -10,9 +11,6 @@ const ACCESS_GROUPS = ["(public)", "(protected)"];
 
 /** Extensiones que Next.js acepta para `page`. */
 const PAGE_FILE = /^page\.(tsx|ts|jsx|js|mdx)$/;
-
-/** Llamadas que validan la identidad contra el servidor de autenticación. */
-const SESSION_GUARD_CALL = /\b(requireSessionUser|getCurrentSessionUser)\s*\(/;
 
 async function findPages(directory: string): Promise<string[]> {
   const entries = await readdir(directory, { withFileTypes: true });
@@ -29,6 +27,27 @@ async function findPages(directory: string): Promise<string[]> {
 
 function toRoute(file: string): string {
   return relative(process.cwd(), file).replace(/\\/g, "/");
+}
+
+function callsRequiredSessionGuard(source: string): boolean {
+  const file = ts.createSourceFile("page.tsx", source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TSX);
+  let found = false;
+
+  function visit(node: ts.Node) {
+    if (
+      ts.isCallExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "requireSessionUser"
+    ) {
+      found = true;
+      return;
+    }
+
+    ts.forEachChild(node, visit);
+  }
+
+  visit(file);
+  return found;
 }
 
 describe("inventario de rutas de página", () => {
@@ -62,9 +81,16 @@ describe("inventario de rutas de página", () => {
       pages.map(async (file) => ({ route: toRoute(file), source: await readFile(file, "utf8") })),
     );
     const sinGuard = sources
-      .filter(({ source }) => !SESSION_GUARD_CALL.test(source))
+      .filter(({ source }) => !callsRequiredSessionGuard(source))
       .map(({ route }) => route);
 
     expect(sinGuard).toEqual([]);
+  });
+
+  it("sólo acepta una llamada ejecutable al guard obligatorio", () => {
+    expect(callsRequiredSessionGuard("await requireSessionUser();")).toBe(true);
+    expect(callsRequiredSessionGuard("await getCurrentSessionUser();")).toBe(false);
+    expect(callsRequiredSessionGuard("// requireSessionUser()")).toBe(false);
+    expect(callsRequiredSessionGuard('const example = "requireSessionUser()";')).toBe(false);
   });
 });
