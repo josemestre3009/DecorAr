@@ -158,14 +158,62 @@ describe("CatalogModule domain entity", () => {
   });
 
   it("rejects non-positive dimensions when provided", () => {
-    const zeroDimension = CatalogModule.create({
+    const zeroWidth = CatalogModule.create({
       ...validDraftProps,
       widthM: 0,
     });
-    expect(zeroDimension.ok).toBe(false);
-    if (!zeroDimension.ok) {
-      expect(zeroDimension.error.code).toBe("catalog.invalid_dimension");
+    expect(zeroWidth.ok).toBe(false);
+    if (!zeroWidth.ok) {
+      expect(zeroWidth.error.code).toBe("catalog.invalid_dimension");
     }
+
+    const negativeWidth = CatalogModule.create({
+      ...validDraftProps,
+      widthM: -1,
+    });
+    expect(negativeWidth.ok).toBe(false);
+
+    const zeroHeight = CatalogModule.create({
+      ...validDraftProps,
+      heightM: 0,
+    });
+    expect(zeroHeight.ok).toBe(false);
+
+    const negativeHeight = CatalogModule.create({
+      ...validDraftProps,
+      heightM: -1.5,
+    });
+    expect(negativeHeight.ok).toBe(false);
+
+    const zeroDepth = CatalogModule.create({
+      ...validDraftProps,
+      depthM: 0,
+    });
+    expect(zeroDepth.ok).toBe(false);
+
+    const negativeDepth = CatalogModule.create({
+      ...validDraftProps,
+      depthM: -0.5,
+    });
+    expect(negativeDepth.ok).toBe(false);
+  });
+
+  it("rejects NaN, Infinity and -Infinity in areaM2 and dimensions", () => {
+    expect(CatalogModule.create({ ...validDraftProps, areaM2: Number.NaN }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validDraftProps, areaM2: Number.POSITIVE_INFINITY }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validDraftProps, areaM2: Number.NEGATIVE_INFINITY }).ok).toBe(false);
+
+    expect(CatalogModule.create({ ...validActiveProps, widthM: Number.NaN }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validActiveProps, widthM: Number.POSITIVE_INFINITY }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validActiveProps, widthM: Number.NEGATIVE_INFINITY }).ok).toBe(false);
+
+    expect(CatalogModule.create({ ...validActiveProps, heightM: Number.NaN }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validActiveProps, heightM: Number.POSITIVE_INFINITY }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validActiveProps, heightM: Number.NEGATIVE_INFINITY }).ok).toBe(false);
+
+    expect(CatalogModule.create({ ...validActiveProps, depthM: Number.NaN }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validActiveProps, depthM: Number.POSITIVE_INFINITY }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validActiveProps, depthM: Number.NEGATIVE_INFINITY }).ok).toBe(false);
   });
 
   it("rejects empty id, assetId, name or invalid version", () => {
@@ -173,5 +221,7 @@ describe("CatalogModule domain entity", () => {
     expect(CatalogModule.create({ ...validDraftProps, assetId: "" }).ok).toBe(false);
     expect(CatalogModule.create({ ...validDraftProps, name: "  " }).ok).toBe(false);
     expect(CatalogModule.create({ ...validDraftProps, version: 0 }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validDraftProps, version: -1 }).ok).toBe(false);
+    expect(CatalogModule.create({ ...validDraftProps, version: Number.NaN }).ok).toBe(false);
   });
 });

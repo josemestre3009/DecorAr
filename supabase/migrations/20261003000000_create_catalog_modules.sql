@@ -20,6 +20,9 @@ CREATE TABLE IF NOT EXISTS public.catalog_modules (
 
   CONSTRAINT uq_catalog_modules_asset_version UNIQUE (asset_id, version),
   CONSTRAINT chk_catalog_modules_status CHECK (status IN ('draft', 'active')),
+  CONSTRAINT chk_catalog_modules_version_positive CHECK (version > 0),
+  CONSTRAINT chk_catalog_modules_asset_id_non_empty CHECK (length(trim(asset_id)) > 0),
+  CONSTRAINT chk_catalog_modules_name_non_empty CHECK (length(trim(name)) > 0),
   CONSTRAINT chk_catalog_modules_price_positive CHECK (price_cop > 0),
   CONSTRAINT chk_catalog_modules_area_positive CHECK (area_m2 > 0),
   CONSTRAINT chk_catalog_modules_width_positive CHECK (width_m IS NULL OR width_m > 0),
@@ -28,8 +31,8 @@ CREATE TABLE IF NOT EXISTS public.catalog_modules (
   CONSTRAINT chk_catalog_modules_active_completeness CHECK (
     status = 'draft' OR (
       status = 'active' AND
-      glb_url IS NOT NULL AND
-      usdz_url IS NOT NULL AND
+      glb_url IS NOT NULL AND length(trim(glb_url)) > 0 AND
+      usdz_url IS NOT NULL AND length(trim(usdz_url)) > 0 AND
       width_m IS NOT NULL AND
       height_m IS NOT NULL AND
       depth_m IS NOT NULL

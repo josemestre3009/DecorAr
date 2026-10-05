@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mockHandleGetModules = vi.fn();
 
 vi.mock("server-only", () => ({}));
-vi.mock("../../../composition/server", () => ({
+vi.mock("@/composition/server", () => ({
   createCatalogController: vi.fn(async () => ({
     handleGetModules: mockHandleGetModules,
   })),
 }));
 
+import { createCatalogController } from "@/composition/server";
 import { GET } from "./route";
 
 describe("GET /api/modules", () => {
@@ -64,5 +65,27 @@ describe("GET /api/modules", () => {
     });
     expect(body).not.toHaveProperty("SUPABASE_SERVICE_ROLE_KEY");
     expect(body).not.toHaveProperty("stack");
+  });
+
+  it("returns 500 controlled response when createCatalogController fails during initialization", async () => {
+    vi.mocked(createCatalogController).mockRejectedValueOnce(
+      new Error("Supabase initialization error: missing environment variables"),
+    );
+
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const response = await GET();
+
+    expect(response.status).toBe(500);
+    const body = await response.json();
+    expect(body).toEqual({
+      error: "Internal Server Error",
+      correlationId: expect.any(String),
+    });
+    expect(body.correlationId.length).toBeGreaterThan(0);
+    expect(body).not.toHaveProperty("stack");
+    expect(body).not.toHaveProperty("message");
+
+    consoleSpy.mockRestore();
   });
 });

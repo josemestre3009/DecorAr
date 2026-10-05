@@ -101,4 +101,38 @@ describe("SupabaseCatalogRepository", () => {
     if (result.ok) return;
     expect(result.error.code).toBe("catalog.invalid_price");
   });
+
+  it("returns domain error when row has invalid version or empty name", async () => {
+    const invalidRows: CatalogModuleRow[] = [
+      {
+        id: "c1000000-0000-4000-8000-000000000001",
+        asset_id: "mesa",
+        version: 0,
+        name: "",
+        price_cop: 250000,
+        area_m2: 4,
+        width_m: 2,
+        height_m: 1,
+        depth_m: 2,
+        glb_url: "https://example.com/mesa.glb",
+        usdz_url: "https://example.com/mesa.usdz",
+        poster_url: "https://example.com/mesa.webp",
+        status: "active",
+      },
+    ];
+
+    const mockOrder = vi.fn().mockResolvedValue({ data: invalidRows, error: null });
+    const mockEq = vi.fn().mockReturnValue({ order: mockOrder });
+    const mockSelect = vi.fn().mockReturnValue({ eq: mockEq });
+    const mockFrom = vi.fn().mockReturnValue({ select: mockSelect });
+
+    const mockClient = { from: mockFrom } as unknown as import("@supabase/supabase-js").SupabaseClient;
+
+    const repository = new SupabaseCatalogRepository(mockClient);
+    const result = await repository.getActiveModules();
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error.code).toBe("catalog.invalid_version");
+  });
 });

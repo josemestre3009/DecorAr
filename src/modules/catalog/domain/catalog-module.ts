@@ -47,19 +47,19 @@ export class CatalogModule {
       );
     }
 
-    if (typeof props.areaM2 !== "number" || Number.isNaN(props.areaM2) || props.areaM2 <= 0) {
+    if (!Number.isFinite(props.areaM2) || props.areaM2 <= 0) {
       return err(new DomainError("catalog.invalid_area", "Module areaM2 must be a number > 0"));
     }
 
-    if (props.widthM !== null && (typeof props.widthM !== "number" || props.widthM <= 0)) {
+    if (props.widthM !== null && (!Number.isFinite(props.widthM) || props.widthM <= 0)) {
       return err(new DomainError("catalog.invalid_dimension", "Module widthM must be > 0 when provided"));
     }
 
-    if (props.heightM !== null && (typeof props.heightM !== "number" || props.heightM <= 0)) {
+    if (props.heightM !== null && (!Number.isFinite(props.heightM) || props.heightM <= 0)) {
       return err(new DomainError("catalog.invalid_dimension", "Module heightM must be > 0 when provided"));
     }
 
-    if (props.depthM !== null && (typeof props.depthM !== "number" || props.depthM <= 0)) {
+    if (props.depthM !== null && (!Number.isFinite(props.depthM) || props.depthM <= 0)) {
       return err(new DomainError("catalog.invalid_dimension", "Module depthM must be > 0 when provided"));
     }
 
