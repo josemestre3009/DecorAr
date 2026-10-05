@@ -1,7 +1,7 @@
 # Catalog
 
-- `domain`: metadatos y reglas del catálogo, sin frameworks.
-- `application`: casos de uso y puertos del catálogo.
-- `infrastructure`: adaptadores server-side de persistencia y activos.
+- `domain`: entidad `CatalogModule` y reglas invariantes del catálogo (validación de activos completos y positivos), sin frameworks.
+- `application`: puerto `CatalogRepository`, DTO `CatalogModuleDto` y caso de uso `GetActiveCatalogModulesUseCase`.
+- `infrastructure`: adaptador server-side `SupabaseCatalogRepository` que consulta la tabla `catalog_modules` en PostgreSQL/PostgREST.
 
-DECOR-28 añadirá los primeros contratos funcionales. Este módulo no depende de `packages` ni `budget`.
+Implementado bajo DECOR-28. Este módulo no depende de `packages` ni `budget`.
