@@ -86,6 +86,34 @@ Las operaciones que deben modificar varias tablas de forma atómica, como actual
 
 El cliente recibe actualizaciones del presupuesto mediante Broadcast privado de Supabase Realtime. No se exponen directamente cambios de las tablas internas mediante `postgres_changes`.
 
+### 2.2.2 Ciclo de vida de la sesión SSR y límites conocidos
+
+La sesión se resuelve siempre en el servidor. El cliente de Supabase para SSR se crea una vez por petición y se apoya en las cookies de la petición; en el navegador se usa el patrón `getAll`/`setAll`, que exige asignar todas las cookies leídas y no permitir que la petición alive el almacen de cookies del servidor.
+
+El refresco del token ocurre de forma perezosa, cuando un consumer llama por primera vez a la sesión. La validación se reparte según el coste y la fiabilidad de cada punto de entrada:
+
+- `src/proxy.ts` usa `getClaims()`, que verifica la firma del token localmente contra el JWKS del proyecto, para decidir si una página protegida continúa o redirige a `/login`. No redirige las rutas de API porque un cliente HTTP espera un `401` en JSON y no una redirección de navegador.
+- `src/app/(protected)/layout.tsx` y las páginas del grupo validan la identidad con `getUser()`, que sí consulta al servidor de autenticación, a través de `requireSessionUser()` en `src/composition/session-guard.ts`. Los Route Handlers hacen lo mismo. `getSession()` no se usa para autorizar, porque leer la cookie no garantiza que el token siga siendo válido.
+
+La validación está repartida en dos niveles a propósito. `getClaims()` es barata y sirve para descartar rápido a quien no tiene sesión, pero un token todavía vigente puede atravesarla aunque la sesión se haya cerrado en otro dispositivo. Por eso cada página protegida llama a `requireSessionUser()`. No basta con el layout del grupo: en Next 16 los layouts no se vuelven a ejecutar en la navegación del cliente y no impiden que la página se ejecute (guía de autenticación de Next, "Layouts and auth checks"). `src/app/route-inventory.test.ts` falla si una página de `(protected)/` omite la llamada. `getCurrentSessionUser()` y `requireSessionUser()` están envueltos en `cache()` de React, de modo que en una carga completa el layout y la página comparten una sola llamada `getUser()`. Las Server Actions que operen en nombre del usuario deben validar la identidad por su cuenta.
+
+El alcance de "sin coste de red" para `getClaims()` es condicional y conviene no leerlo como una propiedad de la librería. El proyecto firma con una clave asimétrica, comprobado sobre `GET /auth/v1/.well-known/jwks.json`, que devuelve una clave `ES256`: en ese caso la única descarga es la del JWKS en el primer acierto de caché, y Supabase lo cachea diez minutos en el edge. Con la clave simétrica heredada (HS256), `getClaims()` recurre a `getUser()` y sí paga una llamada de red por petición.
+
+Las rutas se protegen por defecto, no por lista. `src/proxy.ts` declara `PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"]` y trata como protegida cualquier otra ruta de página, de modo que una página nueva nace protegida y sólo queda pública si alguien la añade ahí a propósito. `/api` queda exenta porque sus Route Handlers validan la identidad por su cuenta. La convención de grupos es que toda página se cree dentro de `(public)/` o de `(protected)/`, y `src/app/route-inventory.test.ts` falla si aparece una página fuera de ambos grupos. `/api/health` se atiende en el proxy antes de crear el cliente de Supabase, para que el healthcheck del contenedor no dependa de él.
+
+El cliente server propaga los encabezados `Cache-Control`, `Expires` y `Pragma` que entrega la librería a través del callback `setAll`, y el proxy los adjunta a la respuesta que reenvía.
+
+Límites conocidos que conviene no ocultar:
+
+- El escáner de arquitectura recorre todo el árbol `src/`, pero `src/proxy.ts` queda fuera de las capas que clasifica y `layerOf("src/proxy.ts")` devuelve `null`. El archivo no tiene reglas automáticas que lo protejan y depende de la revisión manual.
+- En React Server Components y Server Actions el callback `setAll` no puede fijar encabezados de respuesta, porque ese contexto no dispone de un `NextResponse` que modificar. Las cookies sí se escriben mediante `next/headers`; los encabezados anti-caché están garantizados en el proxy y en los Route Handlers. En las páginas se conserva la marca `ƒ (Dynamic) server-rendered on demand`, de modo que la respuesta no se sirve desde la caché estática de Next.js.
+- El cliente browser deja las cookies de sesión legibles desde JavaScript (`httpOnly: false`) y con una vigencia de 400 días, que es lo que exige `@supabase/ssr` para su refresco automático. La Session Access Token y la Refresh Token quedan expuestas ante un XSS.
+- La persistencia de la sesión se demuestra en el navegador, pero el aislamiento real de datos entre dos usuarios todavía no puede probarse: las políticas de RLS, los fixtures A/B y los usuarios de prueba pertenecen a DECOR-30 (Luis), cuya frontera con esta tarea es explícita: Luis crea las políticas y los fixtures, y DECOR-38 aporta la sesión SSR y la UI.
+- `currentUser()` no distingue "no hay sesión" de "el proveedor no respondió": cualquier error de `getUser()`, incluido un `429` por límite de peticiones, se traduce en `null` y por tanto en `401`. Es una decisión que falla cerrada, correcta para no conceder acceso, pero produce falsos negativos cuando Supabase está saturado. Por eso `playwright.config.ts` serializa la suite: los escenarios autenticados comparten una cuenta real y en paralelo el proveedor limita las respuestas.
+- El proyecto de Supabase exige confirmar el correo y el servicio interno de correo es best-effort con cuota baja. El registro se trata como un éxito pendiente de confirmación, nunca como un fallo, y la entrega del correo no se puede garantizar de forma automatizada.
+- Con la confirmación de correo activa, Supabase ofusca el registro duplicado y devuelve éxito sin error, así que el aviso "ya existe una cuenta con ese correo" no es observable en este proyecto: quien se registra con un correo ya usado ve el mensaje de revisar la bandeja. El mapeo del error se conserva por si se desactiva la confirmación o si la cuenta se creó enlazada a otro proveedor, y su prueba unitaria sigue ejercitando el código alcanzable.
+- Al proteger por defecto, una ruta inexistente devuelve una redirección a `/login` en lugar de un `404` para quien no tiene sesión. Se acepta como forma de no revelar qué rutas existen.
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid
