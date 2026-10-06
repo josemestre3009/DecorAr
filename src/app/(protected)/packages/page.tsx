@@ -3,6 +3,8 @@ import type { Metadata } from "next";
 import { signOutAction } from "@/app/actions";
 import { requireSessionUser } from "@/composition/session-guard";
 
+import { SpaceForm } from "./space-form";
+
 export const metadata: Metadata = {
   title: "Paquetes · DecorAR",
 };
@@ -23,7 +25,7 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
   return (
     <main className="auth-page">
       <section className="auth">
-        <h1 className="auth-title">Paquetes</h1>
+        <h1 className="auth-title">Define tu espacio</h1>
 
         {logoutFailed ? (
           <p className="auth-error" role="alert">
@@ -31,13 +33,22 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
           </p>
         ) : null}
 
-        <p className="auth-notice">Sesión activa: {user.email}</p>
+        <p className="page-lead">
+          Cuéntanos dónde será el evento y cuántos metros cuadrados tienes. Con eso
+          creamos tu paquete y te mostramos el catálogo.
+        </p>
 
-        <form action={signOutAction}>
-          <button className="auth-submit" type="submit">
-            Cerrar sesión
-          </button>
-        </form>
+        <SpaceForm />
+
+        <div className="session-bar">
+          <p className="auth-notice">Sesión activa: {user.email}</p>
+
+          <form action={signOutAction}>
+            <button className="secondary-button" type="submit">
+              Cerrar sesión
+            </button>
+          </form>
+        </div>
       </section>
     </main>
   );

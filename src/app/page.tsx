@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export default function Home() {
   return (
     <main className="home">
@@ -16,7 +18,11 @@ export default function Home() {
             Diseña paquetes para eventos, conoce el presupuesto y visualiza cada
             elemento a escala real desde tu teléfono.
           </p>
-          <a className="primary-link" href="#propuesta">Conocer DecorAR</a>
+          <div className="hero-actions">
+            {/* Sin sesión, el proxy lleva a /login y el login regresa a /packages. */}
+            <Link className="primary-link" href="/packages">Crear mi paquete</Link>
+            <a className="secondary-link" href="#propuesta">Conocer DecorAR</a>
+          </div>
         </div>
 
         <div className="scene" aria-label="Vista conceptual de una decoración">
