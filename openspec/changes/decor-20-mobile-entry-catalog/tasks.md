@@ -42,7 +42,11 @@
 - En desarrollo, StrictMode ejecuta dos veces el efecto que pide el catálogo y cancela la primera petición; la prueba de reintento no cuenta peticiones, sino que la API falla hasta pulsar "Reintentar".
 - `fullyParallel: false` solo serializa dentro de un archivo. Con dos archivos autenticados, `auth.spec.ts` cerraba sesión en paralelo y Supabase revocaba la sesión de la misma cuenta en `mobile-entry-catalog.spec.ts`. `playwright.config.ts` fija ahora `workers: 1`.
 
-## 5. Coordinación pendiente
+## 5. Correcciones de la revisión
+
+- [x] 5.0 F1 (Jose): `fetchCatalogModules` usa `cache: "no-store"` para que "Reintentar" y "Volver a consultar" no reutilicen la respuesta guardada; verificar con `catalog-client.test.ts` y `package-catalog.test.tsx`
+
+## 6. Coordinación pendiente
 
 - [ ] 5.1 Confirmar con DECOR-27 los valores de `spaceType` (`casa`, `aireLibre`, `salonSocial`)
 - [ ] 5.2 Informar a Jose del formato de error y de la ausencia de sesión en `GET /api/modules`

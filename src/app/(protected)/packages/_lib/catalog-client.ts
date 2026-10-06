@@ -33,6 +33,9 @@ function isCatalogModule(value: unknown): value is CatalogModuleDto {
 /**
  * Consulta el catálogo a través del Route Handler de DECOR-28. El navegador
  * nunca lee `catalog_modules` directamente.
+ *
+ * La API responde con `Cache-Control: public, max-age=60`, incluso con `[]`;
+ * `no-store` obliga a que "Reintentar" y "Volver a consultar" pidan de nuevo.
  */
 export async function fetchCatalogModules(
   fetcher: typeof fetch = fetch,
@@ -42,6 +45,7 @@ export async function fetchCatalogModules(
 
   try {
     response = await fetcher(CATALOG_ENDPOINT, {
+      cache: "no-store",
       headers: { Accept: "application/json" },
       signal,
     });

@@ -19,6 +19,19 @@ describe("fetchCatalogModules", () => {
     expect(result).toEqual({ ok: true, value: fixture });
   });
 
+  it("pide el catálogo sin caché del navegador", async () => {
+    // La API marca la respuesta como pública 60 s; sin `no-store` reintentar
+    // podría devolver la lista vacía guardada.
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json([]));
+
+    await fetchCatalogModules(fetcher);
+
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/modules",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
   it("devuelve una lista vacía sin tratarla como error", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json([]));
 

@@ -63,6 +63,7 @@ Los posters llegan de dominios que aún no están decididos (fixture en `example
 - [En modo simulado el paquete no existe en el servidor] -> Aviso visible "Modo simulado"; vive en `sessionStorage` y la capacidad no se compara con el área de los módulos.
 - [`GET /api/modules` responde `[]` mientras el seed siga en `draft`] -> El estado vacío es el comportamiento correcto; las tarjetas se prueban con el fixture vía `page.route`.
 - [`GET /api/modules` no exige sesión y usa caché pública] -> No se modifica (DECOR-28); se reporta para decisión de Jose.
+- [La caché pública de 60 s haría que "Volver a consultar" reutilizara `[]`] -> Hallazgo F1 de Jose: `catalog-client.ts` pide con `cache: "no-store"`, de modo que cada carga y cada reintento consultan al servidor.
 - [`NEXT_PUBLIC_*` se fija al compilar] -> Reconstruir la imagen al pasar a `live`.
 
 ## Migration Plan

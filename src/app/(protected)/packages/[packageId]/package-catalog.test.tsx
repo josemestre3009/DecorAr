@@ -84,6 +84,22 @@ describe("PackageCatalog", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
+  it("vuelve a consultar sin caché y muestra los módulos nuevos", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValueOnce(Response.json([]))
+      .mockResolvedValueOnce(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Volver a consultar" }));
+
+    expect(await screen.findAllByRole("article")).toHaveLength(3);
+    expect(fetcher).toHaveBeenCalledTimes(2);
+    for (const [, init] of fetcher.mock.calls) {
+      expect(init).toMatchObject({ cache: "no-store" });
+    }
+  });
+
   it("agrega el módulo al paquete y lo anuncia", async () => {
     const addItem = vi
       .fn<PackagesClient["addItem"]>()

@@ -69,7 +69,11 @@ La página `/packages/{id}` SHALL exigir sesión con `requireSessionUser()` y SH
 
 #### Scenario: Catálogo vacío
 - **WHEN** `GET /api/modules` responde `[]`
-- **THEN** la página muestra "Todavía no hay módulos disponibles en el catálogo."
+- **THEN** la página muestra "Todavía no hay módulos disponibles en el catálogo." y ofrece "Volver a consultar"
+
+#### Scenario: Volver a consultar sin caché
+- **WHEN** la persona pulsa "Reintentar" o "Volver a consultar"
+- **THEN** la interfaz hace una petición nueva a `GET /api/modules` con `cache: "no-store"`, sin reutilizar la respuesta guardada por el navegador
 
 #### Scenario: Error y reintento
 - **WHEN** `GET /api/modules` falla
