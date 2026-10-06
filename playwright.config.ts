@@ -14,6 +14,10 @@ export default defineConfig({
   // paralelo, varias validaciones de sesión simultáneas hacen que el proveedor
   // limite las peticiones y la comprobación de sesión se vuelva intermitente.
   fullyParallel: false,
+  // `fullyParallel: false` solo serializa dentro de cada archivo; los archivos
+  // seguirían en workers paralelos. Con una cuenta compartida, el cierre de
+  // sesión de auth.spec.ts revoca la sesión de los demás archivos a la vez.
+  workers: 1,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
   reporter: "html",
