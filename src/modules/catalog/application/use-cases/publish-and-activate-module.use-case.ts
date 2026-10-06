@@ -140,7 +140,8 @@ export class PublishAndActivateModuleUseCase {
       );
     }
 
-    // 4. Subir a almacenamiento externo con public_id versionado e inmutable
+    // 4. Subir a almacenamiento externo con public_id versionado e inmutable y carpeta asignada
+    const assetFolder = `decorar/${command.assetId}`;
     const glbPublicId = `decorar/${command.assetId}/v${command.version}/${command.assetId}.glb`;
     const usdzPublicId = `decorar/${command.assetId}/v${command.version}/${command.assetId}.usdz`;
     const posterPublicId = `decorar/${command.assetId}/v${command.version}/${command.assetId}-poster`;
@@ -150,6 +151,7 @@ export class PublishAndActivateModuleUseCase {
       publicId: glbPublicId,
       resourceType: "raw",
       overwrite: false,
+      assetFolder,
     });
     if (!glbUpload.ok) {
       return err(
@@ -164,6 +166,7 @@ export class PublishAndActivateModuleUseCase {
       publicId: usdzPublicId,
       resourceType: "raw",
       overwrite: false,
+      assetFolder,
     });
     if (!usdzUpload.ok) {
       return err(
@@ -178,6 +181,7 @@ export class PublishAndActivateModuleUseCase {
       publicId: posterPublicId,
       resourceType: "image",
       overwrite: false,
+      assetFolder,
     });
     if (!posterUpload.ok) {
       return err(

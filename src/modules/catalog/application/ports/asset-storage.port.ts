@@ -6,6 +6,7 @@ export interface UploadAssetParams {
   readonly publicId: string;
   readonly resourceType: "raw" | "image";
   readonly overwrite?: boolean;
+  readonly assetFolder?: string;
 }
 
 export interface UploadAssetResult {

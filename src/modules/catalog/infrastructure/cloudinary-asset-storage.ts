@@ -28,6 +28,7 @@ export class CloudinaryAssetStorage implements AssetStoragePort {
         public_id: params.publicId,
         resource_type: params.resourceType,
         overwrite: params.overwrite ?? false,
+        ...(params.assetFolder ? { asset_folder: params.assetFolder } : {}),
       });
 
       if (!response.secure_url) {
