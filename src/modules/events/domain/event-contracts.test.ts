@@ -38,6 +38,20 @@ describe("event contracts", () => {
     expect(!parsed.ok && parsed.error.message).toContain("Versión de evento no soportada");
   });
 
+  it.each([
+    ["BigInt", BigInt(2)],
+    ["objeto circular", (() => {
+      const value: Record<string, unknown> = {};
+      value.self = value;
+      return value;
+    })()],
+  ])("rechaza una versión %s sin lanzar", (_, schemaVersion) => {
+    const parsed = parseDomainEvent({ ...clone(packageModuleAddedExample), schemaVersion });
+
+    expect(parsed.ok).toBe(false);
+    expect(!parsed.ok && parsed.error.code).toBe("event.unsupported_version");
+  });
+
   it.each(["eventId", "type", "schemaVersion", "occurredAt", "userId", "packageId", "payload"])(
     "rechaza un evento sin %s",
     (field) => {
@@ -75,6 +89,7 @@ describe("event contracts", () => {
 
   it.each([
     ["occurredAt no UTC", { occurredAt: "2026-10-02 15:04" }],
+    ["occurredAt inexistente", { occurredAt: "2026-02-30T00:00:00.000Z" }],
     ["totalCop no entero", { payload: { ...budgetRecalculatedExample.payload, totalCop: 10.5 } }],
     ["totalCop negativo", { payload: { ...budgetRecalculatedExample.payload, totalCop: -1 } }],
   ])("rechaza %s", (_, override) => {
@@ -83,8 +98,24 @@ describe("event contracts", () => {
     expect(!parsed.ok && parsed.error.code).toBe("event.invalid");
   });
 
+  it.each([
+    "2024-02-29T00:00:00Z",
+    "2026-01-01T00:00:00.1Z",
+    "2026-01-01T00:00:00.12Z",
+    "2026-01-01T00:00:00.123Z",
+  ])("acepta la fecha UTC válida %s", (occurredAt) => {
+    expect(parseDomainEvent({ ...clone(packageModuleAddedExample), occurredAt }).ok).toBe(true);
+  });
+
   it.each([null, "evento", []])("rechaza una entrada que no es objeto (%j) sin lanzar", (input) => {
     expect(parseDomainEvent(input).ok).toBe(false);
+  });
+
+  it("rechaza un objeto no procesable sin lanzar", () => {
+    const { proxy, revoke } = Proxy.revocable({}, {});
+    revoke();
+
+    expect(parseDomainEvent(proxy).ok).toBe(false);
   });
 
   it("define el canal privado del paquete", () => {

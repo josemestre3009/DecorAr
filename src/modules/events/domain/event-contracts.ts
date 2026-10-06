@@ -45,7 +45,7 @@ export type DomainEvent =
 
 export const packageChannel = (packageId: string): string => `package:${packageId}`;
 
-const ISO_UTC = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 
 const PAYLOAD_FIELDS: Record<EventType, Readonly<Record<string, "string" | "nonNegativeInteger">>> = {
   "package.module.added": { itemId: "string", moduleId: "string" },
@@ -70,11 +70,45 @@ const isEventType = (value: unknown): value is EventType =>
 
 const invalid = (message: string) => err(new DomainError("event.invalid", message));
 
+const describeValue = (value: unknown): string => {
+  try {
+    return JSON.stringify(value) ?? "<valor no serializable>";
+  } catch {
+    return "<valor no serializable>";
+  }
+};
+
+const isIsoUtcTimestamp = (value: unknown): value is string => {
+  if (typeof value !== "string") return false;
+
+  const match = ISO_UTC.exec(value);
+  const timestamp = Date.parse(value);
+  if (match === null || Number.isNaN(timestamp)) return false;
+
+  const date = new Date(timestamp);
+  return (
+    date.getUTCFullYear() === Number(match[1]) &&
+    date.getUTCMonth() === Number(match[2]) - 1 &&
+    date.getUTCDate() === Number(match[3]) &&
+    date.getUTCHours() === Number(match[4]) &&
+    date.getUTCMinutes() === Number(match[5]) &&
+    date.getUTCSeconds() === Number(match[6])
+  );
+};
+
 /**
  * Validates untrusted input against the MVP event contract (schemaVersion 1).
  * Never throws: returns a DomainError with code `event.invalid` or `event.unsupported_version`.
  */
 export function parseDomainEvent(input: unknown): Result<DomainEvent, DomainError> {
+  try {
+    return parseDomainEventUnsafe(input);
+  } catch {
+    return invalid("Evento inválido: entrada no procesable");
+  }
+}
+
+function parseDomainEventUnsafe(input: unknown): Result<DomainEvent, DomainError> {
   if (!isRecord(input)) {
     return invalid("Evento inválido: se esperaba un objeto");
   }
@@ -87,7 +121,7 @@ export function parseDomainEvent(input: unknown): Result<DomainEvent, DomainErro
     return err(
       new DomainError(
         "event.unsupported_version",
-        `Versión de evento no soportada: ${JSON.stringify(input.schemaVersion)}; se esperaba ${EVENT_SCHEMA_VERSION}`,
+        `Versión de evento no soportada: ${describeValue(input.schemaVersion)}; se esperaba ${EVENT_SCHEMA_VERSION}`,
       ),
     );
   }
@@ -106,7 +140,7 @@ export function parseDomainEvent(input: unknown): Result<DomainEvent, DomainErro
     }
   }
 
-  if (!ISO_UTC.test(input.occurredAt as string) || Number.isNaN(Date.parse(input.occurredAt as string))) {
+  if (!isIsoUtcTimestamp(input.occurredAt)) {
     return invalid("Evento inválido: occurredAt debe ser una fecha ISO 8601 en UTC");
   }
 
