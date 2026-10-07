@@ -46,10 +46,13 @@ export type DomainEvent =
 export const packageChannel = (packageId: string): string => `package:${packageId}`;
 
 const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
+const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-const PAYLOAD_FIELDS: Record<EventType, Readonly<Record<string, "string" | "nonNegativeInteger">>> = {
-  "package.module.added": { itemId: "string", moduleId: "string" },
-  "package.module.removed": { itemId: "string", moduleId: "string" },
+type FieldKind = "string" | "uuid" | "nonNegativeInteger";
+
+const PAYLOAD_FIELDS: Record<EventType, Readonly<Record<string, FieldKind>>> = {
+  "package.module.added": { itemId: "string", moduleId: "uuid" },
+  "package.module.removed": { itemId: "string", moduleId: "uuid" },
   "budget.recalculated": {
     budgetId: "string",
     totalCop: "nonNegativeInteger",
@@ -156,9 +159,11 @@ function parseDomainEventUnsafe(input: unknown): Result<DomainEvent, DomainError
     }
 
     const valid =
-      kind === "string"
-        ? isNonEmptyString(value)
-        : typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+      kind === "nonNegativeInteger"
+        ? typeof value === "number" && Number.isSafeInteger(value) && value >= 0
+        : kind === "uuid"
+          ? typeof value === "string" && UUID.test(value)
+          : isNonEmptyString(value);
 
     if (!valid) {
       return invalid(`Evento inválido: payload.${field} tiene un valor no válido`);

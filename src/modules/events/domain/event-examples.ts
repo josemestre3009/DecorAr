@@ -13,7 +13,7 @@ export const packageModuleAddedExample: PackageModuleAddedEvent = {
   packageId: "2b7e1516-28ae-4d2a-abf7-158809cf4f3c",
   payload: {
     itemId: "8e4f2c1a-9d3b-4a6e-b7c5-1f2e3d4c5b6a",
-    moduleId: "arco-floral",
+    moduleId: "c1000000-0000-4000-8000-000000000001",
   },
 };
 

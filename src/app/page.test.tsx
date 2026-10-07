@@ -10,4 +10,13 @@ describe("Home", () => {
     expect(screen.getByRole("heading", { level: 1 })).toHaveTextContent(/Imagina el espacio/);
     expect(screen.getByText(/visualiza cada elemento a escala real/i)).toBeVisible();
   });
+
+  it("lleva a crear el paquete desde la llamada a la acción principal", () => {
+    render(<Home />);
+
+    expect(screen.getByRole("link", { name: "Crear mi paquete" })).toHaveAttribute(
+      "href",
+      "/packages",
+    );
+  });
 });

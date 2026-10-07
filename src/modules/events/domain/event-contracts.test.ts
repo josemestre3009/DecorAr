@@ -107,6 +107,15 @@ describe("event contracts", () => {
     expect(parseDomainEvent({ ...clone(packageModuleAddedExample), occurredAt }).ok).toBe(true);
   });
 
+  it("rechaza un moduleId que no es UUID del catálogo", () => {
+    const event = clone(packageModuleAddedExample);
+    (event.payload as Record<string, unknown>).moduleId = "arco-floral";
+
+    const parsed = parseDomainEvent(event);
+
+    expect(!parsed.ok && parsed.error.code).toBe("event.invalid");
+  });
+
   it.each([null, "evento", []])("rechaza una entrada que no es objeto (%j) sin lanzar", (input) => {
     expect(parseDomainEvent(input).ok).toBe(false);
   });

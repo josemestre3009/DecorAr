@@ -114,6 +114,19 @@ Límites conocidos que conviene no ocultar:
 - Con la confirmación de correo activa, Supabase ofusca el registro duplicado y devuelve éxito sin error, así que el aviso "ya existe una cuenta con ese correo" no es observable en este proyecto: quien se registra con un correo ya usado ve el mensaje de revisar la bandeja. El mapeo del error se conserva por si se desactiva la confirmación o si la cuenta se creó enlazada a otro proveedor, y su prueba unitaria sigue ejercitando el código alcanzable.
 - Al proteger por defecto, una ruta inexistente devuelve una redirección a `/login` en lugar de un `404` para quien no tiene sesión. Se acepta como forma de no revelar qué rutas existen.
 
+### 2.2.3 Recorrido móvil inicial y simulación temporal de paquetes
+
+El primer recorrido del cliente (DECOR-20) va de la portada a `/packages`, donde la persona define el tipo de espacio (`casa`, `aireLibre` o `salonSocial`) y la capacidad en metros cuadrados, y de ahí a `/packages/{id}`, que muestra el catálogo. Las dos páginas pertenecen a `(protected)/` y llaman a `requireSessionUser()`. Los componentes cliente sólo hablan HTTP: el catálogo se consulta con `GET /api/modules` y el paquete se crea y se amplía a través del puerto `PackagesClient` (`src/app/(protected)/packages/_lib/packages-client.ts`), con el contrato de DECOR-27: `POST /api/packages` y `POST /api/packages/{id}/items`. El navegador no ejecuta `.from()` sobre tablas de negocio, y la prueba E2E comprueba que no sale ninguna petición a `/rest/v1/`.
+
+Mientras DECOR-27 no esté integrado, `NEXT_PUBLIC_DECOR_PACKAGES_API=simulated` (valor por defecto) activa una implementación que responde con la misma forma y los mismos códigos sin red. La interfaz lo indica con un aviso "Modo simulado". Al integrar DECOR-27 basta con construir con `live`; la implementación HTTP ya está probada contra el contrato.
+
+Límites conocidos de esta etapa:
+
+- En modo simulado el paquete vive en `sessionStorage` de la pestaña: no existe en el servidor, no pasa por RLS y la capacidad no se compara con el área de los módulos, que es responsabilidad del Builder de DECOR-27.
+- `GET /api/modules` devuelve `[]` mientras el seed mantenga los módulos en `draft`; la pantalla muestra entonces el estado vacío. Las tarjetas se verifican con el fixture de DECOR-28 servido mediante `page.route`.
+- `GET /api/modules` responde sus errores como `{error:"Internal Server Error", correlationId}`, no con el envelope `{error:{code,message}}`, y no exige sesión. La interfaz acepta ambos formatos y nunca muestra el detalle de un `5xx`.
+- `NEXT_PUBLIC_DECOR_PACKAGES_API` se fija al compilar: en Docker se pasa como argumento de construcción y hay que reconstruir la imagen para cambiarla.
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid
