@@ -23,8 +23,10 @@
 ## 5. Documentación y especificaciones
 - [x] 5.1 Crear guía técnica y operativa `docs/assets-3d.md` (F4)
 - [x] 5.2 Crear especificación delta formal en `openspec/changes/decor-36-cloudinary-3d-assets/specs/cloudinary-3d-assets/spec.md` (F4)
+- [x] 5.3 Documentar publicación versionada, reintento, rollback y limpieza segura (F4)
 
 ## 6. Pruebas y verificación de calidad
 - [x] 6.1 Pruebas unitarias para caso de uso, adaptadores, RPC contract y cálculo de bounding box
 - [x] 6.2 Pruebas de replay sobre módulos ya activos (inmutabilidad) y recuperación ante `{ existing: true }`
 - [x] 6.3 Ejecutar suite completa de tests, escáner de arquitectura, escáner de secretos, lint, typecheck y build
+- [x] 6.4 Verificar factores de calibración geométrica y default no destructivo de Cloudinary (F3/F5)

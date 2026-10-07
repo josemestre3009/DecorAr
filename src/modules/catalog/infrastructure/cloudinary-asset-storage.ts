@@ -40,7 +40,9 @@ export class CloudinaryAssetStorage implements AssetStoragePort {
     const resourceType =
       params.resourceType ??
       (publicId.endsWith(".glb") || publicId.endsWith(".usdz") ? "raw" : "image");
-    const ifExists = params.ifExists ?? (params.overwrite === false ? "reuse" : "overwrite");
+    const ifExists =
+      params.ifExists ??
+      (params.overwrite === true ? "overwrite" : params.overwrite === false ? "reuse" : "fail");
     const overwrite = ifExists === "overwrite";
 
     try {

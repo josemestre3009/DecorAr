@@ -42,3 +42,18 @@ El sistema SHALL proveer la utilidad `scripts/inspect-glb-bounds.ts` para extrae
 #### Scenario: Cálculo de Bounding Box desde archivo GLB
 - **WHEN** se procesa un archivo binario `.glb` válido
 - **THEN** el script extrae los vértices mínimos y máximos multiplicando las matrices locales y jerárquicas del grafo de escena glTF, reportando ancho, alto y profundidad en metros
+
+#### Scenario: Verificación de calibración física
+- **WHEN** se comparan las dimensiones geométricas con las dimensiones físicas del catálogo
+- **THEN** la utilidad calcula por eje el factor `dimensión física / dimensión geométrica` y demuestra que el bounding box calibrado reproduce el tamaño físico esperado
+
+### Requirement: Operación versionada y recuperable
+El comando de publicación SHALL permitir seleccionar el módulo y la versión, mantener versiones activas inmutables y documentar la recuperación de intentos parciales sin borrar activos referenciados.
+
+#### Scenario: Publicación de una versión nueva
+- **WHEN** el operador ejecuta el comando con `--asset=<assetId> --version=<n>` y existe la carpeta y fila `draft` correspondientes
+- **THEN** el sistema publica únicamente ese módulo bajo `v<n>` y conserva intactas las versiones anteriores
+
+#### Scenario: Recuperación de un intento parcial
+- **WHEN** una publicación falla antes de activar la fila `draft`
+- **THEN** el operador puede reintentar reutilizando los activos existentes o limpiar exclusivamente esa versión después de confirmar que ninguna fila `active` la referencia

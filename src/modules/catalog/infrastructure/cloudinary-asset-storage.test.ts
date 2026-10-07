@@ -72,6 +72,27 @@ describe("CloudinaryAssetStorage", () => {
     });
   });
 
+  it("no sobrescribe por defecto cuando no se especifica una política", async () => {
+    vi.mocked(cloudinary.uploader.upload).mockResolvedValue({
+      public_id: "decorar/mesa/v1/mesa.glb",
+      secure_url: "https://res.cloudinary.com/testcloud/raw/upload/decorar/mesa/v1/mesa.glb",
+      bytes: 2048,
+    } as unknown as UploadApiResponse);
+
+    const storage = new CloudinaryAssetStorage();
+    await storage.uploadAsset({
+      filePath: "/path/to/mesa.glb",
+      publicId: "decorar/mesa/v1/mesa.glb",
+      resourceType: "raw",
+    });
+
+    expect(cloudinary.uploader.upload).toHaveBeenCalledWith("/path/to/mesa.glb", {
+      public_id: "decorar/mesa/v1/mesa.glb",
+      resource_type: "raw",
+      overwrite: false,
+    });
+  });
+
   it("reenvía asset_folder cuando se proporciona", async () => {
     vi.mocked(cloudinary.uploader.upload).mockResolvedValue({
       public_id: "decorar/mesa/v1/mesa.glb",

@@ -18,7 +18,7 @@ Este documento detalla la arquitectura, directrices operativas, especificaciones
 * Los identificadores públicos (`public_id`) en Cloudinary siguen un formato jerárquico determinista:
   $$\text{decorar}/\{\text{assetId}\}/\text{v}\{\text{version}\}/\{\text{filename}\}$$
 * **Configuración inmutable:** Las subidas se ejecutan con `overwrite: false`.
-* **Idempotencia y recuperación (F1):** Si un activo ya fue subido previamente en un intento parcial, Cloudinary retorna `{ existing: true }` o conflicto. El adaptador `CloudinaryAssetStorage` captura esta condición y consulta `cloudinary.api.resource(publicId)` para recuperar de manera segura su `secure_url` y tamaño en bytes, permitiendo que la reejecución sea 100% idempotente y no bloqueante.
+* **Idempotencia y recuperación (F1):** Si un activo ya fue subido durante un intento parcial que conserva la fila en `draft`, Cloudinary retorna `{ existing: true }` o conflicto. El adaptador recupera su `secure_url` y tamaño mediante `cloudinary.api.resource(publicId)`, permitiendo reintentar esa publicación sin sobrescribir. Una versión ya `active` no se reejecuta: la RPC la rechaza para conservar su inmutabilidad.
 
 ---
 
@@ -43,13 +43,13 @@ Para validar matemáticamente las dimensiones, el repositorio incluye la herrami
 
 ### Tabla de Medición y Calibración de Catálogo
 
-| Módulo | Archivo GLB | Tamaño GLB | Bounding Box Geométrico (Vértices) | Dimensiones Catálogo (AR 1:1 Fija) | Área ($m^2$) |
-| :--- | :--- | :--- | :--- | :--- | :--- |
-| **Mesa** (`mesa`) | `mahogany_table.glb` | 9.36 MB | Ancho: 13.71m, Alto: 6.46m, Prof: 8.14m | **2.0m × 1.0m × 2.0m** | 4.0 |
-| **Arco** (`arco`) | `flower_arch.glb` | 9.75 MB | Ancho: 7.37m, Alto: 7.23m, Prof: 1.52m | **2.0m × 2.4m × 1.0m** | 2.0 |
-| **Pista** (`pista`) | `animated_dance_floor_neon_lights.glb` | 2.51 MB | Ancho: 7.02m, Alto: 0.50m, Prof: 7.02m | **4.0m × 0.1m × 4.0m** | 16.0 |
+| Módulo | Archivo GLB | Bounding Box Geométrico | Dimensiones físicas | Escala de calibración XYZ |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mesa** (`mesa`) | `mahogany_table.glb` | 13.714m × 6.463m × 8.139m | **2.0m × 1.0m × 2.0m** | `0.145836 0.154727 0.245730` |
+| **Arco** (`arco`) | `flower_arch.glb` | 7.369m × 7.233m × 1.521m | **2.0m × 2.4m × 1.0m** | `0.271407 0.331813 0.657462` |
+| **Pista** (`pista`) | `animated_dance_floor_neon_lights.glb` | 7.020m × 0.500m × 7.020m | **4.0m × 0.1m × 4.0m** | `0.569801 0.200000 0.569801` |
 
-> **Nota sobre autoría y calibración:** Los modelos de autoría original presentan transformaciones de coordenadas y unidades libres (ej. rotación de -90° en X o cuantización `KHR_mesh_quantization`). Las dimensiones del catálogo registradas en Supabase (`width_m`, `height_m`, `depth_m`) corresponden a la calibración física 1:1 asignada al módulo en el espacio de eventos.
+Los modelos fuente usan unidades de autoría distintas de metros. Por eso el bounding box sin calibrar no coincide con el tamaño físico. La escala se calcula por eje como `dimensión física / dimensión geométrica`; multiplicar cada eje del bounding box por su factor reproduce las dimensiones de catálogo. `scripts/inspect-glb-bounds.ts` calcula y muestra estos factores; sus tests verifican la fórmula. El consumidor AR debe aplicar esta escala al modelo antes de usar `ar-scale="fixed"`.
 
 ---
 
@@ -102,7 +102,16 @@ Para actualizar o crear una nueva versión de un activo sin afectar la versión 
 4. **Ejecutar publicación:**
    Ejecutar el script de publicación:
    ```bash
-   npm run catalog:publish-assets
+   npm run catalog:publish-assets -- --asset=mesa --version=2
    ```
 5. **Verificación:**
    El caso de uso subirá los archivos a `decorar/{assetId}/v2/...` e invocará la RPC para activar atómicamente la versión 2, conservando intacta la versión 1 anterior.
+
+## 7. Recuperación, limpieza y rollback
+
+* **Fallo antes de activar:** conservar la fila `draft` y reejecutar el mismo comando. La política `ifExists: "reuse"` recupera los archivos ya cargados sin sobrescribirlos.
+* **Abandono de una versión draft:** confirmar primero que ninguna fila `active` referencia sus URLs. Luego eliminar únicamente los tres `public_id` de esa versión en Cloudinary y eliminar o cancelar la fila `draft` mediante una migración o script administrativo revisado.
+* **Rollback de una versión activa:** una fila `active` es inmutable. No se edita ni se borra. Crear una versión nueva en `draft` que apunte a activos previamente validados, publicarla y cambiar el consumidor a esa versión.
+* **Fallo después de activar:** no borrar activos. La RPC ya confirmó referencias activas; cualquier corrección se publica como versión nueva.
+
+Nunca usar `overwrite:true` ni borrar una carpeta completa: otras versiones pueden seguir activas.

@@ -9,6 +9,34 @@ export interface BoundingBoxResult {
   readonly depthM: number;
 }
 
+export interface PhysicalDimensions {
+  readonly widthM: number;
+  readonly heightM: number;
+  readonly depthM: number;
+}
+
+export function calculateCalibrationScale(
+  bounds: BoundingBoxResult,
+  physical: PhysicalDimensions,
+): PhysicalDimensions {
+  if (
+    bounds.widthM <= 0 ||
+    bounds.heightM <= 0 ||
+    bounds.depthM <= 0 ||
+    physical.widthM <= 0 ||
+    physical.heightM <= 0 ||
+    physical.depthM <= 0
+  ) {
+    throw new Error("Bounding box and physical dimensions must be greater than zero");
+  }
+
+  return {
+    widthM: Number((physical.widthM / bounds.widthM).toFixed(6)),
+    heightM: Number((physical.heightM / bounds.heightM).toFixed(6)),
+    depthM: Number((physical.depthM / bounds.depthM).toFixed(6)),
+  };
+}
+
 interface GlTFNode {
   readonly matrix?: readonly number[];
   readonly translation?: readonly number[];
@@ -245,6 +273,7 @@ export async function inspectAllAssets() {
     const fullPath = join(process.cwd(), item.file);
     const buf = await readFile(fullPath);
     const bounds = extractGlbBoundingBox(buf);
+    const calibrationScale = calculateCalibrationScale(bounds, item.catalogDimensions);
 
     console.log(`📦 Módulo: ${item.id.toUpperCase()}`);
     console.log(`   Archivo: ${item.file}`);
@@ -254,9 +283,11 @@ export async function inspectAllAssets() {
     console.log(`     Dimensiones geométricas: Ancho=${bounds.widthM}m, Alto=${bounds.heightM}m, Profundidad=${bounds.depthM}m`);
     console.log(`   Dimensiones de Catálogo (Escala 1:1 en AR con ar-scale="fixed"):`);
     console.log(`     Ancho=${item.catalogDimensions.widthM}m, Alto=${item.catalogDimensions.heightM}m, Profundidad=${item.catalogDimensions.depthM}m`);
+    console.log(`   Escala de calibración por eje (catálogo / geometría):`);
+    console.log(`     X=${calibrationScale.widthM}, Y=${calibrationScale.heightM}, Z=${calibrationScale.depthM}`);
     console.log("---------------------------------------------------------------");
 
-    results.push({ item, bounds });
+    results.push({ item, bounds, calibrationScale });
   }
 
   return results;

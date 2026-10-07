@@ -22,6 +22,11 @@ interface ModuleDefinition {
   };
 }
 
+interface PublishOptions {
+  readonly assetId?: string;
+  readonly version?: number;
+}
+
 const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
   {
     assetId: "mesa",
@@ -39,6 +44,21 @@ const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
     dimensions: { widthM: 4.0, heightM: 0.1, depthM: 4.0 },
   },
 ];
+
+export function parsePublishOptions(args: readonly string[]): PublishOptions {
+  const assetId = args.find((arg) => arg.startsWith("--asset="))?.slice("--asset=".length);
+  const versionValue = args.find((arg) => arg.startsWith("--version="))?.slice("--version=".length);
+  const version = versionValue === undefined ? undefined : Number(versionValue);
+
+  if (assetId !== undefined && !MODULES_TO_PUBLISH.some((module) => module.assetId === assetId)) {
+    throw new Error(`Módulo desconocido: ${assetId}`);
+  }
+  if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
+    throw new Error(`Versión inválida: ${versionValue}`);
+  }
+
+  return { assetId, version };
+}
 
 async function findModuleFiles(assetDir: string) {
   const entries = await readdir(assetDir);
@@ -62,7 +82,7 @@ async function findModuleFiles(assetDir: string) {
   };
 }
 
-export async function publishAllModules() {
+export async function publishAllModules(options: PublishOptions = {}) {
   console.log("==================================================");
   console.log(" DecorAR - Publicación de Activos 3D (DECOR-36)");
   console.log("==================================================");
@@ -72,7 +92,11 @@ export async function publishAllModules() {
 
   const results = [];
 
-  for (const moduleDef of MODULES_TO_PUBLISH) {
+  const modules = MODULES_TO_PUBLISH
+    .filter((module) => options.assetId === undefined || module.assetId === options.assetId)
+    .map((module) => ({ ...module, version: options.version ?? module.version }));
+
+  for (const moduleDef of modules) {
     const versionDir = join(baseAssetsDir, moduleDef.assetId, `v${moduleDef.version}`);
     console.log(`\n[${moduleDef.assetId} v${moduleDef.version}] Localizando archivos en ${versionDir}...`);
 
@@ -117,7 +141,7 @@ export async function publishAllModules() {
 
 // Ejecutar si es invocado directamente
 if (process.argv[1]?.endsWith("publish-catalog-assets.ts")) {
-  publishAllModules().catch((err) => {
+  publishAllModules(parsePublishOptions(process.argv.slice(2))).catch((err) => {
     console.error("Fallo general en la publicación:", err.message);
     process.exit(1);
   });
