@@ -110,6 +110,16 @@ BEGIN
     RAISE EXCEPTION 'event.invalid';
   END IF;
 
+  -- A repeated eventId short-circuits here, before any package
+  -- mutation, so an exact replay reports `event.duplicate` instead of a
+  -- misleading `package.version_conflict`, `package.item_not_found` or
+  -- persistence error. The unique constraint below still covers races.
+  IF EXISTS (
+    SELECT 1 FROM private.domain_events AS d WHERE d.event_id = v_event_id
+  ) THEN
+    RAISE EXCEPTION 'event.duplicate';
+  END IF;
+
   SELECT p.version INTO v_version
   FROM public.packages AS p
   WHERE p.id = v_package_id::uuid AND p.user_id = v_user_id::uuid

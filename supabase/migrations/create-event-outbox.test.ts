@@ -68,6 +68,22 @@ describe("event outbox SQL migration contract", () => {
     expect(commit).toContain("RAISE EXCEPTION 'event.duplicate'");
   });
 
+  it("rejects a repeated eventId before mutating the package", () => {
+    const commit = sql.slice(
+      sql.indexOf("FUNCTION public.commit_package_change"),
+      sql.indexOf("FUNCTION public.claim_initial_domain_events"),
+    );
+
+    // The exact-replay short-circuit must run before any package read or
+    // write, so a replay reports `event.duplicate` instead of a misleading
+    // `package.version_conflict`, `package.item_not_found` or persistence error.
+    const duplicateGuard = commit.indexOf("WHERE d.event_id = v_event_id");
+    expect(duplicateGuard).toBeGreaterThan(-1);
+    expect(duplicateGuard).toBeLessThan(commit.indexOf("SELECT p.version INTO v_version"));
+    expect(duplicateGuard).toBeLessThan(commit.indexOf("INSERT INTO public.package_items"));
+    expect(duplicateGuard).toBeLessThan(commit.indexOf("UPDATE public.packages"));
+  });
+
   it("claims only never-attempted pending events with SKIP LOCKED and records the attempt", () => {
     const claim = sql.slice(
       sql.indexOf("FUNCTION public.claim_initial_domain_events"),
