@@ -26,7 +26,7 @@ DECOR-36 requiere configurar Cloudinary de forma server-only y publicar los acti
 ## Impact
 
 - Añade migración SQL `supabase/migrations/20261006000000_activate_catalog_module_rpc.sql`.
-- Añade migración correctiva `supabase/migrations/20261007000000_replace_active_catalog_version.sql` para sustitución atómica y dimensiones nativas.
+- Añade migraciones correctivas para sustitución atómica, versiones retiradas y filas v2 con escala física uniforme.
 - Añade puertos, adaptadores y caso de uso bajo `src/modules/catalog/`.
 - Añade script ejecutable `scripts/publish-catalog-assets.ts`.
 - Añade dependencia `cloudinary` en `package.json`.

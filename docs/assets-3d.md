@@ -41,19 +41,19 @@ Para la colocación en Realidad Aumentada, la visualización debe mantenerse a e
 
 Para validar matemáticamente las dimensiones, el repositorio incluye la herramienta `scripts/inspect-glb-bounds.ts`, la cual procesa la cabecera binaria glTF de 12 bytes y el grafo de nodos/transformaciones para extraer el Bounding Box transformado de la escena:
 
-### Tabla de Dimensiones Nativas Publicadas
+### Tabla de Dimensiones Corregidas v2
 
-| Módulo | Archivo GLB | Bounding Box nativo y dimensiones de catálogo |
-| :--- | :--- | :--- |
-| **Mesa** (`mesa`) | `mahogany_table.glb` | **13.714m × 6.463m × 8.139m** |
-| **Arco** (`arco`) | `flower_arch.glb` | **7.369m × 7.233m × 1.521m** |
-| **Pista** (`pista`) | `animated_dance_floor_neon_lights.glb` | **7.020m × 0.500m × 7.020m** |
+| Módulo | Referencia física aprobada | Escala uniforme | Bounding Box GLB v2 | Bounding Box USDZ v2 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Mesa** (`mesa`) | Ancho **2.000m** | `0.145836` | **2.000m × 0.943m × 1.187m** | **2.000m × 1.187m × 0.943m** |
+| **Arco** (`arco`) | Alto **2.400m** | `0.331813` | **2.445m × 2.400m × 0.505m** | **2.445m × 0.505m × 2.400m** |
+| **Pista** (`pista`) | Ancho/profundidad **4.000m** | `0.569801` | **4.000m × 0.285m × 4.000m** | **4.000m × 4.000m × 0.285m** |
 
-glTF 2.0 usa metros como unidad lineal ([Khronos glTF 2.0, Coordinate System and Units](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#coordinate-system-and-units)). El publicador persiste directamente este Bounding Box: no recibe dimensiones manuales ni calcula factores desde un tamaño esperado. Esto elimina la prueba circular y evita deformar el modelo. `<model-viewer ar-scale="fixed">` impide el redimensionamiento por el usuario, pero no corrige un archivo mal escalado; además, Scene Viewer descarga el GLB original y no conserva transformaciones del DOM ([model-viewer, Model Transformations](https://modelviewer.dev/examples/scenegraph/)).
+Las referencias físicas son la decisión de producto usada originalmente por el catálogo: mesa de 2m, arco de 2.4m y pista de 4m. Cada fuente v1 recibió una sola escala uniforme; ninguna proporción fue deformada. `scripts/reexport-scaled-glb.mjs` genera los GLB v2. `scripts/export-usdz-from-scaled-glb.py` genera los USDZ desde esos mismos GLB mediante Blender, garantizando geometría equivalente en Scene Viewer y Quick Look.
 
-La tabla conserva la medición a tres decimales; `catalog_modules` usa `NUMERIC(10,2)` y expone los valores redondeados a centímetros.
+`scripts/inspect-glb-bounds.test.ts` fija los bounds v2. `scripts/validate-usdz-dimensions.py` reimporta cada USDZ con Blender y verifica las mismas dimensiones con el cambio esperado de ejes Y-up/Z-up. Los tres GLB pasan Khronos glTF Validator sin errores. Todos los archivos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
 
-Si una ficha de fabricante aporta otro tamaño real, se debe aplicar una escala **uniforme** y reexportar tanto GLB como USDZ bajo una versión nueva. No se publica una escala por eje. Los USDZ v1 son paquetes válidos generados desde los mismos activos, pero no se dispone aquí de una prueba física en un dispositivo iOS; no se afirma esa validación manual.
+`<model-viewer ar-scale="fixed">` impide el redimensionamiento por el usuario. Si una ficha de fabricante posterior cambia una referencia, se debe aplicar otra escala **uniforme** y publicar una versión nueva. No se publica una escala por eje. La validación geométrica automatizada no sustituye una prueba visual final en dispositivos Android/iOS.
 
 ---
 
@@ -88,6 +88,16 @@ Los 9 activos correspondientes a la versión `v1` se encuentran publicados y ver
 * **GLB:** `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791304573/decorar/pista/v1/pista.glb`
 * **USDZ:** `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791304574/decorar/pista/v1/pista.usdz`
 * **Poster:** `https://res.cloudinary.com/gndjyjx2/image/upload/v1791304574/decorar/pista/v1/pista-poster.webp`
+
+### Activos corregidos (`v2`, activos)
+
+| Módulo | GLB | USDZ | Poster |
+| :--- | :--- | :--- | :--- |
+| Mesa | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791398022/decorar/mesa/v2/mesa.glb` | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791398034/decorar/mesa/v2/mesa.usdz` | `https://res.cloudinary.com/gndjyjx2/image/upload/v1791398035/decorar/mesa/v2/mesa-poster.webp` |
+| Arco | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791398062/decorar/arco/v2/arco.glb` | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791398757/decorar/arco/v2/arco.usdz` | `https://res.cloudinary.com/gndjyjx2/image/upload/v1791398758/decorar/arco/v2/arco-poster.webp` |
+| Pista | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791398785/decorar/pista/v2/pista.glb` | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791398788/decorar/pista/v2/pista.usdz` | `https://res.cloudinary.com/gndjyjx2/image/upload/v1791398789/decorar/pista/v2/pista-poster.webp` |
+
+Las nueve URLs v2 respondieron HTTP 200 con MIME `model/gltf-binary`, `model/vnd.usdz+zip` o `image/webp`. Supabase conserva cada v1 como `retired` y exactamente una v2 `active` por `asset_id`.
 
 ---
 

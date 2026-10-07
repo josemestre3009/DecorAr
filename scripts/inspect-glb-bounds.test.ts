@@ -85,12 +85,23 @@ describe("inspectAllAssets", () => {
     expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
   });
 
+  it.each([
+    ["mesa", "assets/3d/mesa/v2/mahogany_table.glb", [2, 0.943, 1.187]],
+    ["arco", "assets/3d/arco/v2/flower_arch.glb", [2.445, 2.4, 0.505]],
+    ["pista", "assets/3d/pista/v2/animated_dance_floor_neon_lights.glb", [4, 0.285, 4]],
+  ])("verifica la escala física uniforme v2 para %s", async (_id, file, expected) => {
+    const bounds = extractGlbBoundingBox(await readFile(file));
+    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
+  });
+
   it("selecciona la versión solicitada sin inspeccionar v1", async () => {
     expect(parseInspectOptions(["--asset=mesa", "--version=2"])).toEqual({
       assetId: "mesa",
       version: 2,
     });
-    await expect(inspectAllAssets({ assetId: "mesa", version: 2 })).rejects.toThrow(/mesa[\\/]v2/);
+    const [result] = await inspectAllAssets({ assetId: "mesa", version: 2 });
+    expect(result.version).toBe(2);
+    expect(result.bounds.widthM).toBe(2);
   });
 
   it("rechaza módulo o versión inválidos", () => {

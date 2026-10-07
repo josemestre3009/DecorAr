@@ -36,8 +36,8 @@ La base de datos PostgreSQL SHALL proveer la función RPC `public.activate_catal
 - **WHEN** se invoca `activate_catalog_module` con un `asset_id` o `version` inexistente
 - **THEN** la función arroja una excepción indicando que el módulo no fue encontrado
 
-### Requirement: Validación de dimensiones nativas 1:1 (F3)
-El sistema SHALL extraer el Bounding Box transformado de cada GLB y persistir esas dimensiones nativas como metros, según la unidad lineal definida por glTF 2.0. El flujo SHALL publicar el modelo sin escala anisotrópica de runtime, porque Scene Viewer vuelve a descargar el GLB original y no conserva transformaciones del DOM.
+### Requirement: Validación de dimensiones físicas 1:1 (F3)
+El sistema SHALL exportar GLB y USDZ con una escala uniforme basada en la referencia física aprobada para cada módulo. El flujo SHALL medir los archivos resultantes y persistir el Bounding Box del GLB en metros, sin escala anisotrópica de runtime.
 
 #### Scenario: Cálculo de Bounding Box desde archivo GLB
 - **WHEN** se procesa un archivo binario `.glb` válido
@@ -45,7 +45,7 @@ El sistema SHALL extraer el Bounding Box transformado de cada GLB y persistir es
 
 #### Scenario: Publicación de dimensiones verificables
 - **WHEN** se publica un GLB válido
-- **THEN** el comando pasa su Bounding Box transformado directamente a la activación del catálogo, sin dimensiones escritas a mano ni factores de escala derivados del resultado esperado
+- **THEN** el comando pasa el Bounding Box del archivo ya reexportado a la activación del catálogo y GLB/USDZ conservan las mismas dimensiones físicas con el cambio esperado de ejes
 
 #### Scenario: Modelo que requiere otro tamaño físico
 - **WHEN** una ficha técnica independiente exige dimensiones distintas a las nativas
