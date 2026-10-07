@@ -1,7 +1,8 @@
-import { readdir } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 import { createPublishAndActivateModuleUseCase } from "../src/composition/server";
+import { extractGlbBoundingBox } from "./inspect-glb-bounds";
 
 if (typeof process.loadEnvFile === "function") {
   try {
@@ -79,6 +80,11 @@ export async function publishAllModules() {
     console.log(`  GLB:    ${files.glbPath}`);
     console.log(`  USDZ:   ${files.usdzPath}`);
     console.log(`  Poster: ${files.posterPath}`);
+
+    const glbBuffer = await readFile(files.glbPath);
+    const bounds = extractGlbBoundingBox(glbBuffer);
+    console.log(`  Geometría GLB (Bounding Box): Ancho=${bounds.widthM}m, Alto=${bounds.heightM}m, Profundidad=${bounds.depthM}m`);
+    console.log(`  Catálogo (AR 1:1 fija):       Ancho=${moduleDef.dimensions.widthM}m, Alto=${moduleDef.dimensions.heightM}m, Profundidad=${moduleDef.dimensions.depthM}m`);
 
     console.log(`  Subiendo a Cloudinary y activando atómicamente en Supabase...`);
     const result = await useCase.execute({

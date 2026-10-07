@@ -52,6 +52,21 @@ BEGIN
     RAISE EXCEPTION 'depth_m must be a number > 0';
   END IF;
 
+  -- Inspect row with row-level locking and ensure draft status
+  SELECT * INTO v_module
+  FROM public.catalog_modules
+  WHERE asset_id = p_asset_id AND version = p_version
+  FOR UPDATE;
+
+  IF NOT FOUND THEN
+    RAISE EXCEPTION 'Catalog module with asset_id % and version % not found', p_asset_id, p_version;
+  END IF;
+
+  IF v_module.status <> 'draft' THEN
+    RAISE EXCEPTION 'Catalog module with asset_id % and version % is not in draft status (current status: %)',
+      p_asset_id, p_version, v_module.status;
+  END IF;
+
   -- Atomic update of module from draft to active
   UPDATE public.catalog_modules
   SET
@@ -63,12 +78,8 @@ BEGIN
     depth_m = p_depth_m,
     status = 'active',
     updated_at = pg_catalog.timezone('utc'::text, pg_catalog.now())
-  WHERE asset_id = p_asset_id AND version = p_version
+  WHERE id = v_module.id
   RETURNING * INTO v_module;
-
-  IF NOT FOUND THEN
-    RAISE EXCEPTION 'Catalog module with asset_id % and version % not found', p_asset_id, p_version;
-  END IF;
 
   RETURN v_module;
 END;

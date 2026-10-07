@@ -148,9 +148,11 @@ export class PublishAndActivateModuleUseCase {
 
     const glbUpload = await this.assetStorage.uploadAsset({
       filePath: glbPath,
+      destinationPath: glbPublicId,
       publicId: glbPublicId,
       resourceType: "raw",
       overwrite: false,
+      ifExists: "reuse",
       assetFolder,
     });
     if (!glbUpload.ok) {
@@ -163,9 +165,11 @@ export class PublishAndActivateModuleUseCase {
 
     const usdzUpload = await this.assetStorage.uploadAsset({
       filePath: usdzPath,
+      destinationPath: usdzPublicId,
       publicId: usdzPublicId,
       resourceType: "raw",
       overwrite: false,
+      ifExists: "reuse",
       assetFolder,
     });
     if (!usdzUpload.ok) {
@@ -178,9 +182,11 @@ export class PublishAndActivateModuleUseCase {
 
     const posterUpload = await this.assetStorage.uploadAsset({
       filePath: posterPath,
+      destinationPath: posterPublicId,
       publicId: posterPublicId,
       resourceType: "image",
       overwrite: false,
+      ifExists: "reuse",
       assetFolder,
     });
     if (!posterUpload.ok) {

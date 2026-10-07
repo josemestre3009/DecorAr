@@ -325,4 +325,67 @@ describe("PublishAndActivateModuleUseCase", () => {
     expect(uploadedParams[1].publicId).toBe("decorar/mesa/v2/mesa.usdz");
     expect(uploadedParams[2].publicId).toBe("decorar/mesa/v2/mesa-poster");
   });
+
+  it("retorna DomainError si la activación atómica en base de datos falla", async () => {
+    const storage: AssetStoragePort = {
+      uploadAsset: vi.fn().mockImplementation(async (params: UploadAssetParams) => {
+        return ok({
+          secureUrl: `https://res.cloudinary.com/demo/raw/upload/${params.publicId}`,
+          publicId: params.publicId ?? "mock-id",
+          bytes: 4096,
+        });
+      }),
+    };
+
+    const activation: CatalogActivationPort = {
+      activateModule: vi.fn().mockResolvedValue(
+        err(new DomainError("catalog.activation_error", "Catalog module with asset_id mesa and version 1 is not in draft status")),
+      ),
+    };
+
+    const inspector: FileInspectorPort = {
+      inspect: vi.fn().mockResolvedValue({ exists: true, byteSize: 5000 }),
+    };
+
+    const useCase = new PublishAndActivateModuleUseCase(storage, activation, inspector);
+
+    const result = await useCase.execute(defaultCommand);
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.error.code).toBe("catalog.activation_failure");
+    expect(result.error.message).toContain("is not in draft status");
+  });
+
+  it("idempotente: reejecutar la publicación con activos existentes en storage activa el módulo exitosamente", async () => {
+    const storage: AssetStoragePort = {
+      uploadAsset: vi.fn().mockImplementation(async (params: UploadAssetParams) => {
+        // Simulates reusing existing assets
+        return ok({
+          secureUrl: `https://res.cloudinary.com/demo/raw/upload/${params.destinationPath ?? params.publicId}`,
+          publicUrl: `https://res.cloudinary.com/demo/raw/upload/${params.destinationPath ?? params.publicId}`,
+          publicId: params.destinationPath ?? params.publicId ?? "mock",
+          destinationPath: params.destinationPath ?? params.publicId,
+          bytes: 4096,
+        });
+      }),
+    };
+
+    const activation: CatalogActivationPort = {
+      activateModule: vi.fn().mockResolvedValue(ok(createMockCatalogModule("active"))),
+    };
+
+    const inspector: FileInspectorPort = {
+      inspect: vi.fn().mockResolvedValue({ exists: true, byteSize: 5000 }),
+    };
+
+    const useCase = new PublishAndActivateModuleUseCase(storage, activation, inspector);
+
+    const result = await useCase.execute(defaultCommand);
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+
+    expect(result.value.module.status).toBe("active");
+    expect(activation.activateModule).toHaveBeenCalledTimes(1);
+  });
 });

@@ -27,7 +27,10 @@ describe("activate_catalog_module SQL migration contract", () => {
     expect(sql).toContain("RAISE EXCEPTION 'depth_m must be a number > 0'");
     expect(sql).toContain("pg_catalog.btrim");
 
-    // Atomic update
+    // Atomic update and draft status enforcement
+    expect(sql).toContain("FOR UPDATE");
+    expect(sql).toContain("v_module.status <> 'draft'");
+    expect(sql).toContain("is not in draft status");
     expect(sql).toContain("UPDATE public.catalog_modules");
     expect(sql).toContain("status = 'active'");
     expect(sql).toContain("WHERE asset_id = p_asset_id AND version = p_version");

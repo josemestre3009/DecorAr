@@ -77,4 +77,82 @@ describe("SupabaseCatalogActivationAdapter", () => {
     expect(result.error.code).toBe("catalog.activation_error");
     expect(result.error.message).toContain("not found");
   });
+
+  it("propaga DomainError cuando la RPC arroja que el módulo no está en draft status", async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: {
+          message:
+            "Catalog module with asset_id mesa and version 1 is not in draft status (current status: active)",
+        },
+      }),
+    } as unknown as SupabaseClient;
+
+    const adapter = new SupabaseCatalogActivationAdapter(mockClient);
+    const result = await adapter.activateModule(mockParams);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.error.code).toBe("catalog.activation_error");
+    expect(result.error.message).toContain("is not in draft status");
+  });
+
+  it("retorna DomainError si la RPC no devuelve datos", async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({
+        data: null,
+        error: null,
+      }),
+    } as unknown as SupabaseClient;
+
+    const adapter = new SupabaseCatalogActivationAdapter(mockClient);
+    const result = await adapter.activateModule(mockParams);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.error.code).toBe("catalog.activation_missing_data");
+  });
+
+  it("retorna DomainError si los datos retornados por la RPC no conforman una entidad válida", async () => {
+    const mockClient = {
+      rpc: vi.fn().mockResolvedValue({
+        data: {
+          id: "33333333-3333-4000-8000-333333333333",
+          asset_id: "mesa",
+          version: 1,
+          name: "Mesa redonda",
+          price_cop: -100, // precio inválido
+          area_m2: "4.00",
+          width_m: "2.00",
+          height_m: "1.00",
+          depth_m: "2.00",
+          status: "active",
+        },
+        error: null,
+      }),
+    } as unknown as SupabaseClient;
+
+    const adapter = new SupabaseCatalogActivationAdapter(mockClient);
+    const result = await adapter.activateModule(mockParams);
+
+    expect(result.ok).toBe(false);
+  });
+
+  it("retorna DomainError cuando la llamada a la RPC arroja una excepción de red inesperada", async () => {
+    const mockClient = {
+      rpc: vi.fn().mockRejectedValue(new Error("Network connection dropped")),
+    } as unknown as SupabaseClient;
+
+    const adapter = new SupabaseCatalogActivationAdapter(mockClient);
+    const result = await adapter.activateModule(mockParams);
+
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+
+    expect(result.error.code).toBe("catalog.unexpected_activation_error");
+    expect(result.error.message).toContain("Network connection dropped");
+  });
 });
