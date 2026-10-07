@@ -33,6 +33,8 @@ El MVP exige 3 módulos base con 3 archivos cada uno (total 9 activos):
 * **Modelos 3D (GLB y USDZ):** Máximo estricto de **15 MB** (objetivo de optimización $< 10\text{ MB}$).
 * **Posters:** Máximo estricto de **1 MB** (objetivo de optimización $< 300\text{ KB}$).
 
+La cuenta Cloudinary actual limita archivos `raw` a **10 MiB**. Aunque el contrato admite hasta 15 MiB, los activos publicados deben quedar por debajo de 10 MiB mientras se use este plan.
+
 ---
 
 ## 3. Dimensiones Reales 1:1 y Medición Geométrica (F3)
@@ -50,6 +52,8 @@ Para validar matemáticamente las dimensiones, el repositorio incluye la herrami
 | **Pista** (`pista`) | Ancho/profundidad **4.000m** | `0.569801` | **4.000m × 0.285m × 4.000m** | **4.000m × 4.000m × 0.285m** |
 
 Las referencias físicas son la decisión de producto usada originalmente por el catálogo: mesa de 2m, arco de 2.4m y pista de 4m. Cada fuente v1 recibió una sola escala uniforme; ninguna proporción fue deformada. `scripts/reexport-scaled-glb.mjs` genera los GLB v2. `scripts/export-usdz-from-scaled-glb.py` genera los USDZ desde esos mismos GLB mediante Blender, garantizando geometría equivalente en Scene Viewer y Quick Look.
+
+`area_m2` representa el área comercial reservada para cotización y composición de paquetes. No es el producto automático `width_m × depth_m`; esos campos describen el bounding box físico del modelo AR.
 
 `scripts/inspect-glb-bounds.test.ts` fija los bounds v2. `scripts/validate-usdz-dimensions.py` reimporta cada USDZ con Blender y verifica las mismas dimensiones con el cambio esperado de ejes Y-up/Z-up. Los tres GLB pasan Khronos glTF Validator sin errores. Todos los archivos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
 

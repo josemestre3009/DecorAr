@@ -43,5 +43,6 @@ La RPC serializa activaciones por `asset_id`, retira la versión vigente y activ
 ## Risks / Trade-offs
 
 - [Archivos superando límites de tamaño] -> `PublishAndActivateModuleUseCase` valida antes de subir y falla si algún archivo excede 15 MB o 1 MB.
+- [Límite del proveedor menor al contrato] -> La cuenta Cloudinary actual limita archivos raw a 10 MiB; los activos v2 se optimizan por debajo de ese umbral aunque el contrato admita 15 MiB.
 - [Fallo parcial durante subidas a Cloudinary] -> Si falla la subida de cualquiera de los 3 archivos, el caso de uso aborta inmediatamente sin invocar la función RPC, manteniendo el módulo en `draft` o en su versión activa previa.
 - [Filtración de secretos en cliente] -> El escáner `scripts/scan-client-secrets.mjs` y `scripts/scan-architecture.ts` vigilan que `CLOUDINARY_URL` e importaciones de Cloudinary nunca entren en la capa cliente o de dominio.

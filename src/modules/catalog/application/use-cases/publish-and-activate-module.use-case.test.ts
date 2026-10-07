@@ -162,7 +162,7 @@ describe("PublishAndActivateModuleUseCase", () => {
     }
   });
 
-  it("rechaza modelos 3D que excedan el límite de 15 MB", async () => {
+  it("rechaza modelos 3D que excedan el límite operativo de 10 MiB", async () => {
     const storage: AssetStoragePort = { uploadAsset: vi.fn() };
     const activation: CatalogActivationPort = { activateModule: vi.fn() };
     const inspector: FileInspectorPort = {
@@ -180,7 +180,7 @@ describe("PublishAndActivateModuleUseCase", () => {
     expect(result.ok).toBe(false);
     if (result.ok) return;
     expect(result.error.code).toBe("catalog.file_too_large");
-    expect(result.error.message).toContain("15 MB");
+    expect(result.error.message).toContain("10 MiB");
   });
 
   it("rechaza posters que excedan el límite de 1 MB", async () => {

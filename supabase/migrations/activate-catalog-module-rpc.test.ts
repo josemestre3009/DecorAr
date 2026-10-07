@@ -4,7 +4,7 @@ import { describe, expect, it } from "vitest";
 
 describe("activate_catalog_module SQL migration contract", () => {
   it("declares SECURITY INVOKER, empty search_path, atomic update and validations", async () => {
-    const migrationPath = resolve("supabase/migrations/20261007000000_replace_active_catalog_version.sql");
+    const migrationPath = resolve("supabase/migrations/20261007005000_replace_active_catalog_version.sql");
     const sql = await readFile(migrationPath, "utf-8");
 
     // Declares function with schema qualification

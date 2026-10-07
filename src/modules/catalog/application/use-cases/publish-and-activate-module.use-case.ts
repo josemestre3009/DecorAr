@@ -5,7 +5,7 @@ import type { AssetStoragePort } from "../ports/asset-storage.port";
 import type { CatalogActivationPort } from "../ports/catalog-activation.port";
 import type { FileInspectorPort } from "../ports/file-inspector.port";
 
-export const MAX_3D_ASSET_BYTES = 15 * 1024 * 1024; // 15 MB
+export const MAX_3D_ASSET_BYTES = 10 * 1024 * 1024; // Current Cloudinary raw-file limit
 export const MAX_POSTER_BYTES = 1 * 1024 * 1024; // 1 MB
 
 export interface ModuleFilesInput {
@@ -103,7 +103,7 @@ export class PublishAndActivateModuleUseCase {
       return err(
         new DomainError(
           "catalog.file_too_large",
-          `GLB file exceeds 15 MB limit: ${glbMeta.byteSize} bytes (max ${MAX_3D_ASSET_BYTES})`,
+          `GLB file exceeds 10 MiB operational limit: ${glbMeta.byteSize} bytes (max ${MAX_3D_ASSET_BYTES})`,
         ),
       );
     }
@@ -119,7 +119,7 @@ export class PublishAndActivateModuleUseCase {
       return err(
         new DomainError(
           "catalog.file_too_large",
-          `USDZ file exceeds 15 MB limit: ${usdzMeta.byteSize} bytes (max ${MAX_3D_ASSET_BYTES})`,
+          `USDZ file exceeds 10 MiB operational limit: ${usdzMeta.byteSize} bytes (max ${MAX_3D_ASSET_BYTES})`,
         ),
       );
     }
