@@ -35,3 +35,10 @@ export function getAdminSupabaseEnv() {
     serviceRoleKey: requireEnv("SUPABASE_SERVICE_ROLE_KEY"),
   };
 }
+
+export function getCloudinaryEnv() {
+  return {
+    url: requireEnv("CLOUDINARY_URL"),
+  };
+}
+

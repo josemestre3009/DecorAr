@@ -1,6 +1,11 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { getAdminSupabaseEnv, getPublicSupabaseEnv, requireEnv } from "./env";
+import {
+  getAdminSupabaseEnv,
+  getCloudinaryEnv,
+  getPublicSupabaseEnv,
+  requireEnv,
+} from "./env";
 
 const originalEnv = { ...process.env };
 
@@ -43,6 +48,22 @@ describe("environment validation", () => {
 
     expect(() => getAdminSupabaseEnv()).toThrow(
       "Missing required environment variable: SUPABASE_SERVICE_ROLE_KEY",
+    );
+  });
+
+  it("devuelve la configuración de Cloudinary cuando está presente", () => {
+    process.env.CLOUDINARY_URL = "cloudinary://key:secret@cloud";
+
+    expect(getCloudinaryEnv()).toEqual({
+      url: "cloudinary://key:secret@cloud",
+    });
+  });
+
+  it("identifica CLOUDINARY_URL ausente", () => {
+    delete process.env.CLOUDINARY_URL;
+
+    expect(() => getCloudinaryEnv()).toThrow(
+      "Missing required environment variable: CLOUDINARY_URL",
     );
   });
 });

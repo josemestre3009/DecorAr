@@ -1,7 +1,7 @@
 import { DomainError } from "../../../shared/domain/domain-error";
 import { err, ok, type Result } from "../../../shared/domain/result";
 
-export type CatalogModuleStatus = "draft" | "active";
+export type CatalogModuleStatus = "draft" | "active" | "retired";
 
 export interface CatalogModuleProps {
   readonly id: string;
@@ -63,7 +63,7 @@ export class CatalogModule {
       return err(new DomainError("catalog.invalid_dimension", "Module depthM must be > 0 when provided"));
     }
 
-    if (props.status === "active") {
+    if (props.status !== "draft") {
       if (!props.glbUrl || props.glbUrl.trim().length === 0) {
         return err(
           new DomainError("catalog.active_missing_glb", "Active module requires glbUrl"),
