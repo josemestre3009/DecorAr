@@ -36,23 +36,31 @@ La base de datos PostgreSQL SHALL proveer la función RPC `public.activate_catal
 - **WHEN** se invoca `activate_catalog_module` con un `asset_id` o `version` inexistente
 - **THEN** la función arroja una excepción indicando que el módulo no fue encontrado
 
-### Requirement: Validación y calibración de dimensiones 1:1 (F3)
-El sistema SHALL proveer la utilidad `scripts/inspect-glb-bounds.ts` para extraer el Bounding Box transformado de los archivos GLB y evidenciar la coherencia geométrica frente a las dimensiones físicas calibradas para la experiencia AR a escala fija.
+### Requirement: Validación de dimensiones nativas 1:1 (F3)
+El sistema SHALL extraer el Bounding Box transformado de cada GLB y persistir esas dimensiones nativas como metros, según la unidad lineal definida por glTF 2.0. El flujo SHALL publicar el modelo sin escala anisotrópica de runtime, porque Scene Viewer vuelve a descargar el GLB original y no conserva transformaciones del DOM.
 
 #### Scenario: Cálculo de Bounding Box desde archivo GLB
 - **WHEN** se procesa un archivo binario `.glb` válido
 - **THEN** el script extrae los vértices mínimos y máximos multiplicando las matrices locales y jerárquicas del grafo de escena glTF, reportando ancho, alto y profundidad en metros
 
-#### Scenario: Verificación de calibración física
-- **WHEN** se comparan las dimensiones geométricas con las dimensiones físicas del catálogo
-- **THEN** la utilidad calcula por eje el factor `dimensión física / dimensión geométrica` y demuestra que el bounding box calibrado reproduce el tamaño físico esperado
+#### Scenario: Publicación de dimensiones verificables
+- **WHEN** se publica un GLB válido
+- **THEN** el comando pasa su Bounding Box transformado directamente a la activación del catálogo, sin dimensiones escritas a mano ni factores de escala derivados del resultado esperado
+
+#### Scenario: Modelo que requiere otro tamaño físico
+- **WHEN** una ficha técnica independiente exige dimensiones distintas a las nativas
+- **THEN** el operador debe corregir y exportar uniformemente GLB y USDZ como una versión nueva antes de publicarla; el sistema no deforma ejes durante el consumo AR
 
 ### Requirement: Operación versionada y recuperable
-El comando de publicación SHALL permitir seleccionar el módulo y la versión, mantener versiones activas inmutables y documentar la recuperación de intentos parciales sin borrar activos referenciados.
+El comando de publicación SHALL permitir seleccionar el módulo y la versión, mantener versiones publicadas inmutables y reemplazar atómicamente la única versión vigente por `asset_id`, conservando la anterior como `retired`.
 
 #### Scenario: Publicación de una versión nueva
 - **WHEN** el operador ejecuta el comando con `--asset=<assetId> --version=<n>` y existe la carpeta y fila `draft` correspondientes
-- **THEN** el sistema publica únicamente ese módulo bajo `v<n>` y conserva intactas las versiones anteriores
+- **THEN** el sistema publica únicamente ese módulo bajo `v<n>`, cambia la versión activa anterior a `retired` y deja exactamente una versión `active`
+
+#### Scenario: Intentos concurrentes de reemplazo
+- **WHEN** dos versiones del mismo `asset_id` intentan activarse concurrentemente
+- **THEN** la RPC serializa ambas transacciones por `asset_id` y el índice único parcial impide más de una fila `active`
 
 #### Scenario: Recuperación de un intento parcial
 - **WHEN** una publicación falla antes de activar la fila `draft`

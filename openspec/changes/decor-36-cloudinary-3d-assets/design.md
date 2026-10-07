@@ -15,6 +15,8 @@ DECOR-28 implementó el contrato de base de datos y la API de lectura de catálo
 - Aislar Cloudinary y Supabase tras puertos de aplicación en Clean Architecture.
 - Mantener `CLOUDINARY_URL` estrictamente server-only verificado por escáneres estáticos.
 - Proveer un comando reproducible `npm run catalog:publish-assets` mediante un script CLI en `scripts/publish-catalog-assets.ts`.
+- Publicar el Bounding Box nativo GLB como dimensiones métricas, sin escalado anisotrópico de runtime.
+- Mantener exactamente una versión `active` por `asset_id`; versiones sustituidas quedan `retired` e inmutables.
 
 **Non-Goals:**
 
@@ -32,6 +34,11 @@ En lugar de acoplar el script directamente al SDK de Cloudinary o Supabase:
 - `CatalogActivationPort` abstrae la llamada al procedimiento de base de datos.
 - `PublishAndActivateModuleUseCase` orquesta la validación, la carga de los 3 archivos y la invocación de la activación.
 - El adaptador `CloudinaryAssetStorage` implementa el puerto usando el SDK oficial con `server-only`.
+
+### Escala nativa y reemplazo de versión
+glTF 2.0 define metros como unidad lineal. El publicador deriva `width_m`, `height_m` y `depth_m` del Bounding Box transformado del GLB y no admite dimensiones manuales. Esto evita la calibración circular y funciona con Scene Viewer, que descarga el archivo original sin aplicar transformaciones del DOM. Si existe una medida física independiente, GLB y USDZ deben reexportarse uniformemente antes de crear una versión nueva.
+
+La RPC serializa activaciones por `asset_id`, retira la versión vigente y activa la nueva dentro de una transacción. Un índice único parcial garantiza una sola fila `active`; las filas `retired` conservan URLs y metadatos históricos.
 
 ## Risks / Trade-offs
 

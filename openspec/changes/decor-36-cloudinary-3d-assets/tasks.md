@@ -29,4 +29,6 @@
 - [x] 6.1 Pruebas unitarias para caso de uso, adaptadores, RPC contract y cálculo de bounding box
 - [x] 6.2 Pruebas de replay sobre módulos ya activos (inmutabilidad) y recuperación ante `{ existing: true }`
 - [x] 6.3 Ejecutar suite completa de tests, escáner de arquitectura, escáner de secretos, lint, typecheck y build
-- [x] 6.4 Verificar factores de calibración geométrica y default no destructivo de Cloudinary (F3/F5)
+- [x] 6.4 Medir bounding boxes geométricos y verificar default no destructivo de Cloudinary (F3/F5)
+- [x] 6.5 Reemplazar calibración circular por dimensiones nativas GLB consumidas sin escala de runtime (F3)
+- [x] 6.6 Garantizar una sola versión activa por asset y probar reemplazo atómico v1→v2 (F4)

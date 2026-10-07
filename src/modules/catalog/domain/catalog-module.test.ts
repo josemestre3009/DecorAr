@@ -72,6 +72,14 @@ describe("CatalogModule domain entity", () => {
     expect(result.value.depthM).toBe(2);
   });
 
+  it("preserves a retired immutable version with its published metadata", () => {
+    const result = CatalogModule.create({ ...validActiveProps, status: "retired" });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.status).toBe("retired");
+    expect(result.value.isActive()).toBe(false);
+  });
+
   it("rejects an active module missing glbUrl", () => {
     const result = CatalogModule.create({
       ...validActiveProps,

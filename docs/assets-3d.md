@@ -41,15 +41,19 @@ Para la colocación en Realidad Aumentada, la visualización debe mantenerse a e
 
 Para validar matemáticamente las dimensiones, el repositorio incluye la herramienta `scripts/inspect-glb-bounds.ts`, la cual procesa la cabecera binaria glTF de 12 bytes y el grafo de nodos/transformaciones para extraer el Bounding Box transformado de la escena:
 
-### Tabla de Medición y Calibración de Catálogo
+### Tabla de Dimensiones Nativas Publicadas
 
-| Módulo | Archivo GLB | Bounding Box Geométrico | Dimensiones físicas | Escala de calibración XYZ |
-| :--- | :--- | :--- | :--- | :--- |
-| **Mesa** (`mesa`) | `mahogany_table.glb` | 13.714m × 6.463m × 8.139m | **2.0m × 1.0m × 2.0m** | `0.145836 0.154727 0.245730` |
-| **Arco** (`arco`) | `flower_arch.glb` | 7.369m × 7.233m × 1.521m | **2.0m × 2.4m × 1.0m** | `0.271407 0.331813 0.657462` |
-| **Pista** (`pista`) | `animated_dance_floor_neon_lights.glb` | 7.020m × 0.500m × 7.020m | **4.0m × 0.1m × 4.0m** | `0.569801 0.200000 0.569801` |
+| Módulo | Archivo GLB | Bounding Box nativo y dimensiones de catálogo |
+| :--- | :--- | :--- |
+| **Mesa** (`mesa`) | `mahogany_table.glb` | **13.714m × 6.463m × 8.139m** |
+| **Arco** (`arco`) | `flower_arch.glb` | **7.369m × 7.233m × 1.521m** |
+| **Pista** (`pista`) | `animated_dance_floor_neon_lights.glb` | **7.020m × 0.500m × 7.020m** |
 
-Los modelos fuente usan unidades de autoría distintas de metros. Por eso el bounding box sin calibrar no coincide con el tamaño físico. La escala se calcula por eje como `dimensión física / dimensión geométrica`; multiplicar cada eje del bounding box por su factor reproduce las dimensiones de catálogo. `scripts/inspect-glb-bounds.ts` calcula y muestra estos factores; sus tests verifican la fórmula. El consumidor AR debe aplicar esta escala al modelo antes de usar `ar-scale="fixed"`.
+glTF 2.0 usa metros como unidad lineal ([Khronos glTF 2.0, Coordinate System and Units](https://registry.khronos.org/glTF/specs/2.0/glTF-2.0.html#coordinate-system-and-units)). El publicador persiste directamente este Bounding Box: no recibe dimensiones manuales ni calcula factores desde un tamaño esperado. Esto elimina la prueba circular y evita deformar el modelo. `<model-viewer ar-scale="fixed">` impide el redimensionamiento por el usuario, pero no corrige un archivo mal escalado; además, Scene Viewer descarga el GLB original y no conserva transformaciones del DOM ([model-viewer, Model Transformations](https://modelviewer.dev/examples/scenegraph/)).
+
+La tabla conserva la medición a tres decimales; `catalog_modules` usa `NUMERIC(10,2)` y expone los valores redondeados a centímetros.
+
+Si una ficha de fabricante aporta otro tamaño real, se debe aplicar una escala **uniforme** y reexportar tanto GLB como USDZ bajo una versión nueva. No se publica una escala por eje. Los USDZ v1 son paquetes válidos generados desde los mismos activos, pero no se dispone aquí de una prueba física en un dispositivo iOS; no se afirma esa validación manual.
 
 ---
 
@@ -95,7 +99,7 @@ Para actualizar o crear una nueva versión de un activo sin afectar la versión 
 2. **Inspeccionar límites y bounding box:**
    Ejecutar la herramienta de medición:
    ```bash
-   npx tsx scripts/inspect-glb-bounds.ts
+   npx tsx scripts/inspect-glb-bounds.ts --asset=mesa --version=2
    ```
 3. **Crear fila en estado Draft en la Base de Datos:**
    Registrar mediante migración SQL o script administrativo la fila con `status = 'draft'` y `version = 2`.
@@ -105,13 +109,13 @@ Para actualizar o crear una nueva versión de un activo sin afectar la versión 
    npm run catalog:publish-assets -- --asset=mesa --version=2
    ```
 5. **Verificación:**
-   El caso de uso subirá los archivos a `decorar/{assetId}/v2/...` e invocará la RPC para activar atómicamente la versión 2, conservando intacta la versión 1 anterior.
+   El caso de uso subirá los archivos a `decorar/{assetId}/v2/...`. La RPC serializa por `asset_id`, cambia v1 de `active` a `retired` y activa v2 en la misma transacción. El índice `uq_catalog_modules_one_active_asset` impide dos versiones activas.
 
 ## 7. Recuperación, limpieza y rollback
 
 * **Fallo antes de activar:** conservar la fila `draft` y reejecutar el mismo comando. La política `ifExists: "reuse"` recupera los archivos ya cargados sin sobrescribirlos.
 * **Abandono de una versión draft:** confirmar primero que ninguna fila `active` referencia sus URLs. Luego eliminar únicamente los tres `public_id` de esa versión en Cloudinary y eliminar o cancelar la fila `draft` mediante una migración o script administrativo revisado.
-* **Rollback de una versión activa:** una fila `active` es inmutable. No se edita ni se borra. Crear una versión nueva en `draft` que apunte a activos previamente validados, publicarla y cambiar el consumidor a esa versión.
+* **Rollback de una versión activa:** una fila publicada es inmutable. No se edita ni se borra. Crear una versión nueva en `draft` con los activos previamente validados y publicarla; la RPC sustituye la versión vigente atómicamente.
 * **Fallo después de activar:** no borrar activos. La RPC ya confirmó referencias activas; cualquier corrección se publica como versión nueva.
 
 Nunca usar `overwrite:true` ni borrar una carpeta completa: otras versiones pueden seguir activas.

@@ -1,4 +1,4 @@
-import { readFile } from "node:fs/promises";
+import { readFile, readdir } from "node:fs/promises";
 import { join } from "node:path";
 
 export interface BoundingBoxResult {
@@ -9,32 +9,26 @@ export interface BoundingBoxResult {
   readonly depthM: number;
 }
 
-export interface PhysicalDimensions {
-  readonly widthM: number;
-  readonly heightM: number;
-  readonly depthM: number;
+export interface InspectOptions {
+  readonly assetId?: string;
+  readonly version?: number;
 }
 
-export function calculateCalibrationScale(
-  bounds: BoundingBoxResult,
-  physical: PhysicalDimensions,
-): PhysicalDimensions {
-  if (
-    bounds.widthM <= 0 ||
-    bounds.heightM <= 0 ||
-    bounds.depthM <= 0 ||
-    physical.widthM <= 0 ||
-    physical.heightM <= 0 ||
-    physical.depthM <= 0
-  ) {
-    throw new Error("Bounding box and physical dimensions must be greater than zero");
+const ASSET_IDS = ["mesa", "arco", "pista"] as const;
+
+export function parseInspectOptions(args: readonly string[]): InspectOptions {
+  const assetId = args.find((arg) => arg.startsWith("--asset="))?.slice("--asset=".length);
+  const versionValue = args.find((arg) => arg.startsWith("--version="))?.slice("--version=".length);
+  const version = versionValue === undefined ? undefined : Number(versionValue);
+
+  if (assetId !== undefined && !ASSET_IDS.includes(assetId as (typeof ASSET_IDS)[number])) {
+    throw new Error(`Módulo desconocido: ${assetId}`);
+  }
+  if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
+    throw new Error(`Versión inválida: ${versionValue}`);
   }
 
-  return {
-    widthM: Number((physical.widthM / bounds.widthM).toFixed(6)),
-    heightM: Number((physical.heightM / bounds.heightM).toFixed(6)),
-    depthM: Number((physical.depthM / bounds.depthM).toFixed(6)),
-  };
+  return { assetId, version };
 }
 
 interface GlTFNode {
@@ -244,24 +238,9 @@ export function extractGlbBoundingBox(buf: Buffer): BoundingBoxResult {
   };
 }
 
-export async function inspectAllAssets() {
-  const assets = [
-    {
-      id: "mesa",
-      file: "assets/3d/mesa/v1/mahogany_table.glb",
-      catalogDimensions: { widthM: 2.0, heightM: 1.0, depthM: 2.0 },
-    },
-    {
-      id: "arco",
-      file: "assets/3d/arco/v1/flower_arch.glb",
-      catalogDimensions: { widthM: 2.0, heightM: 2.4, depthM: 1.0 },
-    },
-    {
-      id: "pista",
-      file: "assets/3d/pista/v1/animated_dance_floor_neon_lights.glb",
-      catalogDimensions: { widthM: 4.0, heightM: 0.1, depthM: 4.0 },
-    },
-  ];
+export async function inspectAllAssets(options: InspectOptions = {}) {
+  const version = options.version ?? 1;
+  const assetIds = ASSET_IDS.filter((assetId) => options.assetId === undefined || assetId === options.assetId);
 
   console.log("===============================================================");
   console.log(" Inspección de Bounding Box y Dimensiones 3D (DECOR-36 / F3)");
@@ -269,32 +248,35 @@ export async function inspectAllAssets() {
 
   const results = [];
 
-  for (const item of assets) {
-    const fullPath = join(process.cwd(), item.file);
+  for (const assetId of assetIds) {
+    const assetDir = join(process.cwd(), "assets", "3d", assetId, `v${version}`);
+    const files = await readdir(assetDir);
+    const glb = files.find((file) => file.toLowerCase().endsWith(".glb"));
+    if (!glb) throw new Error(`Directorio ${assetDir} no contiene un archivo .glb`);
+
+    const file = join(assetDir, glb);
+    const fullPath = file;
     const buf = await readFile(fullPath);
     const bounds = extractGlbBoundingBox(buf);
-    const calibrationScale = calculateCalibrationScale(bounds, item.catalogDimensions);
 
-    console.log(`📦 Módulo: ${item.id.toUpperCase()}`);
-    console.log(`   Archivo: ${item.file}`);
+    console.log(`Módulo: ${assetId.toUpperCase()} v${version}`);
+    console.log(`   Archivo: ${file}`);
     console.log(`   Bounding Box transformado:`);
     console.log(`     Min: [${bounds.min.join(", ")}]`);
     console.log(`     Max: [${bounds.max.join(", ")}]`);
     console.log(`     Dimensiones geométricas: Ancho=${bounds.widthM}m, Alto=${bounds.heightM}m, Profundidad=${bounds.depthM}m`);
-    console.log(`   Dimensiones de Catálogo (Escala 1:1 en AR con ar-scale="fixed"):`);
-    console.log(`     Ancho=${item.catalogDimensions.widthM}m, Alto=${item.catalogDimensions.heightM}m, Profundidad=${item.catalogDimensions.depthM}m`);
-    console.log(`   Escala de calibración por eje (catálogo / geometría):`);
-    console.log(`     X=${calibrationScale.widthM}, Y=${calibrationScale.heightM}, Z=${calibrationScale.depthM}`);
+    console.log(`   Dimensiones nativas publicables (glTF en metros, escala 1:1):`);
+    console.log(`     Ancho=${bounds.widthM}m, Alto=${bounds.heightM}m, Profundidad=${bounds.depthM}m`);
     console.log("---------------------------------------------------------------");
 
-    results.push({ item, bounds, calibrationScale });
+    results.push({ assetId, version, file, bounds });
   }
 
   return results;
 }
 
 if (process.argv[1]?.includes("inspect-glb-bounds")) {
-  inspectAllAssets().catch((err) => {
+  inspectAllAssets(parseInspectOptions(process.argv.slice(2))).catch((err) => {
     console.error("Error al inspeccionar GLB:", err);
     process.exit(1);
   });

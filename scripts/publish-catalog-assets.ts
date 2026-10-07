@@ -15,11 +15,6 @@ if (typeof process.loadEnvFile === "function") {
 interface ModuleDefinition {
   readonly assetId: string;
   readonly version: number;
-  readonly dimensions: {
-    readonly widthM: number;
-    readonly heightM: number;
-    readonly depthM: number;
-  };
 }
 
 interface PublishOptions {
@@ -31,17 +26,14 @@ const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
   {
     assetId: "mesa",
     version: 1,
-    dimensions: { widthM: 2.0, heightM: 1.0, depthM: 2.0 },
   },
   {
     assetId: "arco",
     version: 1,
-    dimensions: { widthM: 2.0, heightM: 2.4, depthM: 1.0 },
   },
   {
     assetId: "pista",
     version: 1,
-    dimensions: { widthM: 4.0, heightM: 0.1, depthM: 4.0 },
   },
 ];
 
@@ -108,14 +100,14 @@ export async function publishAllModules(options: PublishOptions = {}) {
     const glbBuffer = await readFile(files.glbPath);
     const bounds = extractGlbBoundingBox(glbBuffer);
     console.log(`  Geometría GLB (Bounding Box): Ancho=${bounds.widthM}m, Alto=${bounds.heightM}m, Profundidad=${bounds.depthM}m`);
-    console.log(`  Catálogo (AR 1:1 fija):       Ancho=${moduleDef.dimensions.widthM}m, Alto=${moduleDef.dimensions.heightM}m, Profundidad=${moduleDef.dimensions.depthM}m`);
+    console.log(`  Catálogo (escala nativa 1:1): Ancho=${bounds.widthM}m, Alto=${bounds.heightM}m, Profundidad=${bounds.depthM}m`);
 
     console.log(`  Subiendo a Cloudinary y activando atómicamente en Supabase...`);
     const result = await useCase.execute({
       assetId: moduleDef.assetId,
       version: moduleDef.version,
       files,
-      dimensions: moduleDef.dimensions,
+      dimensions: bounds,
     });
 
     if (!result.ok) {
