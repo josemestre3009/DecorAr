@@ -7,7 +7,12 @@ import { createAdminClient } from "@/infrastructure/supabase/admin";
 import { DrainOutboxUseCase } from "@/modules/events/application/drain-outbox.use-case";
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
 import { ok } from "@/shared/domain/result";
-import { createCatalogController, createEventOutboxDependencies } from "./server";
+import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
+import {
+  createCatalogController,
+  createEventOutboxDependencies,
+  createPackageAccessDependencies,
+} from "./server";
 
 vi.mock("server-only", () => ({}));
 vi.mock("@/infrastructure/supabase/server", () => ({
@@ -34,5 +39,14 @@ describe("composition root server", () => {
     expect(createAdminClient).toHaveBeenCalledTimes(1);
     expect(outbox).toBeInstanceOf(SupabaseEventOutbox);
     expect(drainOutbox).toBeInstanceOf(DrainOutboxUseCase);
+  });
+
+  it("wires package access with the session client, never service_role", async () => {
+    vi.mocked(createAdminClient).mockClear();
+
+    const { authorizePackageAccess } = await createPackageAccessDependencies();
+
+    expect(authorizePackageAccess).toBeInstanceOf(AuthorizePackageAccessUseCase);
+    expect(createAdminClient).not.toHaveBeenCalled();
   });
 });
