@@ -75,3 +75,26 @@ export async function fetchCatalogModules(
 
   return ok(body);
 }
+
+/**
+ * Un módulo activo del catálogo. La API no tiene consulta por id, así que se
+ * busca en la misma lista que ve la tarjeta. Los campos 3D (URLs y medidas) los
+ * valida el módulo AR al crear el activo compartido.
+ */
+export async function fetchCatalogModule(
+  moduleId: string,
+  fetcher: typeof fetch = fetch,
+  signal?: AbortSignal,
+): Promise<Result<CatalogModuleDto, ApiFailure>> {
+  const modules = await fetchCatalogModules(fetcher, signal);
+
+  if (!modules.ok) {
+    return modules;
+  }
+
+  const found = modules.value.find((module) => module.id === moduleId);
+
+  return found
+    ? ok(found)
+    : err({ kind: "not_found", message: "Este módulo ya no está disponible en el catálogo." });
+}
