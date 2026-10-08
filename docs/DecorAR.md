@@ -108,7 +108,7 @@ Límites conocidos que conviene no ocultar:
 - El escáner de arquitectura recorre todo el árbol `src/`, pero `src/proxy.ts` queda fuera de las capas que clasifica y `layerOf("src/proxy.ts")` devuelve `null`. El archivo no tiene reglas automáticas que lo protejan y depende de la revisión manual.
 - En React Server Components y Server Actions el callback `setAll` no puede fijar encabezados de respuesta, porque ese contexto no dispone de un `NextResponse` que modificar. Las cookies sí se escriben mediante `next/headers`; los encabezados anti-caché están garantizados en el proxy y en los Route Handlers. En las páginas se conserva la marca `ƒ (Dynamic) server-rendered on demand`, de modo que la respuesta no se sirve desde la caché estática de Next.js.
 - El cliente browser deja las cookies de sesión legibles desde JavaScript (`httpOnly: false`) y con una vigencia de 400 días, que es lo que exige `@supabase/ssr` para su refresco automático. La Session Access Token y la Refresh Token quedan expuestas ante un XSS.
-- La persistencia de la sesión se demuestra en el navegador, pero el aislamiento real de datos entre dos usuarios todavía no puede probarse: las políticas de RLS, los fixtures A/B y los usuarios de prueba pertenecen a DECOR-30 (Luis), cuya frontera con esta tarea es explícita: Luis crea las políticas y los fixtures, y DECOR-38 aporta la sesión SSR y la UI.
+- La persistencia de la sesión se demuestra en el navegador. El aislamiento de datos entre dos usuarios lo aporta DECOR-30 (sección 2.2.4): Luis crea las políticas y los fixtures, y DECOR-38 aporta la sesión SSR y la UI.
 - `currentUser()` no distingue "no hay sesión" de "el proveedor no respondió": cualquier error de `getUser()`, incluido un `429` por límite de peticiones, se traduce en `null` y por tanto en `401`. Es una decisión que falla cerrada, correcta para no conceder acceso, pero produce falsos negativos cuando Supabase está saturado. Por eso `playwright.config.ts` serializa la suite: los escenarios autenticados comparten una cuenta real y en paralelo el proveedor limita las respuestas.
 - El proyecto de Supabase exige confirmar el correo y el servicio interno de correo es best-effort con cuota baja. El registro se trata como un éxito pendiente de confirmación, nunca como un fallo, y la entrega del correo no se puede garantizar de forma automatizada.
 - Con la confirmación de correo activa, Supabase ofusca el registro duplicado y devuelve éxito sin error, así que el aviso "ya existe una cuenta con ese correo" no es observable en este proyecto: quien se registra con un correo ya usado ve el mensaje de revisar la bandeja. El mapeo del error se conserva por si se desactiva la confirmación o si la cuenta se creó enlazada a otro proveedor, y su prueba unitaria sigue ejercitando el código alcanzable.
@@ -126,6 +126,28 @@ Límites conocidos de esta etapa:
 - `GET /api/modules` devuelve `[]` mientras el seed mantenga los módulos en `draft`; la pantalla muestra entonces el estado vacío. Las tarjetas se verifican con el fixture de DECOR-28 servido mediante `page.route`.
 - `GET /api/modules` responde sus errores como `{error:"Internal Server Error", correlationId}`, no con el envelope `{error:{code,message}}`, y no exige sesión. La interfaz acepta ambos formatos y nunca muestra el detalle de un `5xx`.
 - `NEXT_PUBLIC_DECOR_PACKAGES_API` se fija al compilar: en Docker se pasa como argumento de construcción y hay que reconstruir la imagen para cambiarla.
+
+### 2.2.4 Autorización por propiedad, RLS y canales privados
+
+La autorización tiene tres barreras independientes (DECOR-30):
+
+1. **Route Handler.** DECOR-30 entrega `checkPackageAccess` (`src/interfaces/packages/package-access.ts`) y `createPackageAccessDependencies()`. Todo handler de paquete que añada DECOR-27 deberá llamarlos antes del caso de uso. `AuthorizePackageAccessUseCase` valida la identidad con `getUser()` y compara el dueño en TypeScript, así que la decisión no depende de RLS. Sin sesión responde `401`. Un paquete ajeno o inexistente responde `404 package.not_found`, para no revelar qué paquetes existen.
+2. **RLS.** `authenticated` sólo puede leer sus `packages` y `package_items`, y `anon` no tiene permisos. Ningún cliente escribe directamente: las escrituras pasan por `commit_package_change`, que ejecuta `service_role` y vuelve a exigir la propiedad. Las tablas internas (`private.domain_events` y, en DECOR-33, `processed_events`) viven en el schema `private`, que PostgREST no expone.
+3. **Realtime.** El navegador sólo se suscribe, con `subscribeToPackageChannel`, al canal privado `package:{packageId}`. Una política sobre `realtime.messages` lo autoriza únicamente al dueño. No existe política de escritura, así que ningún cliente puede publicar un `budget.recalculated` falso: sólo publica el backend.
+
+| Recurso / acción | Dueño (A) | Ajeno (B) | Anónimo |
+|---|---|---|---|
+| Route Handler de paquete (cableado por DECOR-27) | ejecuta | 404 | 401 |
+| Leer paquete y elementos | sus filas | 0 filas | denegado |
+| Escribir paquete, RPC de outbox o de catálogo | denegado | denegado | denegado |
+| Unirse a `package:{id}` | aceptado | rechazado | rechazado |
+| Publicar en `package:{id}` | rechazado | rechazado | rechazado |
+
+Las pruebas negativas cubren cada fila (detalle en `openspec/changes/decor-30-auth-rls-private-channels/design.md`). `supabase/migrations/authorize-packages-and-private-channels.test.ts` aplica todas las migraciones en PGlite y ejecuta las políticas con roles y funciones de Supabase simulados dentro de `npm test`. Los fixtures A/B contra el proyecto alojado son opt-in (`DECOR_RLS_INTEGRATION=1`), porque crean usuarios reales con la admin API y verifican también el servidor Realtime.
+
+La service role se comprueba en dos niveles: `scripts/service-role-boundary.test.ts` recorre el grafo de imports de cada Client Component y falla si alcanza el cliente admin, y el escaneo posterior al build busca su valor centinela en `.next/static`.
+
+Límite operativo: en la configuración de Realtime del proyecto, "Allow public access" debe estar desactivado para que sólo existan canales privados.
 
 ### 2.3 Diagrama de contenedores
 

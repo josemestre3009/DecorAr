@@ -2,6 +2,7 @@ import "server-only";
 
 import { createAdminClient } from "@/infrastructure/supabase/admin";
 import { createClient, type SessionClientOptions } from "@/infrastructure/supabase/server";
+import { createPackageOwnerReader } from "@/infrastructure/supabase/package-owner-reader";
 import { createSessionGateway } from "@/infrastructure/supabase/session-gateway";
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
 import { type AssetStoragePort } from "@/modules/catalog/application/ports/asset-storage.port";
@@ -17,6 +18,7 @@ import { SupabaseCatalogRepository } from "@/modules/catalog/infrastructure/supa
 import { DrainOutboxUseCase } from "@/modules/events/application/drain-outbox.use-case";
 import { SupabaseBroadcastEventPublisher } from "@/modules/events/infrastructure/supabase-broadcast-event-publisher";
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
+import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
 import { createAuthUseCases } from "@/shared/application/auth";
 
 /**
@@ -28,6 +30,23 @@ export async function createSessionDependencies(options: SessionClientOptions = 
   const supabase = await createClient(options);
 
   return { auth: createAuthUseCases(createSessionGateway(supabase)) };
+}
+
+/**
+ * Ownership check for package Route Handlers (DECOR-30). Uses the session
+ * client, never service_role, so the owner lookup is also filtered by RLS.
+ * Handlers run `checkPackageAccess(authorizePackageAccess, packageId)` before
+ * any use case and only then reach the service-role outbox.
+ */
+export async function createPackageAccessDependencies(options: SessionClientOptions = {}) {
+  const supabase = await createClient(options);
+
+  return {
+    authorizePackageAccess: new AuthorizePackageAccessUseCase(
+      createSessionGateway(supabase),
+      createPackageOwnerReader(supabase),
+    ),
+  };
 }
 
 export function createAdminDependencies() {
