@@ -9,6 +9,8 @@ Garantiza que sólo el dueño de un paquete pueda leerlo, operarlo y escuchar su
 ### Requirement: Autorización por propiedad en Route Handlers
 Todo Route Handler que opere sobre un paquete SHALL validar la sesión con `getUser()` y la propiedad del paquete antes de ejecutar el caso de uso. La comparación de propiedad MUST ocurrir en el código de la aplicación y MUST NOT depender de que RLS esté habilitada.
 
+DECOR-30 entrega `checkPackageAccess`, su composición y su prueba de contrato. DECOR-27, responsable de los endpoints de paquetes, SHALL conectarlo en cada `src/app/api/packages/**/route.ts` antes del caso de uso.
+
 #### Scenario: Dueño
 - **WHEN** el usuario A opera sobre su propio paquete
 - **THEN** el caso de uso se ejecuta

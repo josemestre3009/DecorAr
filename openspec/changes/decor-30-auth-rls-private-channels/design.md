@@ -75,13 +75,13 @@ Hay dos capas:
 
 En features anteriores, DECOR-38 creó cuentas efímeras con la admin API (`email_confirm: true`) para no consumir la cuota de correo y las eliminó al terminar. Se reutiliza ese método en `supabase/tests/authorization-ab.integration.test.ts`: crea A y B, un paquete para cada uno, prueba lectura, escritura, RPC y canal, y limpia todo. Es opt-in con `DECOR_RLS_INTEGRATION=1`, porque `docs/DecorAR.md` excluye Supabase local y la prueba escribe en el proyecto alojado.
 
-La verificación determinista de las políticas se hizo en PostgreSQL embebido (PGlite) fuera del repositorio, el mismo método que usó DECOR-32. Se replicó la superficie mínima de Supabase: roles, `auth.uid()`, `realtime.messages` y `realtime.topic()`. Además se ejecutó un control negativo sin la migración, que hizo fallar 9 de las 32 comprobaciones.
+La verificación determinista de las políticas vive en `supabase/migrations/authorize-packages-and-private-channels.test.ts` y se ejecuta con `npm test` sobre PostgreSQL embebido (PGlite). Replica la superficie mínima de Supabase: roles, `auth.uid()`, `realtime.messages` y `realtime.topic()`, aplica todas las migraciones y ejerce RLS y grants con A, B y anónimo. El fixture opt-in complementa esta simulación contra Auth, PostgREST y Realtime alojados.
 
 ## Matriz de autorización
 
 | Recurso / acción | A (dueño) | B (ajeno) | Anónimo | Prueba |
 |---|---|---|---|---|
-| Route Handler de paquete | caso de uso se ejecuta | 404, sin caso de uso | 401, sin consulta | `src/interfaces/packages/package-access.test.ts` |
+| Contrato del Route Handler de paquete (cableado por DECOR-27) | caso de uso se ejecuta | 404, sin caso de uso | 401, sin consulta | `src/interfaces/packages/package-access.test.ts` |
 | Handler con RLS deshabilitada | permitido | 404 | 401 | `authorize-package-access.use-case.test.ts`, `package-access.test.ts` |
 | SELECT `packages` / `package_items` | solo los suyos | 0 filas | permiso denegado | PGlite, `authorization-ab.integration.test.ts` |
 | INSERT/UPDATE/DELETE de paquetes | denegado | denegado | denegado | PGlite, A/B |

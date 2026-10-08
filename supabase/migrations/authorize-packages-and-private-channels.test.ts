@@ -1,69 +1,159 @@
-import { readFile } from "node:fs/promises";
+// @vitest-environment node
+import { PGlite } from "@electric-sql/pglite";
+import { readdir, readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
-const MIGRATION = "supabase/migrations/20261008000000_authorize_packages_and_private_channels.sql";
+const USER_A = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const USER_B = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+const PACKAGE_A = "11111111-1111-4111-8111-111111111111";
+const PACKAGE_B = "22222222-2222-4222-8222-222222222222";
+const ITEM_A = "33333333-3333-4333-8333-333333333333";
 
-function policy(sql: string, name: string): string {
-  const start = sql.indexOf(`CREATE POLICY "${name}"`);
-  expect(start).toBeGreaterThan(-1);
-  return sql.slice(start, sql.indexOf(";", start));
-}
+const supabaseShim = `
+  CREATE ROLE anon NOLOGIN;
+  CREATE ROLE authenticated NOLOGIN;
+  CREATE ROLE service_role NOLOGIN;
 
-describe("DECOR-30 authorization SQL migration contract", () => {
-  let sql: string;
+  CREATE SCHEMA auth;
+  CREATE TABLE auth.users (id uuid PRIMARY KEY);
+  CREATE FUNCTION auth.uid() RETURNS uuid LANGUAGE sql STABLE AS $$
+    SELECT nullif(current_setting('request.jwt.claim.sub', true), '')::uuid
+  $$;
+
+  CREATE SCHEMA realtime;
+  CREATE TABLE realtime.messages (topic text NOT NULL, extension text NOT NULL);
+  ALTER TABLE realtime.messages ENABLE ROW LEVEL SECURITY;
+  CREATE FUNCTION realtime.topic() RETURNS text LANGUAGE sql STABLE AS $$
+    SELECT nullif(current_setting('realtime.topic', true), '')
+  $$;
+
+  GRANT USAGE ON SCHEMA public, auth, realtime TO anon, authenticated, service_role;
+  GRANT SELECT ON realtime.messages TO authenticated;
+`;
+
+describe("DECOR-30 executable authorization policies", () => {
+  let db: PGlite;
 
   beforeAll(async () => {
-    sql = (await readFile(resolve(MIGRATION), "utf-8")).replace(/\r\n/g, "\n");
+    db = new PGlite();
+    await db.exec(supabaseShim);
+
+    const directory = resolve("supabase/migrations");
+    const migrations = (await readdir(directory)).filter((file) => file.endsWith(".sql")).sort();
+    for (const migration of migrations) await db.exec(await readFile(resolve(directory, migration), "utf8"));
+
+    await db.exec(`
+      INSERT INTO auth.users (id) VALUES ('${USER_A}'), ('${USER_B}');
+      INSERT INTO public.catalog_modules (
+        id, asset_id, version, name, price_cop, area_m2, width_m, height_m, depth_m,
+        glb_url, usdz_url, poster_url, status
+      ) VALUES (
+        '44444444-4444-4444-8444-444444444444', 'fixture', 1, 'Fixture', 1, 1, 1, 1, 1,
+        'https://example.com/a.glb', 'https://example.com/a.usdz', 'https://example.com/a.webp', 'active'
+      );
+      INSERT INTO public.packages (id, user_id) VALUES
+        ('${PACKAGE_A}', '${USER_A}'), ('${PACKAGE_B}', '${USER_B}');
+      INSERT INTO public.package_items (id, package_id, module_id) VALUES
+        ('${ITEM_A}', '${PACKAGE_A}', '44444444-4444-4444-8444-444444444444');
+      INSERT INTO realtime.messages (topic, extension) VALUES
+        ('package:${PACKAGE_A}', 'broadcast'), ('package:${PACKAGE_A}', 'presence');
+    `);
+  }, 30_000);
+
+  afterAll(async () => db?.close());
+
+  async function asRole<T extends Record<string, unknown>>(
+    role: "anon" | "authenticated",
+    userId: string | null,
+    topic: string | null,
+    sql: string,
+  ) {
+    await db.exec(`
+      SET ROLE ${role};
+      SELECT set_config('request.jwt.claim.sub', '${userId ?? ""}', false);
+      SELECT set_config('realtime.topic', '${topic ?? ""}', false);
+    `);
+    try {
+      return await db.query<T>(sql);
+    } finally {
+      await db.exec("RESET ROLE");
+    }
+  }
+
+  it("lets A read only A's package and items, while B sees no rows", async () => {
+    const own = await asRole<{ id: string }>("authenticated", USER_A, null, "SELECT id FROM public.packages ORDER BY id");
+    const foreign = await asRole<{ id: string }>("authenticated", USER_B, null, `SELECT id FROM public.packages WHERE id = '${PACKAGE_A}'`);
+    const items = await asRole<{ id: string }>("authenticated", USER_A, null, "SELECT id FROM public.package_items");
+
+    expect(own.rows).toEqual([{ id: PACKAGE_A }]);
+    expect(foreign.rows).toEqual([]);
+    expect(items.rows).toEqual([{ id: ITEM_A }]);
   });
 
-  it("lets owners read their packages and items, and nobody else", () => {
-    const packages = policy(sql, "Owners can view their packages");
-    expect(packages).toContain("ON public.packages");
-    expect(packages).toContain("FOR SELECT");
-    expect(packages).toContain("TO authenticated");
-    expect(packages).toContain("USING ((SELECT auth.uid()) = user_id)");
-
-    const items = policy(sql, "Owners can view items of their packages");
-    expect(items).toContain("ON public.package_items");
-    expect(items).toContain("TO authenticated");
-    expect(items).toContain("p.user_id = (SELECT auth.uid())");
+  it("denies anonymous reads and direct client writes", async () => {
+    await expect(asRole("anon", null, null, "SELECT id FROM public.packages")).rejects.toMatchObject({ code: "42501" });
+    await expect(
+      asRole("authenticated", USER_A, null, `UPDATE public.packages SET version = 2 WHERE id = '${PACKAGE_A}'`),
+    ).rejects.toMatchObject({ code: "42501" });
   });
 
-  it("grants only SELECT to authenticated and nothing to anon on package tables", () => {
-    expect(sql).toContain("GRANT SELECT ON TABLE public.packages, public.package_items TO authenticated;");
-    expect(sql).not.toMatch(/GRANT[^;]*(INSERT|UPDATE|DELETE|ALL)[^;]*TO[^;]*\b(anon|authenticated)\b/);
-    expect(sql).not.toMatch(/GRANT[^;]*public\.package[^;]*\banon\b/);
-    expect(sql).not.toMatch(/CREATE POLICY[^;]*FOR (INSERT|UPDATE|DELETE|ALL)/);
+  it("keeps internal tables and privileged RPCs unavailable to clients", async () => {
+    const privileges = await db.query<{
+      private_usage: boolean;
+      rpc_execute: boolean;
+      catalog_read: boolean;
+      catalog_write: boolean;
+      catalog_activate: boolean;
+    }>(`
+      SELECT
+        has_schema_privilege('authenticated', 'private', 'USAGE') AS private_usage,
+        has_function_privilege('authenticated', 'public.commit_package_change(jsonb,integer)', 'EXECUTE') AS rpc_execute,
+        has_table_privilege('authenticated', 'public.catalog_modules', 'SELECT') AS catalog_read,
+        has_table_privilege('authenticated', 'public.catalog_modules', 'INSERT') AS catalog_write,
+        has_function_privilege(
+          'authenticated',
+          'public.activate_catalog_module(text,integer,text,text,text,numeric,numeric,numeric)',
+          'EXECUTE'
+        ) AS catalog_activate
+    `);
+
+    expect(privileges.rows).toEqual([{
+      private_usage: false,
+      rpc_execute: false,
+      catalog_read: true,
+      catalog_write: false,
+      catalog_activate: false,
+    }]);
+    await expect(asRole("authenticated", USER_A, null, "SELECT event_id FROM private.domain_events")).rejects.toMatchObject({ code: "42501" });
   });
 
-  it("limits the catalog to reads for clients and activation to service_role", () => {
-    expect(sql).toContain("REVOKE ALL ON TABLE public.catalog_modules FROM PUBLIC, anon, authenticated;");
-    expect(sql).toContain("GRANT SELECT ON TABLE public.catalog_modules TO anon, authenticated;");
-    expect(sql).toMatch(/REVOKE ALL ON FUNCTION public\.activate_catalog_module\([^)]*\)\s+FROM PUBLIC, anon, authenticated;/);
-    expect(sql).toMatch(/GRANT EXECUTE ON FUNCTION public\.activate_catalog_module\([^)]*\)\s+TO service_role;/);
+  it("allows only the owner to receive package broadcasts", async () => {
+    const own = await asRole<{ extension: string }>(
+      "authenticated",
+      USER_A,
+      `package:${PACKAGE_A}`,
+      "SELECT extension FROM realtime.messages ORDER BY extension",
+    );
+    const foreign = await asRole<{ extension: string }>(
+      "authenticated",
+      USER_B,
+      `package:${PACKAGE_A}`,
+      "SELECT extension FROM realtime.messages",
+    );
+
+    expect(own.rows).toEqual([{ extension: "broadcast" }]);
+    expect(foreign.rows).toEqual([]);
   });
 
-  it("authorizes the private channel package:{packageId} for its owner only", () => {
-    const channel = policy(sql, "Owners receive package broadcasts");
-    expect(channel).toContain("ON realtime.messages");
-    expect(channel).toContain("FOR SELECT");
-    expect(channel).toContain("TO authenticated");
-    expect(channel).toContain("realtime.messages.extension = 'broadcast'");
-    expect(channel).toContain("'package:' || p.id::text = (SELECT realtime.topic())");
-    expect(channel).toContain("p.user_id = (SELECT auth.uid())");
-  });
-
-  it("never lets a client publish on a channel", () => {
-    expect(sql).not.toMatch(/ON realtime\.messages\s+FOR (INSERT|UPDATE|ALL)/);
-    expect(sql).not.toMatch(/GRANT[^;]*realtime\.messages/);
-  });
-
-  it("keeps internal tables private and avoids postgres_changes", () => {
-    expect(sql).not.toMatch(/private\.domain_events/);
-    expect(sql).not.toMatch(/GRANT[^;]*SCHEMA private/);
-    expect(sql).not.toMatch(/supabase_realtime/i);
-    expect(sql).not.toMatch(/postgres_changes/i);
-    expect(sql).not.toContain("SECURITY DEFINER");
+  it("does not let authenticated clients publish broadcasts", async () => {
+    await expect(
+      asRole(
+        "authenticated",
+        USER_A,
+        `package:${PACKAGE_A}`,
+        `INSERT INTO realtime.messages (topic, extension) VALUES ('package:${PACKAGE_A}', 'broadcast')`,
+      ),
+    ).rejects.toMatchObject({ code: "42501" });
   });
 });

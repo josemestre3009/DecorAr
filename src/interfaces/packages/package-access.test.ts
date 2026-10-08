@@ -13,7 +13,7 @@ const PACKAGE_A = "11111111-1111-4111-8111-111111111111";
 // As if RLS were disabled: the real owner is visible to every caller.
 const rlsDisabled: PackageOwnerReader = { findOwnerId: async () => ok(USER_A.id) };
 
-/** Shape every package Route Handler follows: authorize, then run the use case. */
+/** Contract DECOR-27 package Route Handlers must follow. */
 function packageHandler(user: SessionUser | null, useCase: () => Promise<Response>) {
   const authorize = new AuthorizePackageAccessUseCase({ currentUser: async () => user }, rlsDisabled);
 
@@ -23,7 +23,7 @@ function packageHandler(user: SessionUser | null, useCase: () => Promise<Respons
   };
 }
 
-describe("checkPackageAccess en un Route Handler de paquete", () => {
+describe("contrato checkPackageAccess para los Route Handlers de DECOR-27", () => {
   it("A: ejecuta el caso de uso sobre su paquete", async () => {
     const useCase = vi.fn(async () => Response.json({ ok: true }));
     const response = await packageHandler(USER_A, useCase)(PACKAGE_A);

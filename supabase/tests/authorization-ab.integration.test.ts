@@ -1,3 +1,4 @@
+// @vitest-environment node
 /**
  * DECOR-30 fixtures A/B against the hosted Supabase project.
  *
@@ -32,20 +33,25 @@ describe.skipIf(!enabled)("DECOR-30 autorización A/B contra Supabase", () => {
     const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (created.error) throw created.error;
 
-    const client = createClient(url, publishableKey, noSession);
-    const signedIn = await client.auth.signInWithPassword({ email, password });
-    if (signedIn.error) throw signedIn.error;
+    try {
+      const client = createClient(url, publishableKey, noSession);
+      const signedIn = await client.auth.signInWithPassword({ email, password });
+      if (signedIn.error) throw signedIn.error;
 
-    const inserted = await admin
-      .from("packages")
-      .insert({ user_id: created.data.user.id })
-      .select("id")
-      .single<{ id: string }>();
-    if (inserted.error) throw inserted.error;
+      const inserted = await admin
+        .from("packages")
+        .insert({ user_id: created.data.user.id })
+        .select("id")
+        .single<{ id: string }>();
+      if (inserted.error) throw inserted.error;
 
-    const fixture = { id: created.data.user.id, email, client, packageId: inserted.data.id };
-    fixtures.push(fixture);
-    return fixture;
+      const fixture = { id: created.data.user.id, email, client, packageId: inserted.data.id };
+      fixtures.push(fixture);
+      return fixture;
+    } catch (error) {
+      await admin.auth.admin.deleteUser(created.data.user.id);
+      throw error;
+    }
   }
 
   let a: Fixture;
@@ -94,13 +100,25 @@ describe.skipIf(!enabled)("DECOR-30 autorización A/B contra Supabase", () => {
 
   async function join(client: SupabaseClient, packageId: string): Promise<string> {
     await client.realtime.setAuth();
-    return new Promise((resolve) => {
-      client
-        .channel(`package:${packageId}`, { config: { private: true } })
-        .subscribe((status) => {
-          if (status !== "CLOSED") resolve(status);
-        });
+    const channel = client.channel(`package:${packageId}`, { config: { private: true } });
+    const status = await new Promise<string>((resolve) => {
+      channel.subscribe((nextStatus) => {
+        if (nextStatus !== "CLOSED") resolve(nextStatus);
+      });
     });
+    await client.removeChannel(channel);
+    return status;
+  }
+
+  async function joinPublic(client: SupabaseClient, packageId: string): Promise<string> {
+    const channel = client.channel(`public-check:${packageId}`);
+    const status = await new Promise<string>((resolve) => {
+      channel.subscribe((nextStatus) => {
+        if (nextStatus !== "CLOSED") resolve(nextStatus);
+      });
+    });
+    await client.removeChannel(channel);
+    return status;
   }
 
   it("A se une a su canal privado; B y anónimo son rechazados", async () => {
@@ -111,8 +129,17 @@ describe.skipIf(!enabled)("DECOR-30 autorización A/B contra Supabase", () => {
 
   it("A no puede publicar un budget falso en su propio canal", async () => {
     const channel = a.client.channel(`package:${a.packageId}`, { config: { private: true } });
-    const result = await channel.httpSend("budget.recalculated", { totalCop: 1 });
+    try {
+      await a.client.realtime.setAuth();
+      await expect(channel.httpSend("budget.recalculated", { totalCop: 1 })).rejects.not.toThrow(
+        /requires Realtime server/,
+      );
+    } finally {
+      await a.client.removeChannel(channel);
+    }
+  }, 30_000);
 
-    expect(result.success).toBe(false);
-  });
+  it("el proyecto rechaza canales públicos", async () => {
+    expect(await joinPublic(a.client, a.packageId)).toBe("CHANNEL_ERROR");
+  }, 30_000);
 });

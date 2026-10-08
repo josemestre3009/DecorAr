@@ -2,8 +2,8 @@
 
 ## 1. PostgreSQL
 
-- [x] 1.1 Crear la migración con RLS de lectura del dueño en `packages` y `package_items`, permisos mínimos del catálogo y su RPC, y la política de `realtime.messages` para `package:{packageId}`; verificar con `supabase/migrations/authorize-packages-and-private-channels.test.ts`
-- [x] 1.2 Verificar A, B y anónimo en PostgreSQL embebido con roles y funciones de Supabase simulados: 32/32 comprobaciones, y 9 fallos esperados sin la migración
+- [x] 1.1 Crear la migración con RLS de lectura del dueño en `packages` y `package_items`, permisos mínimos del catálogo y su RPC, y la política de `realtime.messages` para `package:{packageId}`
+- [x] 1.2 Aplicar las migraciones y verificar A, B y anónimo con roles y funciones de Supabase simulados en `supabase/migrations/authorize-packages-and-private-channels.test.ts`, ejecutado por `npm test`
 - [x] 1.3 Confirmar que la outbox sigue en `private` y fijar ahí `processed_events` para DECOR-33
 
 ## 2. Autorización en Route Handlers
@@ -21,7 +21,7 @@
 
 - [x] 4.1 Añadir `scripts/service-role-boundary.test.ts`; verificar que falla si un Client Component importa la composición
 - [x] 4.2 Añadir los fixtures A/B opt-in en `supabase/tests/authorization-ab.integration.test.ts` con la admin API, siguiendo el método de DECOR-38
-- [ ] 4.3 Ejecutar los fixtures A/B contra el proyecto alojado tras aplicar la migración (`DECOR_RLS_INTEGRATION=1`), y comprobar que "Allow public access" de Realtime está desactivado
+- [x] 4.3 Ejecutar los fixtures A/B contra el proyecto alojado tras aplicar la migración (`DECOR_RLS_INTEGRATION=1`), y comprobar que "Allow public access" de Realtime está desactivado
 
 ## 5. Integración
 

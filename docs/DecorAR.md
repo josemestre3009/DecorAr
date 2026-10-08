@@ -131,19 +131,19 @@ Límites conocidos de esta etapa:
 
 La autorización tiene tres barreras independientes (DECOR-30):
 
-1. **Route Handler.** Todo handler de paquete llama primero a `checkPackageAccess` (`src/interfaces/packages/package-access.ts`) con `createPackageAccessDependencies()`. El caso de uso `AuthorizePackageAccessUseCase` valida la identidad con `getUser()` y compara el dueño en TypeScript, así que la decisión no depende de RLS. Sin sesión responde `401`. Un paquete ajeno o inexistente responde `404 package.not_found`, para no revelar qué paquetes existen.
+1. **Route Handler.** DECOR-30 entrega `checkPackageAccess` (`src/interfaces/packages/package-access.ts`) y `createPackageAccessDependencies()`. Todo handler de paquete que añada DECOR-27 deberá llamarlos antes del caso de uso. `AuthorizePackageAccessUseCase` valida la identidad con `getUser()` y compara el dueño en TypeScript, así que la decisión no depende de RLS. Sin sesión responde `401`. Un paquete ajeno o inexistente responde `404 package.not_found`, para no revelar qué paquetes existen.
 2. **RLS.** `authenticated` sólo puede leer sus `packages` y `package_items`, y `anon` no tiene permisos. Ningún cliente escribe directamente: las escrituras pasan por `commit_package_change`, que ejecuta `service_role` y vuelve a exigir la propiedad. Las tablas internas (`private.domain_events` y, en DECOR-33, `processed_events`) viven en el schema `private`, que PostgREST no expone.
 3. **Realtime.** El navegador sólo se suscribe, con `subscribeToPackageChannel`, al canal privado `package:{packageId}`. Una política sobre `realtime.messages` lo autoriza únicamente al dueño. No existe política de escritura, así que ningún cliente puede publicar un `budget.recalculated` falso: sólo publica el backend.
 
 | Recurso / acción | Dueño (A) | Ajeno (B) | Anónimo |
 |---|---|---|---|
-| Route Handler de paquete | ejecuta | 404 | 401 |
+| Route Handler de paquete (cableado por DECOR-27) | ejecuta | 404 | 401 |
 | Leer paquete y elementos | sus filas | 0 filas | denegado |
 | Escribir paquete, RPC de outbox o de catálogo | denegado | denegado | denegado |
 | Unirse a `package:{id}` | aceptado | rechazado | rechazado |
 | Publicar en `package:{id}` | rechazado | rechazado | rechazado |
 
-Las pruebas negativas cubren cada fila (detalle en `openspec/changes/decor-30-auth-rls-private-channels/design.md`). Las políticas se verificaron en PostgreSQL embebido con los roles de Supabase simulados. Los fixtures A/B contra el proyecto alojado son opt-in (`DECOR_RLS_INTEGRATION=1`), porque crean usuarios reales con la admin API.
+Las pruebas negativas cubren cada fila (detalle en `openspec/changes/decor-30-auth-rls-private-channels/design.md`). `supabase/migrations/authorize-packages-and-private-channels.test.ts` aplica todas las migraciones en PGlite y ejecuta las políticas con roles y funciones de Supabase simulados dentro de `npm test`. Los fixtures A/B contra el proyecto alojado son opt-in (`DECOR_RLS_INTEGRATION=1`), porque crean usuarios reales con la admin API y verifican también el servidor Realtime.
 
 La service role se comprueba en dos niveles: `scripts/service-role-boundary.test.ts` recorre el grafo de imports de cada Client Component y falla si alcanza el cliente admin, y el escaneo posterior al build busca su valor centinela en `.next/static`.
 

@@ -24,6 +24,6 @@ Ninguna. `supabase-client-boundaries` ya exige que la service role no aparezca e
 
 ## Impact
 
-- Una migración SQL aditiva y su prueba de contrato.
+- Una migración SQL aditiva y su prueba ejecutable con PGlite.
 - Código nuevo en `src/modules/packages/application`, `src/interfaces/packages` y `src/infrastructure/supabase`, más la fábrica `createPackageAccessDependencies()` en la composición.
-- Sin endpoints nuevos: DECOR-27 los crea usando `checkPackageAccess`. Sin UI de autenticación, sin dependencias npm.
+- Sin endpoints nuevos: DECOR-27 los crea usando `checkPackageAccess`. Sin UI de autenticación. PGlite se añade sólo como dependencia de desarrollo para ejecutar las políticas en `npm test`.
