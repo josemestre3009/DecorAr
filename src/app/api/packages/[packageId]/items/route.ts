@@ -3,17 +3,17 @@ import { randomUUID } from "node:crypto";
 import { createPackageController } from "@/composition/server";
 
 interface RouteContext {
-  params: Promise<{ id: string }> | { id: string };
+  params: Promise<{ packageId: string }> | { packageId: string };
 }
 
 export async function POST(request: Request, context: RouteContext): Promise<Response> {
   try {
-    const { id } = await context.params;
+    const { packageId } = await context.params;
     const controller = await createPackageController();
-    return await controller.handleAddItem(request, id);
+    return await controller.handleAddItem(request, packageId);
   } catch (cause) {
     const correlationId = randomUUID();
-    console.error(`[API POST /api/packages/[id]/items] Uncaught error (${correlationId}):`, cause);
+    console.error(`[API POST /api/packages/[packageId]/items] Uncaught error (${correlationId}):`, cause);
 
     return Response.json(
       {
