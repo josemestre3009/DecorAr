@@ -4,6 +4,7 @@ import type { Clock, IdGenerator } from "../../../../shared/application/ports";
 import type { PackageModuleRemovedEvent } from "../../../events/domain/event-contracts";
 import type { PackageChangeOutbox } from "../../../events/application/outbox";
 import type { RemoveModuleFromPackageDto } from "../dtos/package.dto";
+import { notifyPackageChange, type PackageChangeConsumer } from "../ports/package-change-consumer.port";
 import type { PackageReader } from "../ports/package-reader.port";
 
 export class RemoveModuleFromPackageUseCase {
@@ -12,6 +13,7 @@ export class RemoveModuleFromPackageUseCase {
     private readonly outbox: PackageChangeOutbox,
     private readonly clock: Clock,
     private readonly idGenerator: IdGenerator,
+    private readonly changeConsumer?: PackageChangeConsumer,
   ) {}
 
   async execute(dto: RemoveModuleFromPackageDto): Promise<Result<void, DomainError>> {
@@ -55,6 +57,8 @@ export class RemoveModuleFromPackageUseCase {
     if (!commitResult.ok) {
       return err(commitResult.error);
     }
+
+    await notifyPackageChange(this.changeConsumer, event);
 
     return ok(undefined);
   }

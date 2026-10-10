@@ -30,11 +30,13 @@ import { DrainOutboxUseCase } from "@/modules/events/application/drain-outbox.us
 import { SupabaseBroadcastEventPublisher } from "@/modules/events/infrastructure/supabase-broadcast-event-publisher";
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
 import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
+import type { PackageChangeConsumer } from "@/modules/packages/application/ports/package-change-consumer.port";
 import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
 import { createAuthUseCases } from "@/shared/application/auth";
 import type { Clock, IdGenerator } from "@/shared/application/ports";
+import { err, ok } from "@/shared/domain/result";
 
 const systemClock: Clock = { now: () => new Date() };
 const uuidGenerator: IdGenerator = { generate: () => randomUUID() };
@@ -139,6 +141,15 @@ export async function createPackageController(
   const packageReader = new SupabasePackageReader(adminClient);
   const catalogReader = new SupabaseCatalogModuleReader(adminClient);
   const { drainOutbox, outbox } = createEventOutboxDependencies();
+  const { consumePackageChangedEvent } = createBudgetConsumerDependencies();
+
+  const packageChangeConsumer: PackageChangeConsumer = {
+    consume: async (event) => {
+      const result = await consumePackageChangedEvent.execute(event);
+
+      return result.ok ? ok(undefined) : err(result.error);
+    },
+  };
 
   const createPackageUseCase = new CreatePackageUseCase(packageRepository);
   const addModuleToPackageUseCase = new AddModuleToPackageUseCase(
@@ -147,12 +158,14 @@ export async function createPackageController(
     outbox,
     systemClock,
     uuidGenerator,
+    packageChangeConsumer,
   );
   const removeModuleFromPackageUseCase = new RemoveModuleFromPackageUseCase(
     packageReader,
     outbox,
     systemClock,
     uuidGenerator,
+    packageChangeConsumer,
   );
 
   return new PackageController(

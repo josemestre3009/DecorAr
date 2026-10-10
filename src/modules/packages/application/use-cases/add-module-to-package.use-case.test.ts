@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
-import { ok } from "../../../../shared/domain/result";
+import { err, ok } from "../../../../shared/domain/result";
+import { DomainError } from "../../../../shared/domain/domain-error";
 import type { Clock, IdGenerator } from "../../../../shared/application/ports";
 import type { PackageChangeOutbox } from "../../../events/application/outbox";
 import type { CatalogModuleReader } from "../ports/catalog-module-reader.port";
@@ -81,6 +82,95 @@ describe("AddModuleToPackageUseCase", () => {
       },
       2,
     );
+  });
+
+  it("notifica al consumidor de presupuesto con el mismo evento tras el commit", async () => {
+    idCounter = 1;
+    const mockPackageReader: PackageReader = {
+      getItemModuleId: vi.fn(),
+      getPackage: vi.fn().mockResolvedValue(
+        ok({
+          capacityM2: 30,
+          id: "pkg-1",
+          items: [],
+          spaceType: "casa",
+          userId: "user-1",
+          version: 1,
+        }),
+      ),
+    };
+    const mockCatalogReader: CatalogModuleReader = {
+      getModuleById: vi.fn().mockResolvedValue(
+        ok({ areaM2: 16, id: "mod-1", name: "Pista de baile", priceCop: 600000 }),
+      ),
+    };
+    const mockOutbox: PackageChangeOutbox = { commit: vi.fn().mockResolvedValue(ok(2)) };
+    const consume = vi.fn().mockResolvedValue(ok(undefined));
+
+    const useCase = new AddModuleToPackageUseCase(
+      mockPackageReader,
+      mockCatalogReader,
+      mockOutbox,
+      mockClock,
+      mockIdGenerator,
+      { consume },
+    );
+
+    const result = await useCase.execute({
+      moduleId: "mod-1",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(consume).toHaveBeenCalledTimes(1);
+    expect(consume.mock.calls[0][0]).toMatchObject({
+      payload: { itemId: "id-1", moduleId: "mod-1" },
+      type: "package.module.added",
+    });
+  });
+
+  it("no notifica al consumidor si el commit falla", async () => {
+    const mockPackageReader: PackageReader = {
+      getItemModuleId: vi.fn(),
+      getPackage: vi.fn().mockResolvedValue(
+        ok({
+          capacityM2: 50,
+          id: "pkg-1",
+          items: [],
+          spaceType: "casa",
+          userId: "user-1",
+          version: 1,
+        }),
+      ),
+    };
+    const mockCatalogReader: CatalogModuleReader = {
+      getModuleById: vi.fn().mockResolvedValue(
+        ok({ areaM2: 16, id: "mod-1", name: "Pista", priceCop: 600000 }),
+      ),
+    };
+    const mockOutbox: PackageChangeOutbox = {
+      commit: vi.fn().mockResolvedValue(err(new DomainError("package.version_conflict", "conflicto"))),
+    };
+    const consume = vi.fn();
+
+    const useCase = new AddModuleToPackageUseCase(
+      mockPackageReader,
+      mockCatalogReader,
+      mockOutbox,
+      mockClock,
+      mockIdGenerator,
+      { consume },
+    );
+
+    const result = await useCase.execute({
+      moduleId: "mod-1",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(result.ok).toBe(false);
+    expect(consume).not.toHaveBeenCalled();
   });
 
   it("rechaza y deja cero escritura/evento cuando excede la capacidad", async () => {

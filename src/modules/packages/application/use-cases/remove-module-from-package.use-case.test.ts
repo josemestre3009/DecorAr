@@ -49,6 +49,36 @@ describe("RemoveModuleFromPackageUseCase", () => {
     });
   });
 
+  it("notifica al consumidor de presupuesto con el evento de eliminación", async () => {
+    const mockPackageReader: PackageReader = {
+      getItemModuleId: vi.fn().mockResolvedValue(ok("mod-123")),
+      getPackage: vi.fn(),
+    };
+    const mockOutbox: PackageChangeOutbox = { commit: vi.fn().mockResolvedValue(ok(4)) };
+    const consume = vi.fn().mockResolvedValue(ok(undefined));
+
+    const useCase = new RemoveModuleFromPackageUseCase(
+      mockPackageReader,
+      mockOutbox,
+      mockClock,
+      mockIdGenerator,
+      { consume },
+    );
+
+    const result = await useCase.execute({
+      itemId: "item-456",
+      packageId: "pkg-789",
+      userId: "user-1",
+    });
+
+    expect(result.ok).toBe(true);
+    expect(consume).toHaveBeenCalledTimes(1);
+    expect(consume.mock.calls[0][0]).toMatchObject({
+      payload: { itemId: "item-456", moduleId: "mod-123" },
+      type: "package.module.removed",
+    });
+  });
+
   it("rechaza si el elemento no existe en el paquete", async () => {
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn().mockResolvedValue(ok(null)),
