@@ -80,19 +80,23 @@ export class ConsumePackageChangedEvent {
     }
 
     if (outcome.value.applied) {
-      await this.publisher.publish({
-        eventId: this.ids.generate(),
-        type: "budget.recalculated",
-        schemaVersion: 1,
-        occurredAt: this.clock.now().toISOString(),
-        userId: event.userId,
-        packageId: event.packageId,
-        payload: {
-          budgetId: outcome.value.budget.packageId,
-          totalCop: outcome.value.budget.totalCop,
-          causationEventId: event.eventId,
-        },
-      });
+      try {
+        await this.publisher.publish({
+          eventId: this.ids.generate(),
+          type: "budget.recalculated",
+          schemaVersion: 1,
+          occurredAt: this.clock.now().toISOString(),
+          userId: event.userId,
+          packageId: event.packageId,
+          payload: {
+            budgetId: outcome.value.budget.packageId,
+            totalCop: outcome.value.budget.totalCop,
+            causationEventId: event.eventId,
+          },
+        });
+      } catch (error) {
+        console.error("[budget] no se pudo publicar budget.recalculated", error);
+      }
     }
 
     return ok(outcome.value.budget);

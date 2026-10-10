@@ -10,7 +10,7 @@
 
 CREATE TABLE IF NOT EXISTS public.budgets (
   package_id UUID PRIMARY KEY REFERENCES public.packages (id) ON DELETE CASCADE,
-  total_cop INTEGER NOT NULL,
+  total_cop BIGINT NOT NULL,
   package_version INTEGER NOT NULL,
   updated_at TIMESTAMPTZ NOT NULL DEFAULT timezone('utc'::text, now()),
 
@@ -70,12 +70,12 @@ CREATE OR REPLACE FUNCTION public.process_budget_event(
   p_event_id text,
   p_package_id uuid,
   p_package_version integer,
-  p_total_cop integer
+  p_total_cop bigint
 )
 RETURNS TABLE (
   applied boolean,
   package_id uuid,
-  total_cop integer,
+  total_cop bigint,
   package_version integer,
   updated_at timestamptz
 )
@@ -137,5 +137,5 @@ BEGIN
 END;
 $$;
 
-REVOKE ALL ON FUNCTION public.process_budget_event(text, text, uuid, integer, integer) FROM PUBLIC, anon, authenticated;
-GRANT EXECUTE ON FUNCTION public.process_budget_event(text, text, uuid, integer, integer) TO service_role;
+REVOKE ALL ON FUNCTION public.process_budget_event(text, text, uuid, integer, bigint) FROM PUBLIC, anon, authenticated;
+GRANT EXECUTE ON FUNCTION public.process_budget_event(text, text, uuid, integer, bigint) TO service_role;

@@ -77,6 +77,26 @@ describe("ConsumePackageChangedEvent", () => {
     });
   });
 
+  it("no falla ni pierde el presupuesto si falla la publicación en vivo", async () => {
+    const reader: PackageSnapshotReader = { read: vi.fn(async () => ok(SNAPSHOT)) };
+    const consumer: BudgetConsumer = { process: vi.fn(async () => ok({ applied: true, budget: BUDGET })) };
+    const publisher = {
+      publish: vi.fn(async () => {
+        throw new Error("realtime down");
+      }),
+    };
+    const useCase = new ConsumePackageChangedEvent(reader, consumer, publisher, { generate: () => "x" }, {
+      now: () => new Date("2026-10-08T00:00:00.000Z"),
+    });
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    const result = await useCase.execute(packageModuleAddedExample);
+
+    expect(result).toEqual(ok(BUDGET));
+    expect(publisher.publish).toHaveBeenCalledTimes(1);
+    consoleSpy.mockRestore();
+  });
+
   it("no publica nada cuando el evento es un duplicado (applied: false)", async () => {
     const { publisher, useCase } = harness({ applied: false, budget: BUDGET });
 

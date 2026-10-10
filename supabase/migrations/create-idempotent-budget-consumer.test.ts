@@ -209,7 +209,7 @@ describe("DECOR-33 process_budget_event and budgets/processed_events policies", 
         has_table_privilege('authenticated', 'private.processed_events', 'SELECT') AS select_priv,
         has_function_privilege(
           'authenticated',
-          'public.process_budget_event(text,text,uuid,integer,integer)',
+          'public.process_budget_event(text,text,uuid,integer,bigint)',
           'EXECUTE'
         ) AS execute_priv
     `);
@@ -222,6 +222,20 @@ describe("DECOR-33 process_budget_event and budgets/processed_events policies", 
     await expect(
       asRole("anon", null, "SELECT event_id FROM private.processed_events"),
     ).rejects.toMatchObject({ code: "42501" });
+  });
+
+  it("acepta un total mayor que el máximo de integer de 32 bits", async () => {
+    const result = await callProcessBudgetEvent({
+      consumer: "budget",
+      eventId: "evt-bigint",
+      packageId: PACKAGE_A,
+      packageVersion: 4,
+      totalCop: 3000000000,
+    });
+
+    expect(result.rows).toEqual([
+      expect.objectContaining({ applied: true, total_cop: 3000000000, package_version: 4 }),
+    ]);
   });
 
   it("rejects invalid input before touching any table", async () => {
