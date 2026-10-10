@@ -15,6 +15,9 @@ interface ModuleRow {
   price_cop: number | string;
 }
 
+/** Postgres `invalid_text_representation`: a malformed uuid reached the query. */
+const INVALID_TEXT_REPRESENTATION = "22P02";
+
 export class SupabaseCatalogModuleReader implements CatalogModuleReader {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -28,6 +31,9 @@ export class SupabaseCatalogModuleReader implements CatalogModuleReader {
         .maybeSingle();
 
       if (error) {
+        if (error.code === INVALID_TEXT_REPRESENTATION) {
+          return ok(null);
+        }
         return err(new DomainError("catalog.persistence_error", error.message, { cause: error }));
       }
 

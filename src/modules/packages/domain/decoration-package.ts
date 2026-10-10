@@ -1,7 +1,7 @@
 import { DomainError } from "../../../shared/domain/domain-error";
 import { err, ok, type Result } from "../../../shared/domain/result";
 import type { ModuloDecoracion } from "./decoration-module";
-import { isTipoEspacio, isValidCapacityM2, type TipoEspacio } from "./space-type";
+import { isTipoEspacio, isValidCapacityM2, MAX_CAPACITY_M2, type TipoEspacio } from "./space-type";
 
 export interface PaqueteDecoracionProps {
   readonly tipoEspacio: TipoEspacio;
@@ -29,7 +29,10 @@ export class PaqueteDecoracion {
 
     if (!isValidCapacityM2(props.capacidadM2)) {
       return err(
-        new DomainError("package.invalid_capacity", "La capacidad debe ser un número positivo y finito"),
+        new DomainError(
+          "package.invalid_capacity",
+          `La capacidad debe ser un número positivo, finito y menor o igual a ${MAX_CAPACITY_M2} m²`,
+        ),
       );
     }
 

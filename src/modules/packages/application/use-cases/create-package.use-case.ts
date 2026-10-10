@@ -1,6 +1,6 @@
 import { DomainError } from "../../../../shared/domain/domain-error";
 import { err, type Result } from "../../../../shared/domain/result";
-import { isTipoEspacio, isValidCapacityM2 } from "../../domain/space-type";
+import { isTipoEspacio, isValidCapacityM2, MAX_CAPACITY_M2 } from "../../domain/space-type";
 import type { CreatedPackageDto, CreatePackageDto } from "../dtos/package.dto";
 import type { PackageRepository } from "../ports/package-repository.port";
 
@@ -20,7 +20,10 @@ export class CreatePackageUseCase {
 
     if (!isValidCapacityM2(dto.capacityM2)) {
       return err(
-        new DomainError("package.invalid_capacity", "La capacidad debe ser un número positivo y finito"),
+        new DomainError(
+          "package.invalid_capacity",
+          `La capacidad debe ser un número positivo, finito y menor o igual a ${MAX_CAPACITY_M2} m²`,
+        ),
       );
     }
 

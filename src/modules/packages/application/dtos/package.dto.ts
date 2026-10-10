@@ -16,7 +16,6 @@ export interface AddModuleToPackageDto {
   readonly packageId: string;
   readonly userId: string;
   readonly moduleId: string;
-  readonly parentGroupId?: string;
 }
 
 export interface AddedItemDto {

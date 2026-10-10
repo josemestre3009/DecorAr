@@ -4,7 +4,7 @@ import { CATALOGO_CANONICO } from "./catalog-fixtures";
 import type { ModuloDecoracion } from "./decoration-module";
 import { PaqueteDecoracion } from "./decoration-package";
 import type { PaqueteDecoracionBuilder } from "./decoration-package-builder";
-import { isTipoEspacio, isValidCapacityM2, type TipoEspacio } from "./space-type";
+import { isTipoEspacio, isValidCapacityM2, MAX_CAPACITY_M2, type TipoEspacio } from "./space-type";
 
 export class PaqueteDecoracionBuilderImpl implements PaqueteDecoracionBuilder {
   private paquete: PaqueteDecoracion;
@@ -16,7 +16,10 @@ export class PaqueteDecoracionBuilderImpl implements PaqueteDecoracionBuilder {
     }
 
     if (!isValidCapacityM2(capacidadM2)) {
-      throw new DomainError("package.invalid_capacity", "La capacidad debe ser un número positivo y finito");
+      throw new DomainError(
+        "package.invalid_capacity",
+        `La capacidad debe ser un número positivo, finito y menor o igual a ${MAX_CAPACITY_M2} m²`,
+      );
     }
 
     const packageResult = PaqueteDecoracion.create({ capacidadM2, tipoEspacio });

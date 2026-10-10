@@ -199,6 +199,37 @@ describe("PackageController", () => {
       expect(data).toEqual({ itemId: "item-1", packageVersion: 2 });
       expect(mocks.drainOutbox.execute).toHaveBeenCalled();
     });
+
+    it("devuelve 409 si hay conflicto de versión en la outbox", async () => {
+      const mocks = createMocks();
+      mocks.addModuleToPackageUseCase.execute.mockResolvedValue(
+        err(new DomainError("package.version_conflict", "La versión del paquete cambió")),
+      );
+
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1" }),
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+      expect(res.status).toBe(409);
+      const data = await res.json();
+      expect(data.error.code).toBe("package.version_conflict");
+    });
+
+    it("devuelve 400 si se envía parentGroupId (agrupación fuera de alcance)", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1", parentGroupId: "grupo-1" }),
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+      expect(res.status).toBe(400);
+      const data = await res.json();
+      expect(data.error.code).toBe("package.grouping_not_supported");
+      expect(mocks.addModuleToPackageUseCase.execute).not.toHaveBeenCalled();
+    });
   });
 
   describe("handleRemoveItem", () => {

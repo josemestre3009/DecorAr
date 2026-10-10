@@ -24,6 +24,9 @@ interface PackageItemJoinedRow {
   catalog_modules: { area_m2: number | string } | { area_m2: number | string }[] | null;
 }
 
+/** Postgres `invalid_text_representation`: a malformed uuid reached the query. */
+const INVALID_TEXT_REPRESENTATION = "22P02";
+
 export class SupabasePackageReader implements PackageReader {
   constructor(private readonly client: SupabaseClient) {}
 
@@ -91,6 +94,9 @@ export class SupabasePackageReader implements PackageReader {
         .maybeSingle();
 
       if (error) {
+        if (error.code === INVALID_TEXT_REPRESENTATION) {
+          return ok(null);
+        }
         return err(new DomainError("package.persistence_error", error.message, { cause: error }));
       }
 

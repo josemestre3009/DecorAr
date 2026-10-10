@@ -75,8 +75,8 @@ describe("Patrón Builder: PaqueteDecoracion y DirectorEvento", () => {
     }
   });
 
-  it("rechaza capacidad no positiva o no finita", () => {
-    for (const invalidCapacity of [0, -10, NaN, Infinity, -Infinity]) {
+  it("rechaza capacidad no positiva, no finita o por encima del máximo", () => {
+    for (const invalidCapacity of [0, -10, NaN, Infinity, -Infinity, 1000000]) {
       expect(() => new PaqueteDecoracionBuilderImpl("casa", invalidCapacity)).toThrowError();
 
       const result = PaqueteDecoracion.create({

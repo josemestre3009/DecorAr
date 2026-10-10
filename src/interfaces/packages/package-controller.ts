@@ -119,10 +119,21 @@ export class PackageController {
         );
       }
 
+      if (typeof parentGroupId === "string" && parentGroupId.trim().length > 0) {
+        return Response.json(
+          {
+            error: {
+              code: "package.grouping_not_supported",
+              message: "La agrupación de elementos estará disponible en una entrega posterior.",
+            },
+          },
+          { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
       const result = await this.addModuleToPackageUseCase.execute({
         moduleId: moduleId.trim(),
         packageId,
-        parentGroupId: typeof parentGroupId === "string" ? parentGroupId : undefined,
         userId: access.user.id,
       });
 
@@ -134,6 +145,8 @@ export class PackageController {
           status = 422;
         } else if (code === "package.module_not_found" || code === "package.not_found") {
           status = 404;
+        } else if (code === "package.version_conflict" || code === "event.duplicate") {
+          status = 409;
         } else if (code.startsWith("outbox.") || code === "package.persistence_error") {
           status = 500;
         }
@@ -196,6 +209,8 @@ export class PackageController {
 
         if (code === "package.item_not_found" || code === "package.not_found") {
           status = 404;
+        } else if (code === "package.version_conflict" || code === "event.duplicate") {
+          status = 409;
         } else if (code.startsWith("outbox.") || code === "package.persistence_error") {
           status = 500;
         }
