@@ -583,6 +583,111 @@ a {
   width: 1px;
 }
 
+/* --- DECOR-23: vista 3D y realidad aumentada ------------------------------ */
+
+.module-view {
+  justify-self: center;
+}
+
+.ar-facts {
+  margin-bottom: 0.5rem;
+}
+
+.ar-scale-note {
+  color: color-mix(in srgb, var(--ink) 72%, transparent);
+  font-size: 0.85rem;
+  line-height: 1.45;
+  margin: 0 0 1rem;
+  max-width: 34rem;
+}
+
+.ar-viewer {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.ar-stage {
+  background: color-mix(in srgb, var(--leaf) 12%, var(--paper));
+  border: 1px solid color-mix(in srgb, var(--ink) 15%, transparent);
+  border-radius: 1rem;
+  height: min(70vh, 32rem);
+  overflow: hidden;
+  position: relative;
+  width: 100%;
+}
+
+.ar-model {
+  display: block;
+  height: 100%;
+  width: 100%;
+}
+
+.ar-overlay {
+  inset: 0;
+  justify-content: center;
+  padding: 1rem;
+  position: absolute;
+}
+
+.ar-launch {
+  bottom: 1rem;
+  left: 50%;
+  position: absolute;
+  transform: translateX(-50%);
+  white-space: nowrap;
+  width: auto;
+}
+
+.ar-progress {
+  display: grid;
+  font-size: 0.85rem;
+  gap: 0.35rem;
+}
+
+.ar-progress progress {
+  accent-color: var(--leaf);
+  height: 0.6rem;
+  width: 100%;
+}
+
+.ar-notice {
+  background: color-mix(in srgb, var(--lime) 45%, transparent);
+  border-radius: 0.6rem;
+  font-size: 0.9rem;
+  line-height: 1.45;
+  padding: 0.75rem 0.9rem;
+}
+
+.ar-notice p {
+  margin: 0 0 0.5rem;
+}
+
+.ar-downloads {
+  display: grid;
+  gap: 0.35rem;
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+.ar-downloads a {
+  color: var(--leaf);
+  font-weight: 650;
+  overflow-wrap: anywhere;
+}
+
+.ar-downloads a:focus-visible {
+  outline: 3px solid var(--clay);
+  outline-offset: 2px;
+}
+
+.ar-steps {
+  display: grid;
+  gap: 0.35rem;
+  line-height: 1.45;
+  margin: 0.5rem 0 0;
+  padding-left: 1.25rem;
+}
+
 @media (max-width: 760px) {
   .status {
     display: none;

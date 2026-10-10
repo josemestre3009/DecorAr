@@ -19,10 +19,12 @@ EXPECTED = {
 
 
 def main():
-    if "--" not in sys.argv or sys.argv[-1] not in FILES:
+    if "--" not in sys.argv or len(sys.argv[sys.argv.index("--") + 1 :]) != 2:
+        raise RuntimeError("Pass exactly two args (asset id, version) after --")
+    asset_id, version = sys.argv[sys.argv.index("--") + 1 :]
+    if asset_id not in FILES:
         raise RuntimeError("Pass one of mesa, arco or pista after --")
-    asset_id = sys.argv[-1]
-    path = ROOT / "assets" / "3d" / asset_id / "v2" / FILES[asset_id]
+    path = ROOT / "assets" / "3d" / asset_id / f"v{version}" / FILES[asset_id]
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     result = bpy.ops.wm.usd_import(filepath=str(path), import_textures_mode="IMPORT_NONE")

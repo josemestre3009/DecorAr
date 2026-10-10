@@ -18,15 +18,14 @@ ASSETS = {
 
 
 def main():
-    if "--" not in sys.argv or len(sys.argv[sys.argv.index("--") + 1 :]) != 1:
-        raise RuntimeError("Pass exactly one asset id after --")
-    asset_id = sys.argv[-1]
+    if "--" not in sys.argv or len(sys.argv[sys.argv.index("--") + 1 :]) != 2:
+        raise RuntimeError("Pass exactly two args (asset id, version) after --")
+    asset_id, version = sys.argv[sys.argv.index("--") + 1 :]
     if asset_id not in ASSETS:
         raise RuntimeError(f"Unknown asset: {asset_id}")
 
     glb, usdz, poster = ASSETS[asset_id]
-    source = ROOT / "assets" / "3d" / asset_id / "v1"
-    output = ROOT / "assets" / "3d" / asset_id / "v2"
+    output = ROOT / "assets" / "3d" / asset_id / f"v{version}"
 
     bpy.ops.wm.read_factory_settings(use_empty=True)
     result = bpy.ops.import_scene.gltf(filepath=str(output / glb))
@@ -50,8 +49,11 @@ def main():
     )
     if result != {"FINISHED"}:
         raise RuntimeError(f"Could not export {output / usdz}")
-    shutil.copy2(source / poster, output / poster)
-    print(f"{asset_id}: exported USDZ from scaled GLB", flush=True)
+
+    previous = ROOT / "assets" / "3d" / asset_id / f"v{int(version) - 1}"
+    poster_source = previous / poster if (previous / poster).exists() else ROOT / "assets" / "3d" / asset_id / "v1" / poster
+    shutil.copy2(poster_source, output / poster)
+    print(f"{asset_id}: exported USDZ from GLB v{version}", flush=True)
 
 
 if __name__ == "__main__":

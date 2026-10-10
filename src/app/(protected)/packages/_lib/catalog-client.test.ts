@@ -3,7 +3,7 @@ import { resolve } from "node:path";
 
 import { describe, expect, it, vi } from "vitest";
 
-import { fetchCatalogModules } from "./catalog-client";
+import { fetchCatalogModule, fetchCatalogModules } from "./catalog-client";
 
 const fixture: unknown = JSON.parse(
   readFileSync(resolve("public/fixtures/catalog-modules.json"), "utf8"),
@@ -85,5 +85,39 @@ describe("fetchCatalogModules", () => {
     const result = await fetchCatalogModules(fetcher);
 
     expect(!result.ok && result.error.kind).toBe("network");
+  });
+});
+
+describe("fetchCatalogModule", () => {
+  const [mesa] = fixture as { id: string }[];
+
+  it("devuelve el módulo pedido sin caché del navegador", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+
+    const result = await fetchCatalogModule(mesa?.id as string, fetcher);
+
+    expect(result).toEqual({ ok: true, value: mesa });
+    expect(fetcher).toHaveBeenCalledWith(
+      "/api/modules",
+      expect.objectContaining({ cache: "no-store" }),
+    );
+  });
+
+  it("informa que no existe un módulo ausente o retirado del catálogo", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+
+    const result = await fetchCatalogModule("no-existe", fetcher);
+
+    expect(!result.ok && result.error.kind).toBe("not_found");
+  });
+
+  it("propaga el error del catálogo", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ error: "Internal Server Error" }, { status: 500 }));
+
+    const result = await fetchCatalogModule(mesa?.id as string, fetcher);
+
+    expect(!result.ok && result.error.kind).toBe("server");
   });
 });

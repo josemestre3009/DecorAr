@@ -180,3 +180,18 @@ describe("PackageCatalog", () => {
     await screen.findByText("Todavía no hay módulos disponibles en el catálogo.");
   });
 });
+
+describe("PackageCatalog: acceso a la vista 3D (DECOR-23)", () => {
+  it("cada tarjeta enlaza a su vista 3D dentro del paquete", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+
+    const links = await screen.findAllByRole("link", { name: /^Ver .+ en 3D$/ });
+
+    expect(links).toHaveLength(3);
+    expect(screen.getByRole("link", { name: "Ver Mesa redonda en 3D" })).toHaveAttribute(
+      "href",
+      `/packages/p-1/modules/${fixture[0]?.id}`,
+    );
+  });
+});

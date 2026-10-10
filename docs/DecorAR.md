@@ -164,6 +164,77 @@ La persistencia es atómica e idempotente mediante `process_budget_event`, invoc
 
 `ConsumePackageChangedEvent` no se suscribe al canal Broadcast: quien comitea el cambio de paquete (DECOR-27) lo invoca directamente con el mismo evento recién persistido, así que el recálculo nunca depende de que Realtime haya entregado nada. `supabase/migrations/create-idempotent-budget-consumer.test.ts` aplica todas las migraciones en PGlite y verifica duplicado, versión desordenada y los permisos de `anon`/`authenticated` sobre `budgets` y `processed_events`.
 
+### 2.2.6 Vista 3D y realidad aumentada: Bridge y Flyweight
+
+Cada tarjeta del catálogo enlaza a `/packages/{id}/modules/{moduleId}` (DECOR-23). La página está en `(protected)/`, llama a `requireSessionUser()` y obtiene el módulo de `GET /api/modules`. El componente cliente carga `@google/model-viewer` sólo en el navegador y le entrega la configuración que preparan los patrones de las secciones 4.4 y 4.5, implementados en `src/modules/ar/domain` como TypeScript puro.
+
+```mermaid
+classDiagram
+    class ElementoAR {
+        <<abstract>>
+        +nombre
+        +instancia: InstanciaDecorativa
+        +colocacion
+        +presentar() ConfiguracionVisor
+    }
+    class RenderizadorAR {
+        <<interface>>
+        +soporta(capacidades) bool
+        +configurar(peticion) ConfiguracionVisor
+    }
+    ElementoAR <|-- MesaAR
+    ElementoAR <|-- ArcoAR
+    ElementoAR <|-- PistaAR
+    ElementoAR o--> RenderizadorAR : delega
+    RenderizadorAR <|.. RenderizadorQuickLook
+    RenderizadorAR <|.. RenderizadorSceneViewer
+    RenderizadorAR <|.. RenderizadorWebXR
+    RenderizadorAR <|.. RenderizadorSinAR
+```
+
+```mermaid
+classDiagram
+    class FabricaActivos3D {
+        -activos: Map
+        +obtener(datos) Activo3DCompartido
+        +activosCreados
+    }
+    class Activo3DCompartido {
+        <<inmutable>>
+        +clave
+        +glbUrl
+        +usdzUrl
+        +posterUrl
+        +widthM
+        +heightM
+        +depthM
+    }
+    class InstanciaDecorativa {
+        +posicion
+        +rotacionGrados
+        +color
+        +escala
+        +mover() InstanciaDecorativa
+        +rotar() InstanciaDecorativa
+        +colorear() InstanciaDecorativa
+    }
+    FabricaActivos3D --> Activo3DCompartido : crea una vez por clave
+    InstanciaDecorativa --> Activo3DCompartido : comparte
+```
+
+- **Bridge.** `elegirRenderizador` usa Quick Look en iOS (también iPadOS, que se anuncia como Mac táctil), Scene Viewer en Android (con WebXR de respaldo), WebXR en otros navegadores con `immersive-ar`, y la vista 3D sin AR en los demás. Mesa, arco y pista no cambian: sólo cambia el renderizador. Las tres piezas se apoyan en el piso (`ar-placement="floor"`); el arco es una estructura de pie de 2,4 m, no un elemento de pared.
+- **Flyweight.** `FabricaActivos3D` congela el activo y lo reutiliza por `assetId@vN`. Si llegan datos distintos con la misma clave responde `ar.asset_conflict` en vez de sobrescribir, coherente con las versiones inmutables de DECOR-36. `InstanciaDecorativa` guarda posición, rotación y color sin copiar el activo, y su escala es siempre 1.
+- **Escala 1:1.** Todos los renderizadores fijan `ar-scale="fixed"`. Esto impide redimensionar, pero no corrige un archivo mal escalado: la escala real depende de los GLB y USDZ publicados (mesa v2; arco y pista v3, recentrados).
+
+Límites conocidos:
+
+- La E2E (`e2e/ar-viewer.spec.ts`) corre en Chromium. Comprueba los atributos AR por plataforma y la carga real del GLB, pero no abre visores nativos. Detectar la superficie, colocar, mover y rotar se evidencia manualmente en Android y en iPhone.
+- Cuando `<model-viewer>` ya está registrado, React 19 asigna `src`, `alt`, `poster`, `ar`, `loading` y `reveal` como propiedades y no quedan en el DOM. El componente los escribe con `setAttribute` para que DECOR-39 pueda verificarlos.
+- `@google/model-viewer` y `three` se descargan sólo en la vista 3D.
+- Quick Look y Scene Viewer colocan el **origen** del archivo sobre la superficie y no aplican el recentrado de la vista 3D. El arco v2 y la pista v2 tenían geometría descentrada (arco a ~4,3 m del origen y 15 cm bajo el piso; pista 28,5 cm bajo el origen), así que en AR no se apoyaban en el punto elegido. Corregido: se publicaron **arco v3 y pista v3** recentrados (centro X/Z = 0, base Y = 0, misma escala); `mesa` v2 ya estaba centrada. La vista los toma sin cambios de código.
+- En iPhone, Quick Look sólo está disponible en Safari (y en Chrome, Edge o Firefox de iOS). Si el enlace se abre dentro de WhatsApp, Instagram o la app de Google, `<model-viewer>` no ofrece AR; la vista lo explica y oculta el botón y los pasos.
+- Después del login la app vuelve a `/packages`; un enlace directo a la vista 3D no regresa a ella.
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid

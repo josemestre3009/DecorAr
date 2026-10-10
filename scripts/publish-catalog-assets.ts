@@ -24,6 +24,8 @@ interface PublishOptions {
 
 export const DEFAULT_CATALOG_ASSET_VERSION = 2;
 
+// arco y pista v3 están recentrados en el origen (centro X/Z = 0, base Y = 0) para
+// que AR los coloque sobre el punto elegido; mesa v2 ya estaba centrada.
 const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
   {
     assetId: "mesa",
@@ -31,11 +33,11 @@ const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
   },
   {
     assetId: "arco",
-    version: DEFAULT_CATALOG_ASSET_VERSION,
+    version: 3,
   },
   {
     assetId: "pista",
-    version: DEFAULT_CATALOG_ASSET_VERSION,
+    version: 3,
   },
 ];
 

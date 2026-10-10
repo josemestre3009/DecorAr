@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 
 import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalog-module.dto";
@@ -14,11 +15,12 @@ export type AddState =
 
 type ModuleCardProps = {
   readonly module: CatalogModuleDto;
+  readonly packageId: string;
   readonly addState: AddState;
   readonly onAdd: (module: CatalogModuleDto) => void;
 };
 
-export function ModuleCard({ module, addState, onAdd }: ModuleCardProps) {
+export function ModuleCard({ module, packageId, addState, onAdd }: ModuleCardProps) {
   const [posterFailed, setPosterFailed] = useState(false);
   const errorId = `module-${module.id}-error`;
   const showPoster = module.posterUrl !== null && !posterFailed;
@@ -78,6 +80,14 @@ export function ModuleCard({ module, addState, onAdd }: ModuleCardProps) {
         >
           {adding ? "Agregando…" : "Agregar"}
         </button>
+
+        <Link
+          aria-label={`Ver ${module.name} en 3D`}
+          className="secondary-link module-view"
+          href={`/packages/${encodeURIComponent(packageId)}/modules/${encodeURIComponent(module.id)}`}
+        >
+          Ver en 3D
+        </Link>
 
         {addState.status === "added" ? (
           <p className="module-added">

@@ -94,6 +94,17 @@ describe("inspectAllAssets", () => {
     expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
   });
 
+  it.each([
+    ["arco", "assets/3d/arco/v3/flower_arch.glb", [2.445, 2.4, 0.505]],
+    ["pista", "assets/3d/pista/v3/animated_dance_floor_neon_lights.glb", [4, 0.285, 4]],
+  ])("recentra %s v3 con la misma escala y la base en el piso", async (_id, file, expected) => {
+    const bounds = extractGlbBoundingBox(await readFile(file));
+    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
+    expect(bounds.min[1]).toBeCloseTo(0, 2);
+    expect(bounds.min[0] + bounds.max[0]).toBeCloseTo(0, 2);
+    expect(bounds.min[2] + bounds.max[2]).toBeCloseTo(0, 2);
+  });
+
   it("selecciona la versión solicitada sin inspeccionar v1", async () => {
     expect(parseInspectOptions(["--asset=mesa", "--version=2"])).toEqual({
       assetId: "mesa",

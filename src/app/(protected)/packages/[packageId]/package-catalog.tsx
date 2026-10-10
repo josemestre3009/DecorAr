@@ -143,6 +143,7 @@ export function PackageCatalog({ packageId, client, fetcher }: PackageCatalogPro
                 addState={addStates[module.id] ?? IDLE}
                 module={module}
                 onAdd={add}
+                packageId={packageId}
               />
             </li>
           ))}
