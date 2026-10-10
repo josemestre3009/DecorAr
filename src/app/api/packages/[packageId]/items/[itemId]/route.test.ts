@@ -11,7 +11,7 @@ vi.mock("@/composition/server", () => ({
 
 import { DELETE } from "./route";
 
-describe("DELETE /api/packages/[id]/items/[itemId]", () => {
+describe("DELETE /api/packages/[packageId]/items/[itemId]", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -24,7 +24,7 @@ describe("DELETE /api/packages/[id]/items/[itemId]", () => {
     });
 
     const res = await DELETE(req, {
-      params: Promise.resolve({ id: "pkg-42", itemId: "item-99" }),
+      params: Promise.resolve({ packageId: "pkg-42", itemId: "item-99" }),
     });
     expect(res.status).toBe(204);
     expect(mockHandleRemoveItem).toHaveBeenCalledWith("pkg-42", "item-99");
@@ -39,7 +39,7 @@ describe("DELETE /api/packages/[id]/items/[itemId]", () => {
     });
 
     const res = await DELETE(req, {
-      params: Promise.resolve({ id: "pkg-42", itemId: "item-99" }),
+      params: Promise.resolve({ packageId: "pkg-42", itemId: "item-99" }),
     });
     expect(res.status).toBe(500);
     const body = await res.json();

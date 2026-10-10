@@ -11,7 +11,7 @@ vi.mock("@/composition/server", () => ({
 
 import { POST } from "./route";
 
-describe("POST /api/packages/[id]/items", () => {
+describe("POST /api/packages/[packageId]/items", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
@@ -26,7 +26,7 @@ describe("POST /api/packages/[id]/items", () => {
       method: "POST",
     });
 
-    const res = await POST(req, { params: Promise.resolve({ id: "pkg-42" }) });
+    const res = await POST(req, { params: Promise.resolve({ packageId: "pkg-42" }) });
     expect(res.status).toBe(201);
     expect(mockHandleAddItem).toHaveBeenCalledWith(req, "pkg-42");
     const body = await res.json();
@@ -42,7 +42,7 @@ describe("POST /api/packages/[id]/items", () => {
       method: "POST",
     });
 
-    const res = await POST(req, { params: Promise.resolve({ id: "pkg-42" }) });
+    const res = await POST(req, { params: Promise.resolve({ packageId: "pkg-42" }) });
     expect(res.status).toBe(500);
     const body = await res.json();
     expect(body.error.code).toBe("internal_error");

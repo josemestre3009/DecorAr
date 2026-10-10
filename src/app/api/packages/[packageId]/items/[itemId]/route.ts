@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createPackageController } from "@/composition/server";
 
 interface RouteContext {
-  params: Promise<{ id: string; itemId: string }> | { id: string; itemId: string };
+  params: Promise<{ packageId: string; itemId: string }> | { packageId: string; itemId: string };
 }
 
 export async function DELETE(
@@ -11,13 +11,13 @@ export async function DELETE(
   context: RouteContext,
 ): Promise<Response> {
   try {
-    const { id, itemId } = await context.params;
+    const { packageId, itemId } = await context.params;
     const controller = await createPackageController();
-    return await controller.handleRemoveItem(id, itemId);
+    return await controller.handleRemoveItem(packageId, itemId);
   } catch (cause) {
     const correlationId = randomUUID();
     console.error(
-      `[API DELETE /api/packages/[id]/items/[itemId]] Uncaught error (${correlationId}):`,
+      `[API DELETE /api/packages/[packageId]/items/[itemId]] Uncaught error (${correlationId}):`,
       cause,
     );
 
