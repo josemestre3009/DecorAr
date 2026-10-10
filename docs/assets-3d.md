@@ -43,7 +43,7 @@ Para la colocación en Realidad Aumentada, la visualización debe mantenerse a e
 
 Para validar matemáticamente las dimensiones, el repositorio incluye la herramienta `scripts/inspect-glb-bounds.ts`, la cual procesa la cabecera binaria glTF de 12 bytes y el grafo de nodos/transformaciones para extraer el Bounding Box transformado de la escena:
 
-### Tabla de Dimensiones Corregidas v2
+### Tabla de Dimensiones Corregidas v2/v3
 
 | Módulo | Referencia física aprobada | Escala uniforme | Bounding Box GLB v2 | Bounding Box USDZ v2 |
 | :--- | :--- | :--- | :--- | :--- |
@@ -53,9 +53,11 @@ Para validar matemáticamente las dimensiones, el repositorio incluye la herrami
 
 Las referencias físicas son la decisión de producto usada originalmente por el catálogo: mesa de 2m, arco de 2.4m y pista de 4m. Cada fuente v1 recibió una sola escala uniforme; ninguna proporción fue deformada. `scripts/reexport-scaled-glb.mjs` genera los GLB v2. `scripts/export-usdz-from-scaled-glb.py` genera los USDZ desde esos mismos GLB mediante Blender, garantizando geometría equivalente en Scene Viewer y Quick Look.
 
+La v3 (DECOR-23) conserva la escala y solo **recentra** `arco` y `pista` en el origen (centro X/Z = 0, base Y = 0) para que Quick Look y Scene Viewer los apoyen sobre el punto elegido; `mesa` v2 ya estaba centrada. `scripts/recenter-glb.mjs` genera el GLB v3 desde el v2 y los USDZ v3 se exportan del GLB v3 con `scripts/export-usdz-from-scaled-glb.py {assetId} {version}`.
+
 `area_m2` representa el área comercial reservada para cotización y composición de paquetes. No es el producto automático `width_m × depth_m`; esos campos describen el bounding box físico del modelo AR.
 
-`scripts/inspect-glb-bounds.test.ts` fija los bounds v2. `scripts/validate-usdz-dimensions.py` reimporta cada USDZ con Blender y verifica las mismas dimensiones con el cambio esperado de ejes Y-up/Z-up. Los tres GLB pasan Khronos glTF Validator sin errores. Todos los archivos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
+`scripts/inspect-glb-bounds.test.ts` fija los bounds v2 y el recentrado v3 (base en Y = 0, centro X/Z = 0). `scripts/validate-usdz-dimensions.py` reimporta cada USDZ con Blender y verifica las mismas dimensiones con el cambio esperado de ejes Y-up/Z-up. Los tres GLB pasan Khronos glTF Validator sin errores. Todos los archivos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
 
 `<model-viewer ar-scale="fixed">` impide el redimensionamiento por el usuario. Si una ficha de fabricante posterior cambia una referencia, se debe aplicar otra escala **uniforme** y publicar una versión nueva. No se publica una escala por eje. La validación geométrica automatizada no sustituye una prueba visual final en dispositivos Android/iOS.
 
@@ -103,27 +105,36 @@ Los 9 activos correspondientes a la versión `v1` se encuentran publicados y ver
 
 Las nueve URLs v2 respondieron HTTP 200 con MIME `model/gltf-binary`, `model/vnd.usdz+zip` o `image/webp`. Supabase conserva cada v1 como `retired` y exactamente una v2 `active` por `asset_id`.
 
+### Activos recentrados (`v3`, activos para arco y pista)
+
+| Módulo | GLB | USDZ | Poster |
+| :--- | :--- | :--- | :--- |
+| Arco | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791609901/decorar/arco/v3/arco.glb` | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791609902/decorar/arco/v3/arco.usdz` | `https://res.cloudinary.com/gndjyjx2/image/upload/v1791609902/decorar/arco/v3/arco-poster.webp` |
+| Pista | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791609917/decorar/pista/v3/pista.glb` | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791609918/decorar/pista/v3/pista.usdz` | `https://res.cloudinary.com/gndjyjx2/image/upload/v1791609919/decorar/pista/v3/pista-poster.webp` |
+
+Las cuatro URLs v3 respondieron HTTP 200 con MIME `model/gltf-binary` o `model/vnd.usdz+zip`. Bounds v3 verificados: arco `[-1.223, 0, -0.252]..[1.223, 2.4, 0.252]`, pista `[-2, 0, -2]..[2, 0.285, 2]` (base en Y = 0, centro X/Z = 0). Supabase conserva arco y pista v2 como `retired` y v3 `active`; `mesa` sigue en v2.
+
 ---
 
-## 6. Procedimiento Operativo: Publicación de una Nueva Versión (v2)
+## 6. Procedimiento Operativo: Publicación de una Nueva Versión
 
 Para actualizar o crear una nueva versión de un activo sin afectar la versión activa:
 1. **Crear carpeta de versión:**
-   Colocar los archivos optimizados bajo `assets/3d/{assetId}/v2/` (`{assetId}.glb`, `{assetId}.usdz`, `poster.{webp|png|jpg}`).
+   Colocar los archivos optimizados bajo `assets/3d/{assetId}/v{version}/` (`{assetId}.glb`, `{assetId}.usdz`, `poster.{webp|png|jpg}`).
 2. **Inspeccionar límites y bounding box:**
    Ejecutar la herramienta de medición:
    ```bash
-   npx tsx scripts/inspect-glb-bounds.ts --asset=mesa --version=2
+   npx tsx scripts/inspect-glb-bounds.ts --asset=arco --version=3
    ```
 3. **Crear fila en estado Draft en la Base de Datos:**
-   Registrar mediante migración SQL o script administrativo la fila con `status = 'draft'` y `version = 2`.
+   Registrar mediante migración SQL o script administrativo la fila con `status = 'draft'` y `version = {version}` (ver `supabase/migrations/20261010000000_seed_recentered_catalog_v3.sql`).
 4. **Ejecutar publicación:**
    Ejecutar el script de publicación:
    ```bash
-   npm run catalog:publish-assets -- --asset=mesa --version=2
+   npm run catalog:publish-assets -- --asset=arco --version=3
    ```
 5. **Verificación:**
-   El caso de uso subirá los archivos a `decorar/{assetId}/v2/...`. La RPC serializa por `asset_id`, cambia v1 de `active` a `retired` y activa v2 en la misma transacción. El índice `uq_catalog_modules_one_active_asset` impide dos versiones activas.
+   El caso de uso subirá los archivos a `decorar/{assetId}/v{version}/...`. La RPC serializa por `asset_id`, retira la versión activa anterior a `retired` y activa la nueva en la misma transacción. El índice `uq_catalog_modules_one_active_asset` impide dos versiones activas.
 
 ## 7. Recuperación, limpieza y rollback
 

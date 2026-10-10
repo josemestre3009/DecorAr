@@ -28,5 +28,5 @@
 - [x] 4.2 `src/modules/ar/README.md` con los participantes de cada patrón
 - [ ] 4.3 Evidencia manual en Android (Scene Viewer) y en iPhone (Quick Look): detectar superficie, colocar, mover, rotar y comparar el tamaño con las medidas
   - iPhone con Safari: Quick Look abre desde "Ver en tu espacio" (probado por Mei). Dentro de apps como WhatsApp no hay Quick Look y la vista pide abrir Safari.
-  - Arco v2: en Quick Look aparece a unos 4,3 m del punto de colocación (solo se ve en un espacio amplio). Causa: el GLB publicado por DECOR-36 tiene su geometría descentrada (centro X = -2,38 m, Z = -3,62 m; base 15 cm bajo el origen). Requiere arco v3 recentrado en DECOR-36; la pista v2 tiene la base 28,5 cm bajo el origen.
+  - Arco/pista: la v2 tenía geometría descentrada (arco a ~4,3 m del origen y 15 cm bajo el piso; pista 28,5 cm bajo el origen). Resuelto: arco v3 y pista v3 recentrados publicados (centro X/Z = 0, base Y = 0, misma escala); `mesa` v2 ya estaba centrada.
   - Pendiente: Android con Scene Viewer y grabación de la evidencia
