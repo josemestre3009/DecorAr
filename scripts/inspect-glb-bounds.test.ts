@@ -105,6 +105,14 @@ describe("inspectAllAssets", () => {
     expect(bounds.min[2] + bounds.max[2]).toBeCloseTo(0, 2);
   });
 
+  it("mantiene la silla plástica a escala real y apoyada en el piso", async () => {
+    const bounds = extractGlbBoundingBox(await readFile("assets/3d/silla/v2/silla.glb"));
+
+    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual([0.642, 0.88, 0.628]);
+    expect(bounds.min[1]).toBeCloseTo(0, 3);
+    expect(bounds.min[0] + bounds.max[0]).toBeCloseTo(0, 3);
+  });
+
   it("selecciona la versión solicitada sin inspeccionar v1", async () => {
     expect(parseInspectOptions(["--asset=mesa", "--version=2"])).toEqual({
       assetId: "mesa",
@@ -116,7 +124,7 @@ describe("inspectAllAssets", () => {
   });
 
   it("rechaza módulo o versión inválidos", () => {
-    expect(() => parseInspectOptions(["--asset=silla"])).toThrow("Módulo desconocido");
+    expect(() => parseInspectOptions(["--asset=lampara"])).toThrow("Módulo desconocido");
     expect(() => parseInspectOptions(["--version=0"])).toThrow("Versión inválida");
   });
 });

@@ -16,8 +16,15 @@ describe("parsePublishOptions", () => {
     });
   });
 
+  it("permite publicar la silla", () => {
+    expect(parsePublishOptions(["--asset=silla", "--version=2"])).toEqual({
+      assetId: "silla",
+      version: 2,
+    });
+  });
+
   it("rechaza módulos y versiones inválidas", () => {
-    expect(() => parsePublishOptions(["--asset=silla"])).toThrow("Módulo desconocido");
+    expect(() => parsePublishOptions(["--asset=lampara"])).toThrow("Módulo desconocido");
     expect(() => parsePublishOptions(["--version=0"])).toThrow("Versión inválida");
   });
 });

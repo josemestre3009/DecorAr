@@ -55,6 +55,8 @@ Las referencias físicas son la decisión de producto usada originalmente por el
 
 La v3 (DECOR-23) conserva la escala y solo **recentra** `arco` y `pista` en el origen (centro X/Z = 0, base Y = 0) para que Quick Look y Scene Viewer los apoyen sobre el punto elegido; `mesa` v2 ya estaba centrada. `scripts/recenter-glb.mjs` genera el GLB v3 desde el v2 y los USDZ v3 se exportan del GLB v3 con `scripts/export-usdz-from-scaled-glb.py {assetId} {version}`.
 
+La silla v2 usa el modelo CC0 [Plastic Monobloc Chair 01](https://polyhaven.com/a/plastic_monobloc_chair_01) de Poly Haven. Sus bounds son **0.642m × 0.880m × 0.628m**, conserva la escala física original y reemplaza la silla tapizada generada de v1 por una silla plástica clásica realista para eventos. `scripts/export-catalog-usdz-poster.mjs silla 2` deriva el USDZ y el poster del GLB.
+
 `area_m2` representa el área comercial reservada para cotización y composición de paquetes. No es el producto automático `width_m × depth_m`; esos campos describen el bounding box físico del modelo AR.
 
 `scripts/inspect-glb-bounds.test.ts` fija los bounds v2 y el recentrado v3 (base en Y = 0, centro X/Z = 0). `scripts/validate-usdz-dimensions.py` reimporta cada USDZ con Blender y verifica las mismas dimensiones con el cambio esperado de ejes Y-up/Z-up. Los tres GLB pasan Khronos glTF Validator sin errores. Todos los archivos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
@@ -113,6 +115,14 @@ Las nueve URLs v2 respondieron HTTP 200 con MIME `model/gltf-binary`, `model/vnd
 | Pista | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791609917/decorar/pista/v3/pista.glb` | `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791609918/decorar/pista/v3/pista.usdz` | `https://res.cloudinary.com/gndjyjx2/image/upload/v1791609919/decorar/pista/v3/pista-poster.webp` |
 
 Las cuatro URLs v3 respondieron HTTP 200 con MIME `model/gltf-binary` o `model/vnd.usdz+zip`. Bounds v3 verificados: arco `[-1.223, 0, -0.252]..[1.223, 2.4, 0.252]`, pista `[-2, 0, -2]..[2, 0.285, 2]` (base en Y = 0, centro X/Z = 0). Supabase conserva arco y pista v2 como `retired` y v3 `active`; `mesa` sigue en v2.
+
+### Silla plástica realista (`silla` v2, activa)
+
+* **GLB:** `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791615722/decorar/silla/v2/silla.glb`
+* **USDZ:** `https://res.cloudinary.com/gndjyjx2/raw/upload/v1791615723/decorar/silla/v2/silla.usdz`
+* **Poster:** `https://res.cloudinary.com/gndjyjx2/image/upload/v1791615723/decorar/silla/v2/silla-poster.png`
+
+Las tres URLs respondieron HTTP 200 con el MIME esperado. Supabase conserva la silla tapizada v1 como `retired` y expone únicamente la silla plástica v2 como `active`.
 
 ---
 

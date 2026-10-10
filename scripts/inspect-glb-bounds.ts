@@ -14,7 +14,7 @@ export interface InspectOptions {
   readonly version?: number;
 }
 
-const ASSET_IDS = ["mesa", "arco", "pista"] as const;
+const ASSET_IDS = ["mesa", "silla", "arco", "pista"] as const;
 
 export function parseInspectOptions(args: readonly string[]): InspectOptions {
   const assetId = args.find((arg) => arg.startsWith("--asset="))?.slice("--asset=".length);

@@ -32,6 +32,10 @@ const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
     version: DEFAULT_CATALOG_ASSET_VERSION,
   },
   {
+    assetId: "silla",
+    version: 2,
+  },
+  {
     assetId: "arco",
     version: 3,
   },
