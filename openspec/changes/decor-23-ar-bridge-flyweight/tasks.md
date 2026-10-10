@@ -24,7 +24,7 @@
 
 ## 4. Documentación y evidencia
 
-- [x] 4.1 `docs/DecorAR.md` §2.2.5 con diagramas de Bridge y Flyweight y límites
+- [x] 4.1 `docs/DecorAR.md` §2.2.6 con diagramas de Bridge y Flyweight y límites
 - [x] 4.2 `src/modules/ar/README.md` con los participantes de cada patrón
 - [ ] 4.3 Evidencia manual en Android (Scene Viewer) y en iPhone (Quick Look): detectar superficie, colocar, mover, rotar y comparar el tamaño con las medidas
   - iPhone con Safari: Quick Look abre desde "Ver en tu espacio" (probado por Mei). Dentro de apps como WhatsApp no hay Quick Look y la vista pide abrir Safari.
