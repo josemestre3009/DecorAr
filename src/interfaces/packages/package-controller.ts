@@ -3,21 +3,42 @@ import { randomUUID } from "node:crypto";
 import type { DrainOutboxUseCase } from "../../modules/events/application/drain-outbox.use-case";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
 import type { AddModuleToPackageUseCase } from "../../modules/packages/application/use-cases/add-module-to-package.use-case";
+import { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
 import type { SessionGateway } from "../../shared/application/ports";
 import { checkPackageAccess } from "./package-access";
 
 export class PackageController {
+  private readonly clonePackageUseCase?: ClonePackageUseCase;
+  private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
+  private readonly defaultHeaders: Record<string, string>;
+
   constructor(
     private readonly sessionGateway: Pick<SessionGateway, "currentUser">,
     private readonly authorizePackageAccess: AuthorizePackageAccessUseCase,
     private readonly createPackageUseCase: CreatePackageUseCase,
     private readonly addModuleToPackageUseCase: AddModuleToPackageUseCase,
     private readonly removeModuleFromPackageUseCase: RemoveModuleFromPackageUseCase,
-    private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">,
-    private readonly defaultHeaders: Record<string, string> = {},
-  ) {}
+    clonePackageOrDrain?: ClonePackageUseCase | Pick<DrainOutboxUseCase, "execute">,
+    drainOrHeaders?: Pick<DrainOutboxUseCase, "execute"> | Record<string, string>,
+    headersOrEmpty: Record<string, string> = {},
+  ) {
+    if (
+      clonePackageOrDrain instanceof ClonePackageUseCase ||
+      (drainOrHeaders && typeof (drainOrHeaders as Record<string, unknown>).execute === "function")
+    ) {
+      this.clonePackageUseCase = clonePackageOrDrain as ClonePackageUseCase;
+      this.drainOutbox = drainOrHeaders as Pick<DrainOutboxUseCase, "execute">;
+      this.defaultHeaders = headersOrEmpty;
+    } else if (clonePackageOrDrain && typeof (clonePackageOrDrain as Record<string, unknown>).execute === "function") {
+      this.drainOutbox = clonePackageOrDrain as Pick<DrainOutboxUseCase, "execute">;
+      this.defaultHeaders = (drainOrHeaders as Record<string, string>) ?? {};
+    } else {
+      this.defaultHeaders = headersOrEmpty;
+    }
+  }
+
 
   async handleCreatePackage(request: Request): Promise<Response> {
     try {
@@ -242,4 +263,60 @@ export class PackageController {
       );
     }
   }
+
+  async handleClonePackage(request: Request, packageId: string): Promise<Response> {
+    try {
+      const access = await checkPackageAccess(
+        this.authorizePackageAccess,
+        packageId,
+        this.defaultHeaders,
+      );
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.clonePackageUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de clonación no disponible." } },
+          { headers: this.defaultHeaders, status: 500 },
+        );
+      }
+
+      const result = await this.clonePackageUseCase.execute({
+        sourcePackageId: packageId,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        let status = 400;
+
+        if (code === "package.not_found") {
+          status = 404;
+        } else if (code === "auth.unauthenticated") {
+          status = 401;
+        } else if (code === "package.persistence_error") {
+          status = 500;
+        }
+
+        return Response.json(
+          { error: { code, message } },
+          { headers: this.defaultHeaders, status },
+        );
+      }
+
+      return Response.json(result.value, {
+        headers: this.defaultHeaders,
+        status: 201,
+      });
+    } catch (cause) {
+      const correlationId = randomUUID();
+      console.error(`[PackageController.clone] Error inesperado (${correlationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: this.defaultHeaders, status: 500 },
+      );
+    }
+  }
 }
+

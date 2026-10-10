@@ -5,9 +5,11 @@ import { err, ok } from "../../shared/domain/result";
 import type { SessionUser } from "../../shared/domain/session";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
 import type { AddModuleToPackageUseCase } from "../../modules/packages/application/use-cases/add-module-to-package.use-case";
+import { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
 import { PackageController } from "./package-controller";
+
 
 describe("PackageController", () => {
   const dummyUser: SessionUser = { email: "test@example.com", id: "user-1" };
@@ -37,6 +39,21 @@ describe("PackageController", () => {
       execute: vi.fn().mockResolvedValue(ok(undefined)),
     };
 
+    const clonePackageUseCase = {
+      execute: vi.fn().mockResolvedValue(
+        ok({
+          capacityM2: 50,
+          colors: ["#ffffff"],
+          id: "pkg-cloned-1",
+          itemCount: 2,
+          notes: "Notas clonadas",
+          spaceType: "salonSocial",
+          style: "bohemio",
+          version: 1,
+        }),
+      ),
+    };
+
     const drainOutbox = {
       execute: vi.fn().mockResolvedValue(ok({ claimed: 1, failed: 0, published: 1 })),
     };
@@ -47,12 +64,14 @@ describe("PackageController", () => {
       createPackageUseCase as unknown as CreatePackageUseCase,
       addModuleToPackageUseCase as unknown as AddModuleToPackageUseCase,
       removeModuleFromPackageUseCase as unknown as RemoveModuleFromPackageUseCase,
+      clonePackageUseCase as unknown as ClonePackageUseCase,
       drainOutbox,
     );
 
     return {
       addModuleToPackageUseCase,
       authorizePackageAccess,
+      clonePackageUseCase,
       controller,
       createPackageUseCase,
       drainOutbox,
@@ -260,4 +279,76 @@ describe("PackageController", () => {
       expect(mocks.drainOutbox.execute).toHaveBeenCalled();
     });
   });
+
+  describe("handleClonePackage", () => {
+    it("devuelve 201 con los datos del clon y no drena la outbox (sin eventos prematuros)", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/clone", {
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleClonePackage(req, "pkg-1");
+      expect(res.status).toBe(201);
+      const data = await res.json();
+      expect(data.id).toBe("pkg-cloned-1");
+      expect(data.itemCount).toBe(2);
+      expect(mocks.clonePackageUseCase.execute).toHaveBeenCalledWith({
+        sourcePackageId: "pkg-1",
+        userId: "user-1",
+      });
+      // La especificación exige que no emita evento de dominio ni drene outbox
+      expect(mocks.drainOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it("devuelve 401 si no hay usuario autenticado", async () => {
+      const mocks = createMocks();
+      mocks.authorizePackageAccess.execute.mockResolvedValue(
+        err(new DomainError("auth.unauthenticated", "Inicia sesión para continuar.")),
+      );
+
+      const req = new Request("http://localhost/api/packages/pkg-1/clone", {
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleClonePackage(req, "pkg-1");
+      expect(res.status).toBe(401);
+      const data = await res.json();
+      expect(data.error.code).toBe("auth.unauthenticated");
+      expect(mocks.clonePackageUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("devuelve 404 si el paquete origen no existe o es ajeno", async () => {
+      const mocks = createMocks();
+      mocks.authorizePackageAccess.execute.mockResolvedValue(
+        err(new DomainError("package.not_found", "No encontramos este paquete de decoración.")),
+      );
+
+      const req = new Request("http://localhost/api/packages/pkg-ajeno/clone", {
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleClonePackage(req, "pkg-ajeno");
+      expect(res.status).toBe(404);
+      const data = await res.json();
+      expect(data.error.code).toBe("package.not_found");
+      expect(mocks.clonePackageUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("devuelve 500 si la persistencia atómica falla", async () => {
+      const mocks = createMocks();
+      mocks.clonePackageUseCase.execute.mockResolvedValue(
+        err(new DomainError("package.persistence_error", "Error de base de datos")),
+      );
+
+      const req = new Request("http://localhost/api/packages/pkg-1/clone", {
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleClonePackage(req, "pkg-1");
+      expect(res.status).toBe(500);
+      const data = await res.json();
+      expect(data.error.code).toBe("package.persistence_error");
+    });
+  });
 });
+
