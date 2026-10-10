@@ -21,6 +21,11 @@ import { CloudinaryAssetStorage } from "@/modules/catalog/infrastructure/cloudin
 import { NodeFileInspector } from "@/modules/catalog/infrastructure/node-file-inspector";
 import { SupabaseCatalogActivationAdapter } from "@/modules/catalog/infrastructure/supabase-catalog-activation.adapter";
 import { SupabaseCatalogRepository } from "@/modules/catalog/infrastructure/supabase-catalog-repository";
+import { ConsumePackageChangedEvent } from "@/modules/budget/application/consume-package-changed-event.use-case";
+import { GetBudgetUseCase } from "@/modules/budget/application/get-budget.use-case";
+import { createSupabaseBudgetReader } from "@/modules/budget/infrastructure/supabase-budget-reader";
+import { SupabaseBudgetConsumer } from "@/modules/budget/infrastructure/supabase-budget-consumer";
+import { createSupabasePackageSnapshotReader } from "@/modules/budget/infrastructure/supabase-package-snapshot-reader";
 import { DrainOutboxUseCase } from "@/modules/events/application/drain-outbox.use-case";
 import { SupabaseBroadcastEventPublisher } from "@/modules/events/infrastructure/supabase-broadcast-event-publisher";
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
@@ -29,6 +34,10 @@ import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-ca
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
 import { createAuthUseCases } from "@/shared/application/auth";
+import type { Clock, IdGenerator } from "@/shared/application/ports";
+
+const systemClock: Clock = { now: () => new Date() };
+const uuidGenerator: IdGenerator = { generate: () => randomUUID() };
 
 /**
  * El cliente de Supabase se queda aquí dentro a propósito: la única puerta de
@@ -131,22 +140,19 @@ export async function createPackageController(
   const catalogReader = new SupabaseCatalogModuleReader(adminClient);
   const { drainOutbox, outbox } = createEventOutboxDependencies();
 
-  const clock = { now: () => new Date() };
-  const idGenerator = { generate: () => randomUUID() };
-
   const createPackageUseCase = new CreatePackageUseCase(packageRepository);
   const addModuleToPackageUseCase = new AddModuleToPackageUseCase(
     packageReader,
     catalogReader,
     outbox,
-    clock,
-    idGenerator,
+    systemClock,
+    uuidGenerator,
   );
   const removeModuleFromPackageUseCase = new RemoveModuleFromPackageUseCase(
     packageReader,
     outbox,
-    clock,
-    idGenerator,
+    systemClock,
+    uuidGenerator,
   );
 
   return new PackageController(
@@ -158,4 +164,37 @@ export async function createPackageController(
     drainOutbox,
     pendingHeaders,
   );
+}
+
+/**
+ * Budget consumer (DECOR-33): runs with the service-role client because
+ * `budgets`/`processed_events` writes and the package reread deny
+ * anon/authenticated. Whoever commits a package change (DECOR-27) invokes
+ * `consumePackageChangedEvent.execute(event)` with the same event right
+ * after `outbox.commit`, so recalculation never depends on Realtime having
+ * delivered anything.
+ */
+export function createBudgetConsumerDependencies() {
+  const supabase = createAdminClient();
+
+  return {
+    consumePackageChangedEvent: new ConsumePackageChangedEvent(
+      createSupabasePackageSnapshotReader(supabase),
+      new SupabaseBudgetConsumer(supabase),
+      new SupabaseBroadcastEventPublisher(supabase),
+      uuidGenerator,
+      systemClock,
+    ),
+  };
+}
+
+/**
+ * Budget resync (DECOR-33): uses the session client, never service_role, so
+ * the read is also filtered by the owner RLS policy on `budgets`. The
+ * `GET /api/packages/{id}/budget` handler calls `checkPackageAccess` first.
+ */
+export async function createBudgetQueryDependencies(options: SessionClientOptions = {}) {
+  const supabase = await createClient(options);
+
+  return { getBudget: new GetBudgetUseCase(createSupabaseBudgetReader(supabase)) };
 }

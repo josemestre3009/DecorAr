@@ -149,6 +149,21 @@ La service role se comprueba en dos niveles: `scripts/service-role-boundary.test
 
 Límite operativo: en la configuración de Realtime del proyecto, "Allow public access" debe estar desactivado para que sólo existan canales privados.
 
+### 2.2.5 Consumidor idempotente de presupuesto
+
+Presupuesto (DECOR-33) consume `package.module.added`/`removed` releyendo el paquete, nunca confiando en el payload del evento: DECOR-29 deja los precios fuera de los eventos de paquete a propósito. `calculateBudget` (Composite puro en `src/modules/budget/domain`) suma el `priceCop` de cada hoja existente en `package_items`; un grupo nunca aporta un monto propio además del de sus hojas, y un paquete sin hojas suma cero.
+
+La persistencia es atómica e idempotente mediante `process_budget_event`, invocada con `supabase.rpc()` por el cliente `service_role`:
+
+1. Inserta primero en `private.processed_events` (`UNIQUE (consumer, event_id)`, mismo esquema privado que `private.domain_events` de DECOR-32). Un `eventId` repetido para el consumidor `budget` choca aquí y la función devuelve `applied: false` sin tocar `public.budgets`: la repetición exacta de un evento nunca duplica ni recalcula.
+2. Sólo si el `eventId` es nuevo, hace upsert de `public.budgets` **cuando** la `packageVersion` recibida es estrictamente mayor que la ya almacenada. Un evento nuevo pero desordenado (versión igual o menor) queda registrado como procesado, para no reintentarse, pero no mueve el total: la no regresión se decide por `packageVersion` (control de concurrencia del paquete), no por `occurredAt` del evento.
+
+`public.budgets` permite lectura sólo al dueño del paquete (misma política que `packages`); ninguna escritura directa es posible fuera de la función, que es `SECURITY INVOKER` con `search_path` vacío. Tras persistir, el caso de uso publica `budget.recalculated` por el mismo Broadcast privado de DECOR-32 únicamente cuando `process_budget_event` reporta `applied: true`; un duplicado o un evento viejo no genera una publicación redundante.
+
+`GET /api/packages/{id}/budget` expone el resync que Mei 4/6 (DECOR-21) llama en hueco, reconexión, `online` y `visibilitychange`: usa `checkPackageAccess` igual que cualquier otro endpoint de paquete y responde `{totalCop, currency:'COP', packageVersion, updatedAt}` o el envelope `{error:{code,message}}` en 401/404/500.
+
+`ConsumePackageChangedEvent` no se suscribe al canal Broadcast: quien comitea el cambio de paquete (DECOR-27) lo invoca directamente con el mismo evento recién persistido, así que el recálculo nunca depende de que Realtime haya entregado nada. `supabase/migrations/create-idempotent-budget-consumer.test.ts` aplica todas las migraciones en PGlite y verifica duplicado, versión desordenada y los permisos de `anon`/`authenticated` sobre `budgets` y `processed_events`.
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid
