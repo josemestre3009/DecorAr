@@ -6,6 +6,7 @@ import type { PackageChangeOutbox } from "../../../events/application/outbox";
 import { PaqueteDecoracion } from "../../domain/decoration-package";
 import type { AddedItemDto, AddModuleToPackageDto } from "../dtos/package.dto";
 import type { CatalogModuleReader } from "../ports/catalog-module-reader.port";
+import { notifyPackageChange, type PackageChangeConsumer } from "../ports/package-change-consumer.port";
 import type { PackageReader } from "../ports/package-reader.port";
 
 export class AddModuleToPackageUseCase {
@@ -15,6 +16,7 @@ export class AddModuleToPackageUseCase {
     private readonly outbox: PackageChangeOutbox,
     private readonly clock: Clock,
     private readonly idGenerator: IdGenerator,
+    private readonly changeConsumer?: PackageChangeConsumer,
   ) {}
 
   async execute(dto: AddModuleToPackageDto): Promise<Result<AddedItemDto, DomainError>> {
@@ -94,6 +96,8 @@ export class AddModuleToPackageUseCase {
     if (!commitResult.ok) {
       return err(commitResult.error);
     }
+
+    await notifyPackageChange(this.changeConsumer, event);
 
     return ok({
       itemId,
