@@ -6,7 +6,11 @@ import { createAdminClient } from "@/infrastructure/supabase/admin";
 import { createClient, type SessionClientOptions } from "@/infrastructure/supabase/server";
 import { createPackageOwnerReader } from "@/infrastructure/supabase/package-owner-reader";
 import { createSessionGateway } from "@/infrastructure/supabase/session-gateway";
+import { SupabaseCatalogModuleReader } from "@/infrastructure/supabase/supabase-catalog-module-reader";
+import { SupabasePackageReader } from "@/infrastructure/supabase/supabase-package-reader";
+import { SupabasePackageRepository } from "@/infrastructure/supabase/supabase-package-repository";
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
+import { PackageController } from "@/interfaces/packages/package-controller";
 import { type AssetStoragePort } from "@/modules/catalog/application/ports/asset-storage.port";
 import { type CatalogActivationPort } from "@/modules/catalog/application/ports/catalog-activation.port";
 import { type CatalogRepository } from "@/modules/catalog/application/ports/catalog-repository.port";
@@ -26,6 +30,9 @@ import { DrainOutboxUseCase } from "@/modules/events/application/drain-outbox.us
 import { SupabaseBroadcastEventPublisher } from "@/modules/events/infrastructure/supabase-broadcast-event-publisher";
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
 import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
+import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
+import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
+import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
 import { createAuthUseCases } from "@/shared/application/auth";
 import type { Clock, IdGenerator } from "@/shared/application/ports";
 
@@ -101,6 +108,62 @@ export function createEventOutboxDependencies() {
     drainOutbox: new DrainOutboxUseCase(outbox, new SupabaseBroadcastEventPublisher(supabase)),
     outbox,
   };
+}
+
+/**
+ * Controller factory for Package Route Handlers (DECOR-27).
+ * Uses the session client for identity and RLS verification, and
+ * the service-role client for outbox RPCs and package mutations.
+ */
+export async function createPackageController(
+  options: SessionClientOptions = {},
+): Promise<PackageController> {
+  const pendingHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(pendingHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const sessionGateway = createSessionGateway(sessionClient);
+  const packageOwnerReader = createPackageOwnerReader(sessionClient);
+  const authorizePackageAccess = new AuthorizePackageAccessUseCase(
+    sessionGateway,
+    packageOwnerReader,
+  );
+
+  const adminClient = createAdminClient();
+  const packageRepository = new SupabasePackageRepository(adminClient);
+  const packageReader = new SupabasePackageReader(adminClient);
+  const catalogReader = new SupabaseCatalogModuleReader(adminClient);
+  const { drainOutbox, outbox } = createEventOutboxDependencies();
+
+  const createPackageUseCase = new CreatePackageUseCase(packageRepository);
+  const addModuleToPackageUseCase = new AddModuleToPackageUseCase(
+    packageReader,
+    catalogReader,
+    outbox,
+    systemClock,
+    uuidGenerator,
+  );
+  const removeModuleFromPackageUseCase = new RemoveModuleFromPackageUseCase(
+    packageReader,
+    outbox,
+    systemClock,
+    uuidGenerator,
+  );
+
+  return new PackageController(
+    sessionGateway,
+    authorizePackageAccess,
+    createPackageUseCase,
+    addModuleToPackageUseCase,
+    removeModuleFromPackageUseCase,
+    drainOutbox,
+    pendingHeaders,
+  );
 }
 
 /**
