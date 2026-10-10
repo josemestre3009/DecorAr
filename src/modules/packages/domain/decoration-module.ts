@@ -3,4 +3,6 @@ export interface ModuloDecoracion {
   readonly nombre: string;
   readonly precio: number;
   readonly ocupaM2: number;
+  readonly assetId?: string;
+  readonly assetVersion?: number;
 }

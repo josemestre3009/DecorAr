@@ -32,8 +32,10 @@ import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-ev
 import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
 import type { PackageChangeConsumer } from "@/modules/packages/application/ports/package-change-consumer.port";
 import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
+import { ClonePackageUseCase } from "@/modules/packages/application/use-cases/clone-package.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
+
 import { createAuthUseCases } from "@/shared/application/auth";
 import type { Clock, IdGenerator } from "@/shared/application/ports";
 import { err, ok } from "@/shared/domain/result";
@@ -167,6 +169,7 @@ export async function createPackageController(
     uuidGenerator,
     packageChangeConsumer,
   );
+  const clonePackageUseCase = new ClonePackageUseCase(packageRepository);
 
   return new PackageController(
     sessionGateway,
@@ -174,6 +177,7 @@ export async function createPackageController(
     createPackageUseCase,
     addModuleToPackageUseCase,
     removeModuleFromPackageUseCase,
+    clonePackageUseCase,
     drainOutbox,
     pendingHeaders,
   );
