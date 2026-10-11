@@ -19,11 +19,13 @@ type PackageCatalogProps = {
   /** Inyectables para las pruebas. */
   readonly client?: PackagesClient;
   readonly fetcher?: typeof fetch;
+  /** Unidades confirmadas por el servidor por `moduleId`; reconcilia el eco local tras un refresco (DECOR-22). */
+  readonly serverCounts?: Readonly<Record<string, number>>;
 };
 
 const IDLE: AddState = { status: "idle" };
 
-export function PackageCatalog({ packageId, client, fetcher }: PackageCatalogProps) {
+export function PackageCatalog({ packageId, client, fetcher, serverCounts }: PackageCatalogProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
   const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
@@ -70,10 +72,12 @@ export function PackageCatalog({ packageId, client, fetcher }: PackageCatalogPro
     const result = await packages.addItem(packageId, module.id);
 
     if (result.ok) {
-      const count = (addedCounts[module.id] ?? 0) + 1;
-
       setAddedCounts((counts) => ({ ...counts, [module.id]: (counts[module.id] ?? 0) + 1 }));
-      setAddStates((states) => ({ ...states, [module.id]: { count, status: "added" } }));
+      setAddStates((states) => {
+        const next = { ...states };
+        delete next[module.id];
+        return next;
+      });
       setAnnouncement(`${module.name} se agregó a tu paquete.`);
       // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
       if (packages.mode === "live") {
@@ -92,6 +96,19 @@ export function PackageCatalog({ packageId, client, fetcher }: PackageCatalogPro
       [module.id]: { message: result.error.message, status: "error" },
     }));
     setAnnouncement("");
+  }
+
+  // "Agregado N veces" sale de las unidades confirmadas por el servidor cuando
+  // están disponibles, así no queda pegado cuando se quita desde el contenido
+  // (DECOR-22); en modo simulado (o sin lectura de servidor) se usa el eco local.
+  function cardAddState(moduleId: string): AddState {
+    const pending = addStates[moduleId];
+    if (pending?.status === "adding" || pending?.status === "error") {
+      return pending;
+    }
+
+    const count = serverCounts ? (serverCounts[moduleId] ?? 0) : (addedCounts[moduleId] ?? 0);
+    return count > 0 ? { count, status: "added" } : IDLE;
   }
 
   return (
@@ -144,7 +161,7 @@ export function PackageCatalog({ packageId, client, fetcher }: PackageCatalogPro
           {catalog.modules.map((module) => (
             <li key={module.id}>
               <ModuleCard
-                addState={addStates[module.id] ?? IDLE}
+                addState={cardAddState(module.id)}
                 module={module}
                 onAdd={add}
                 packageId={packageId}

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
 
-import { rowSubtotal, spaceTypeLabel, toContentRows } from "./configurator-view";
+import { countUnitsByModule, rowSubtotal, spaceTypeLabel, toContentRows } from "./configurator-view";
 
 const leaf = (itemId: string, moduleId: string, name: string, areaM2: number, priceCop: number): PackageDetailNode => ({
   areaM2,
@@ -72,6 +72,39 @@ describe("toContentRows", () => {
   it("redondea el subtotal de área", () => {
     const [row] = toContentRows([leaf("a", "m", "M", 0.1, 1), leaf("b", "m", "M", 0.1, 1), leaf("c", "m", "M", 0.1, 1)]);
     expect(rowSubtotal(row).areaM2).toBe(0.3);
+  });
+});
+
+describe("countUnitsByModule", () => {
+  it("cuenta las unidades por módulo, incluidas las de grupos anidados", () => {
+    const counts = countUnitsByModule([
+      leaf("a", "pista", "Pista de baile", 16, 600000),
+      leaf("b", "pista", "Pista de baile", 16, 600000),
+      {
+        areaM2: 4,
+        children: [
+          {
+            areaM2: 4,
+            children: [leaf("c", "mesa", "Mesa redonda", 4, 250000)],
+            groupId: "g2",
+            kind: "group",
+            name: "Nivel 2",
+            priceCop: 250000,
+          },
+        ],
+        groupId: "g1",
+        kind: "group",
+        name: "Nivel 1",
+        priceCop: 250000,
+      },
+      { areaM2: 0, children: [], groupId: "vacio", kind: "group", name: "Vacío", priceCop: 0 },
+    ]);
+
+    expect(counts).toEqual({ mesa: 1, pista: 2 });
+  });
+
+  it("devuelve un mapa vacío para un paquete sin elementos", () => {
+    expect(countUnitsByModule([])).toEqual({});
   });
 });
 

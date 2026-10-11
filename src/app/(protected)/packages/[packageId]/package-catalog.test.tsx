@@ -189,6 +189,22 @@ describe("PackageCatalog", () => {
     expect(refresh).not.toHaveBeenCalled();
   });
 
+  it("reconcilia el contador con las unidades confirmadas por el servidor tras un refresco (DECOR-22)", async () => {
+    const arcId = fixture[1]?.id as string;
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    const { rerender } = render(
+      <PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" serverCounts={{ [arcId]: 2 }} />,
+    );
+
+    expect(await screen.findByText("Agregado 2 veces")).toBeInTheDocument();
+
+    rerender(
+      <PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" serverCounts={{ [arcId]: 1 }} />,
+    );
+
+    expect(await screen.findByText("Agregado a tu paquete")).toBeInTheDocument();
+  });
+
   it("avisa cuando la API de paquetes está simulada", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json([]));
     render(

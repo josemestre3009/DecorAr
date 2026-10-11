@@ -11,7 +11,6 @@ export type ConfiguratorBudget =
       readonly status: "confirmed";
       readonly totalCop: number;
       readonly packageVersion: number;
-      readonly updatedAt: string;
     }
   | { readonly status: "pending" }
   | { readonly status: "error" };
@@ -86,6 +85,28 @@ export function toContentRows(nodes: readonly PackageDetailNode[]): ContentRow[]
 
 function countLeaves(rows: readonly ContentRow[]): number {
   return rows.reduce((total, row) => total + (row.kind === "leaves" ? row.itemIds.length : row.leafCount), 0);
+}
+
+/**
+ * Cuenta las unidades guardadas por `moduleId` (hojas de todos los niveles). El
+ * catálogo lo usa para reconciliar su contador tras un refresco: así "Agregado
+ * N veces" no queda desincronizado cuando se quita desde el contenido.
+ */
+export function countUnitsByModule(nodes: readonly PackageDetailNode[]): Record<string, number> {
+  const counts: Record<string, number> = {};
+
+  for (const node of nodes) {
+    if (node.kind === "leaf") {
+      counts[node.moduleId] = (counts[node.moduleId] ?? 0) + 1;
+      continue;
+    }
+
+    for (const [moduleId, count] of Object.entries(countUnitsByModule(node.children))) {
+      counts[moduleId] = (counts[moduleId] ?? 0) + count;
+    }
+  }
+
+  return counts;
 }
 
 export function rowSubtotal(row: ContentRow): { readonly areaM2: number; readonly priceCop: number } {

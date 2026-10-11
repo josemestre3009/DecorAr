@@ -8,7 +8,7 @@ import type { PackageDetailView } from "@/modules/packages/application/dtos/pack
 import { createPackageQueryDependencies } from "@/composition/server";
 import { requireSessionUser } from "@/composition/session-guard";
 
-import type { ConfiguratorBudget } from "../_lib/configurator-view";
+import { countUnitsByModule, type ConfiguratorBudget } from "../_lib/configurator-view";
 import { resolvePackagesMode } from "../_lib/packages-client";
 import { BudgetTotal } from "./budget-total";
 import { DuplicatePackageButton } from "./duplicate-package-button";
@@ -37,7 +37,7 @@ type Configurator =
  * de agregar, quitar o duplicar, los componentes cliente hacen
  * `router.refresh()` y esta lectura se repite.
  */
-async function loadConfigurator(packageId: string): Promise<Configurator> {
+export async function loadConfigurator(packageId: string): Promise<Configurator> {
   const { authorizePackageAccess, getBudget, getPackageDetail } = await createPackageQueryDependencies();
 
   const access = await authorizePackageAccess.execute(packageId);
@@ -66,7 +66,6 @@ async function loadConfigurator(packageId: string): Promise<Configurator> {
           packageVersion: budget.value.packageVersion,
           status: "confirmed",
           totalCop: budget.value.totalCop,
-          updatedAt: budget.value.updatedAt,
         }
       : { status: budget.error.code === "budget.not_found" ? "pending" : "error" },
     detail: detail.value,
@@ -84,6 +83,10 @@ export default async function PackagePage({ params }: PackagePageProps) {
   // paquete sólo existe en el navegador y la página sigue como antes.
   const isLive = resolvePackagesMode(process.env.NEXT_PUBLIC_DECOR_PACKAGES_API) === "live";
   const configurator = isLive ? await loadConfigurator(packageId) : null;
+  // Conteo confirmado por el servidor: el catálogo lo usa para reconciliar su
+  // eco local tras agregar o quitar (DECOR-22).
+  const serverCounts =
+    configurator?.status === "ready" ? countUnitsByModule(configurator.detail.nodes) : undefined;
 
   return (
     <main className="catalog-page">
@@ -134,7 +137,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
 
       <WelcomeZoneButton packageId={packageId} />
 
-      <PackageCatalog packageId={packageId} />
+      <PackageCatalog packageId={packageId} serverCounts={serverCounts} />
     </main>
   );
 }

@@ -16,7 +16,7 @@ describe("BudgetTotal (DECOR-22)", () => {
   it("muestra el total confirmado por Presupuesto y su versión", () => {
     render(
       <BudgetTotal
-        budget={{ packageVersion: 3, status: "confirmed", totalCop: 1050000, updatedAt: "2026-10-11T10:00:00Z" }}
+        budget={{ packageVersion: 3, status: "confirmed", totalCop: 1050000 }}
         packageVersion={3}
       />,
     );
@@ -28,7 +28,7 @@ describe("BudgetTotal (DECOR-22)", () => {
   it("avisa cuando el total es de una versión anterior y permite actualizar", () => {
     render(
       <BudgetTotal
-        budget={{ packageVersion: 2, status: "confirmed", totalCop: 450000, updatedAt: "2026-10-11T10:00:00Z" }}
+        budget={{ packageVersion: 2, status: "confirmed", totalCop: 450000 }}
         packageVersion={3}
       />,
     );
