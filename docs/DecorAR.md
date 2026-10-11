@@ -274,6 +274,66 @@ Límites conocidos:
 - En iPhone, Quick Look sólo está disponible en Safari (y en Chrome, Edge o Firefox de iOS). Si el enlace se abre dentro de WhatsApp, Instagram o la app de Google, `<model-viewer>` no ofrece AR; la vista lo explica y oculta el botón y los pasos.
 - Después del login la app vuelve a `/packages`; un enlace directo a la vista 3D no regresa a ella.
 
+### 2.2.8 Pruebas de integración de API, persistencia y patrones (DECOR-26)
+
+La suite de integración de DECOR-26 (`tests/package-catalog-api.test.ts`) demuestra la integración reproducible entre Catálogo (DECOR-28), Builder (DECOR-27), Prototype (DECOR-24) y Composite (DECOR-25), cubriendo los criterios de las secciones 8.17 (API o interacción funcional) y 8.18 (Manejo de errores) de `docs/Actividad.md`:
+
+1. **Base de datos y reseteo server-side:**
+   - Reseteo determinista mediante el script SQL versionado `supabase/reset-test-database.sql`, ejecutable de forma server-side con `service_role` sin requerir CLI ni stack local.
+   - Ejecución verificada tanto en PostgreSQL embebido con PGlite (tiempo de ejecución < 4 s para 14 pruebas) como mediante el runner de Supabase alojado (`scripts/run-package-api-integration.ts`).
+2. **Builder demostrado vía API:**
+   - **Fixture 1 (Salón social paso a paso):** Paquete en `salonSocial` de 50 m² con 2 mesas, 1 arco y 1 pista = 26 m² y 4 eventos generados en outbox.
+   - **Fixture 2 (Director):** Paquete básico en `aireLibre` de 30 m² con 1 arco y 2 mesas = 10 m².
+   - **Fixture 3 (Capacidad excedida):** Espacio residencial de 30 m² rechaza la segunda pista (32/30 m²) con HTTP `422 Unprocessable Entity` (`package.capacity_exceeded`). **Demostración de outbox limpia:** No se emite ningún evento ni se altera la versión del paquete.
+   - **Rollback transaccional:** Ante una colisión simulada de `eventId` en outbox, `commit_package_change` revierte atómicamente la inserción de `package_items` y la versión de `packages`.
+3. **Prototype demostrado vía API:**
+   - `POST /api/packages/{id}/clone` duplica un paquete con todos sus elementos dependientes y preferencias mutables, generando un clon con `version = 1`.
+   - **Demostración de copia profunda:** Al eliminar un elemento en el clon con `DELETE /items/{itemId}`, el paquete original permanece intacto con la totalidad de sus ítems.
+4. **Composite demostrado vía API:**
+   - `POST /api/packages/{id}/groups` crea la *Zona de bienvenida* agrupando el arco floral y la mesa redonda con respuesta `201 Created`.
+   - Soporte verificado de hasta 3 niveles de profundidad jerárquica; el 4to nivel se rechaza con HTTP `422` (`package.group_depth_exceeded`).
+   - Prevención de ciclos: La inmutabilidad de `parent_group_id` y las validaciones de dominio impiden reasignaciones cíclicas (`package.group_immutable` / `package.group_cycle`).
+5. **Seguridad y Ownership A/B (DECOR-30):**
+   - Solicitudes no autenticadas son rechazadas con HTTP `401 Unauthorized`.
+   - El Usuario B intentando mutar o clonar un paquete del Usuario A recibe HTTP `404 Not Found` (`package.not_found`), previniendo la enumeración de recursos ajenos.
+6. **Manejo de errores y observabilidad (8.18):**
+   - Respuestas HTTP estándar: `200/201` (éxito), `204` (borrado), `400` (cuerpo/identificador inválido), `401` (sin auth), `404` (inexistente/ajeno), `422` (regla de negocio) y `500` (controlado sin filtrar stack traces).
+   - Trazabilidad: Generación y propagación de `x-correlation-id` en todas las respuestas.
+   - Colección de solicitudes reproducible documentada en `tests/package-catalog-api.http`.
+
+```mermaid
+classDiagram
+    note "Integración de patrones GoF en DecorAR (DECOR-26)"
+    class PaqueteDecoracionBuilder {
+        <<Builder - Creacional>>
+        +agregarModulo()
+        +construir()
+        +validarCapacidad()
+    }
+    class ConfiguracionClonable {
+        <<Prototype - Creacional>>
+        +clonar()
+    }
+    class ComponenteDecorativo {
+        <<Composite - Estructural>>
+        +calcularPrecio()
+        +calcularAreaM2()
+    }
+    class ElementoDecorativo {
+        <<Leaf>>
+    }
+    class ModuloCompuesto {
+        <<Composite>>
+        +agregar()
+        +profundidad()
+    }
+    ComponenteDecorativo <|-- ElementoDecorativo
+    ComponenteDecorativo <|-- ModuloCompuesto
+    ModuloCompuesto o--> ComponenteDecorativo : hijos (max 3 niveles)
+    PaqueteDecoracionBuilder ..> ComponenteDecorativo : compone
+    ConfiguracionClonable <|.. PaqueteDecoracion : copia profunda
+```
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid

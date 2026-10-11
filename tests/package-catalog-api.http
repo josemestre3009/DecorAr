@@ -1,0 +1,131 @@
+### ==============================================================================
+### DecorAR: Colección de Solicitudes HTTP de API y Patrones (DECOR-26)
+### ==============================================================================
+### Archivo ejecutable compatible con REST Client (VS Code / JetBrains / Bruno).
+### Cubre Catálogo (DECOR-28), Builder (DECOR-27), Prototype (DECOR-24) y Composite (DECOR-25).
+### Demuestra respuestas 200/201, 204, 400, 401, 404 y 422 con trazabilidad de correlationId.
+### ==============================================================================
+
+@baseUrl = http://localhost:3000
+@correlationId = req-decor26-test-trace-uuid
+@packageId = aaaaaaaa-1111-4111-8111-111111111111
+@moduleIdPista = aaaaaaaa-0001-4000-8000-000000000001
+@moduleIdMesa = aaaaaaaa-0002-4000-8000-000000000002
+@moduleIdArco = aaaaaaaa-0003-4000-8000-000000000003
+
+### ------------------------------------------------------------------------------
+### 1. CATÁLOGO DE MÓDULOS (DECOR-28)
+### ------------------------------------------------------------------------------
+
+### 1.1 Listar módulos activos del catálogo (200 OK - Público, no requiere Auth)
+GET {{baseUrl}}/api/modules
+Accept: application/json
+
+### ------------------------------------------------------------------------------
+### 2. BUILDER: CREACIÓN Y GESTIÓN DE PAQUETES (DECOR-27)
+### ------------------------------------------------------------------------------
+
+### 2.1 Crear paquete base para salón social (201 Created)
+# @name createPackage
+POST {{baseUrl}}/api/packages
+Content-Type: application/json
+Accept: application/json
+x-correlation-id: {{correlationId}}-create
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "spaceType": "salonSocial",
+  "capacityM2": 50
+}
+
+### 2.2 Agregar módulo al paquete (201 Created - Pista de baile 16 m²)
+POST {{baseUrl}}/api/packages/{{packageId}}/items
+Content-Type: application/json
+Accept: application/json
+x-correlation-id: {{correlationId}}-add-item
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "moduleId": "{{moduleIdPista}}"
+}
+
+### 2.3 Quitar módulo del paquete por itemId (204 No Content)
+DELETE {{baseUrl}}/api/packages/{{packageId}}/items/dddddddd-0001-4ddd-8ddd-dddddddddddd
+Accept: application/json
+x-correlation-id: {{correlationId}}-remove-item
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+### ------------------------------------------------------------------------------
+### 3. PROTOTYPE: CLONACIÓN PROFUNDA (DECOR-24)
+### ------------------------------------------------------------------------------
+
+### 3.1 Clonar paquete con todos sus elementos dependientes (201 Created)
+POST {{baseUrl}}/api/packages/{{packageId}}/clone
+Accept: application/json
+x-correlation-id: {{correlationId}}-clone
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+### ------------------------------------------------------------------------------
+### 4. COMPOSITE: GRUPOS DECORATIVOS (DECOR-25)
+### ------------------------------------------------------------------------------
+
+### 4.1 Crear grupo compuesto "Zona de bienvenida" con Arco y Mesa (201 Created)
+POST {{baseUrl}}/api/packages/{{packageId}}/groups
+Content-Type: application/json
+Accept: application/json
+x-correlation-id: {{correlationId}}-create-group
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "name": "Zona de bienvenida",
+  "children": [
+    { "moduleId": "{{moduleIdArco}}" },
+    { "moduleId": "{{moduleIdMesa}}" }
+  ]
+}
+
+### ------------------------------------------------------------------------------
+### 5. MANEJO DE ERRORES Y CASOS NEGATIVOS (Actividad.md 8.17 / 8.18)
+### ------------------------------------------------------------------------------
+
+### 5.1 Cuerpo de solicitud malformado o inválido (400 Bad Request)
+POST {{baseUrl}}/api/packages
+Content-Type: application/json
+Accept: application/json
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "spaceType": "invalido",
+  "capacityM2": -10
+}
+
+### 5.2 Solicitud sin autenticación (401 Unauthorized)
+POST {{baseUrl}}/api/packages
+Content-Type: application/json
+Accept: application/json
+
+{
+  "spaceType": "casa",
+  "capacityM2": 30
+}
+
+### 5.3 Paquete inexistente o ajeno para evitar enumeración (404 Not Found)
+POST {{baseUrl}}/api/packages/00000000-0000-0000-0000-000000000000/items
+Content-Type: application/json
+Accept: application/json
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "moduleId": "{{moduleIdMesa}}"
+}
+
+### 5.4 Capacidad de espacio excedida (422 Unprocessable Entity - Regla de Negocio)
+# Intento de agregar 32 m² en un espacio residencial con límite de 30 m²
+POST {{baseUrl}}/api/packages/{{packageId}}/items
+Content-Type: application/json
+Accept: application/json
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "moduleId": "{{moduleIdPista}}"
+}
