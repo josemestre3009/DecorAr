@@ -164,7 +164,38 @@ La persistencia es atómica e idempotente mediante `process_budget_event`, invoc
 
 `ConsumePackageChangedEvent` no se suscribe al canal Broadcast: quien comitea el cambio de paquete (DECOR-27) lo invoca directamente con el mismo evento recién persistido, así que el recálculo nunca depende de que Realtime haya entregado nada. `supabase/migrations/create-idempotent-budget-consumer.test.ts` aplica todas las migraciones en PGlite y verifica duplicado, versión desordenada y los permisos de `anon`/`authenticated` sobre `budgets` y `processed_events`.
 
-### 2.2.6 Vista 3D y realidad aumentada: Bridge y Flyweight
+### 2.2.6 Recuperación observable: logs, reintentos y reconciliación
+
+DECOR-31 cierra lo que DECOR-32 dejó pendiente a propósito: un evento cuyo intento inicial falla queda `pending` con `attempts = 1`, y nadie lo reintentaba ni lo marcaba como agotado. La migración `supabase/migrations/20261011000000_async_recovery.sql` añade, de forma aditiva, una columna `correlation_id` y el estado `failed` a `private.domain_events`, y las funciones `claim_retry_domain_event`, `list_retryable_domain_events`, `mark_domain_event_failed`, `list_unresolved_domain_events` y `reconcile_budget`. Ninguna función ni tabla de DECOR-32/33 cambia de comportamiento.
+
+**Logs.** `createJsonLogger` (`src/infrastructure/logging`) escribe una línea JSON por intento, reintento, fallo y reconciliación, con `timestamp`, `level`, `component`, `eventId`, `correlationId`, `packageId`, `attempt` y una descripción del error. Antes de escribir, `sanitizeLogContext` (`src/shared/application`) censura cualquier clave que contenga `token`, `cookie`, `authorization`, `key`, `secret`, `password` o `payload`, y enmascara un email completo o un `Bearer`/JWT encontrado dentro de un mensaje. El payload crudo de un evento nunca se registra: sólo sus identificadores.
+
+**Reintentos.** `RetryOutboxUseCase` toma con `list_retryable_domain_events` los eventos `pending` con 1 a 3 intentos previos, espera 1, 2 o 4 segundos (según el intento, con un puerto `Sleep` inyectado; los dobles de prueba no esperan de verdad) y reclama con `claim_retry_domain_event`, que sólo avanza `attempts` si coincide exactamente con lo esperado: dos reintentos concurrentes del mismo evento nunca publican dos veces. Tras el tercer reintento fallido, el evento pasa a `failed` mediante `mark_domain_event_failed` y nunca se reintenta una cuarta vez; un fallo transitorio en cualquier reintento anterior deja el evento `pending`, listo para el siguiente round.
+
+**Reconciliación.** `ReconcileBudgetUseCase` relee el paquete persistido, recalcula con el mismo `calculateBudget` de DECOR-33 y corrige `public.budgets` mediante `reconcile_budget` cuando el total almacenado difiere del recalculado, incluso para la misma `packageVersion` (a diferencia de `process_budget_event`, que sólo avanza con una versión estrictamente mayor). Una segunda reconciliación con el mismo resultado reporta `corrected: false` y no vuelve a escribir.
+
+**Endpoint protegido.** No existe un rol admin en la aplicación, así que `GET/POST /api/internal/recovery` (`src/interfaces/recovery`) se protege con un secreto Bearer (`DECOR_RECOVERY_SECRET`) comparado con `crypto.timingSafeEqual`, pensado para un operador o un cron externo:
+
+```bash
+# Lista eventos pendientes y fallidos
+curl -H "Authorization: Bearer $DECOR_RECOVERY_SECRET" https://.../api/internal/recovery
+
+# Ejecuta una ronda de reintentos
+curl -X POST -H "Authorization: Bearer $DECOR_RECOVERY_SECRET" \
+  "https://.../api/internal/recovery?action=retry"
+
+# Reconcilia los paquetes con un evento failed (o uno explícito con {"packageId": "..."})
+curl -X POST -H "Authorization: Bearer $DECOR_RECOVERY_SECRET" \
+  "https://.../api/internal/recovery?action=reconcile"
+```
+
+Sin `DECOR_RECOVERY_SECRET` configurado, el endpoint responde `503` para cualquier petición en vez de aceptar cualquier secreto o quedar abierto; con un secreto incorrecto o ausente responde `401`.
+
+**correlationId.** `PackageController` lee `x-correlation-id` del request o genera uno con `IdGenerator`, lo pasa a `AddModuleToPackageUseCase`/`RemoveModuleFromPackageUseCase` y de ahí a `outbox.commit`, que lo guarda en la columna nueva. El contrato de evento de DECOR-29 (`schemaVersion: 1`) no cambia: `correlationId` es metadato de la fila de la outbox, no un campo del evento. La respuesta HTTP devuelve el mismo valor en el header `x-correlation-id`, para correlacionar la petición con los logs de sus reintentos.
+
+Guía determinista de fallo y recuperación: (1) la publicación inicial falla → el evento queda `pending`, `attempts = 1`, con su `last_error`; (2) la siguiente ronda de reintentos espera 1s, reclama y publica: si tiene éxito, `published`; si falla, `pending` con `attempts = 2`; (3) se repite con 2s y 4s de espera; (4) si el tercer reintento también falla, el evento pasa a `failed` y se detiene para siempre, sin bucle; (5) un operador reconcilia el `packageId` del evento `failed` vía el endpoint, que relee el paquete y corrige el presupuesto si quedó desalineado.
+
+### 2.2.7 Vista 3D y realidad aumentada: Bridge y Flyweight
 
 Cada tarjeta del catálogo enlaza a `/packages/{id}/modules/{moduleId}` (DECOR-23). La página está en `(protected)/`, llama a `requireSessionUser()` y obtiene el módulo de `GET /api/modules`. El componente cliente carga `@google/model-viewer` sólo en el navegador y le entrega la configuración que preparan los patrones de las secciones 4.4 y 4.5, implementados en `src/modules/ar/domain` como TypeScript puro.
 

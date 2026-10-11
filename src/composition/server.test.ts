@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
+import { RecoveryController } from "@/interfaces/recovery/recovery-controller";
 import { type CatalogRepository } from "@/modules/catalog/application/ports/catalog-repository.port";
 import { CatalogModule } from "@/modules/catalog/domain/catalog-module";
 import { createAdminClient } from "@/infrastructure/supabase/admin";
@@ -16,6 +17,7 @@ import {
   createCatalogController,
   createEventOutboxDependencies,
   createPackageAccessDependencies,
+  createRecoveryController,
 } from "./server";
 
 vi.mock("server-only", () => ({}));
@@ -70,5 +72,14 @@ describe("composition root server", () => {
 
     expect(getBudget).toBeInstanceOf(GetBudgetUseCase);
     expect(createAdminClient).not.toHaveBeenCalled();
+  });
+
+  it("wires the recovery controller with the service-role client", () => {
+    vi.mocked(createAdminClient).mockClear();
+
+    const controller = createRecoveryController();
+
+    expect(createAdminClient).toHaveBeenCalledTimes(1);
+    expect(controller).toBeInstanceOf(RecoveryController);
   });
 });

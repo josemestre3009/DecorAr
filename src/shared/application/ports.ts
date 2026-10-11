@@ -16,6 +16,15 @@ export interface Logger {
   error(message: string, context?: Readonly<Record<string, unknown>>): void;
 }
 
+/**
+ * Backoff delay before a bounded retry (DECOR-31). A real implementation
+ * waits `ms` milliseconds; test doubles resolve immediately and record the
+ * calls, so a test asserts the exact backoff schedule without ever waiting.
+ */
+export interface Sleep {
+  wait(ms: number): Promise<void>;
+}
+
 export type Credentials = {
   readonly email: string;
   readonly password: string;

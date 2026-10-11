@@ -27,7 +27,7 @@ describe("DELETE /api/packages/[packageId]/items/[itemId]", () => {
       params: Promise.resolve({ packageId: "pkg-42", itemId: "item-99" }),
     });
     expect(res.status).toBe(204);
-    expect(mockHandleRemoveItem).toHaveBeenCalledWith("pkg-42", "item-99");
+    expect(mockHandleRemoveItem).toHaveBeenCalledWith("pkg-42", "item-99", req);
   });
 
   it("devuelve 500 controlado si el controlador lanza una excepción", async () => {

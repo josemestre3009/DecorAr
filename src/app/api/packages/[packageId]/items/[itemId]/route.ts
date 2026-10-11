@@ -7,13 +7,13 @@ interface RouteContext {
 }
 
 export async function DELETE(
-  _request: Request,
+  request: Request,
   context: RouteContext,
 ): Promise<Response> {
   try {
     const { packageId, itemId } = await context.params;
     const controller = await createPackageController();
-    return await controller.handleRemoveItem(packageId, itemId);
+    return await controller.handleRemoveItem(packageId, itemId, request);
   } catch (cause) {
     const correlationId = randomUUID();
     console.error(
