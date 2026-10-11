@@ -17,6 +17,7 @@ function createMockClient(clonePackage: PackagesClient["clonePackage"]): Package
     clonePackage,
     createPackage: vi.fn(),
     mode: "live",
+    removeItem: vi.fn(),
   };
 }
 

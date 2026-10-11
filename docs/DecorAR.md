@@ -125,6 +125,14 @@ Límites conocidos de esta etapa:
 - En modo simulado el paquete vive en `sessionStorage` de la pestaña: no existe en el servidor, no pasa por RLS y la capacidad no se compara con el área de los módulos, que es responsabilidad del Builder de DECOR-27.
 - `GET /api/modules` devuelve `[]` mientras el seed mantenga los módulos en `draft`; la pantalla muestra entonces el estado vacío. Las tarjetas se verifican con el fixture de DECOR-28 servido mediante `page.route`.
 - `GET /api/modules` responde sus errores como `{error:"Internal Server Error", correlationId}`, no con el envelope `{error:{code,message}}`, y no exige sesión. La interfaz acepta ambos formatos y nunca muestra el detalle de un `5xx`.
+
+**Configurador (DECOR-22).** Con `live`, `/packages/{id}` lee el paquete en el Server Component mediante `createPackageQueryDependencies()`:
+
+- `authorizePackageAccess`: un paquete ajeno o inexistente responde 404.
+- `GetPackageDetailUseCase`: reconstruye el árbol Composite con los precios del catálogo y calcula el área usada y restante.
+- `GetBudgetUseCase`: el total confirmado. Si responde `budget.not_found` se muestra "aún no calculado"; la interfaz nunca suma un total.
+
+La página muestra el tipo de espacio, la capacidad, el área usada y restante, y el contenido con las hojas agrupadas por módulo ("×N"), subtotales informativos y grupos que se despliegan con `aria-expanded`. Agregar (`POST /items`), quitar (`DELETE /items/{itemId}`) y crear la Zona de bienvenida terminan con `router.refresh()`, que vuelve a leer todo del servidor; un 422 no cambia nada en pantalla. Duplicar navega al clon (DECOR-24). El tiempo real del presupuesto pertenece a DECOR-21. En modo simulado la página sigue como antes, con un aviso. La E2E opt-in `e2e/package-configurator-live.spec.ts` (`DECOR_LIVE_SMOKE=1`) recorre el flujo contra la API real y graba video.
 - `NEXT_PUBLIC_DECOR_PACKAGES_API` se fija al compilar: en Docker se pasa como argumento de construcción y hay que reconstruir la imagen para cambiarla.
 
 ### 2.2.4 Autorización por propiedad, RLS y canales privados

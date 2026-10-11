@@ -12,7 +12,8 @@ import { PackageCatalog } from "./package-catalog";
 
 const push = vi.fn();
 // useRouter devuelve el mismo objeto en cada render, como en Next.js.
-const router = { push };
+const refresh = vi.fn();
+const router = { push, refresh };
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
@@ -21,13 +22,16 @@ const fixture = JSON.parse(
 ) as CatalogModuleDto[];
 
 function client(addItem: PackagesClient["addItem"] = vi.fn()): PackagesClient {
-  return { addItem, clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live" };
+  return { addItem, clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live", removeItem: vi.fn() };
 }
 
 const visible = (text: string | null) => (text ?? "").replace(/\s/g, " ");
 
 describe("PackageCatalog", () => {
-  beforeEach(() => push.mockReset());
+  beforeEach(() => {
+    push.mockReset();
+    refresh.mockReset();
+  });
 
   it("muestra el estado de carga y luego una tarjeta por módulo con precio COP y área", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
@@ -118,6 +122,23 @@ describe("PackageCatalog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Agregar Arco floral" }));
 
     expect(await screen.findByText("Agregado 2 veces")).toBeInTheDocument();
+    // Con la API real el contenido del paquete se vuelve a leer del servidor (DECOR-22).
+    expect(refresh).toHaveBeenCalledTimes(2);
+  });
+
+  it("en modo simulado no refresca la página al agregar", async () => {
+    const addItem = vi
+      .fn<PackagesClient["addItem"]>()
+      .mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(
+      <PackageCatalog client={{ ...client(addItem), mode: "simulated" }} fetcher={fetcher} packageId="p-1" />,
+    );
+
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
+
+    await screen.findByText("Arco floral se agregó a tu paquete.");
+    expect(refresh).not.toHaveBeenCalled();
   });
 
   it("marca el botón como ocupado sin deshabilitarlo e ignora clics repetidos", async () => {
@@ -164,6 +185,24 @@ describe("PackageCatalog", () => {
       "aria-describedby",
       alert.id,
     );
+    // Un 422 no muta la interfaz: no se refresca el contenido (DECOR-22).
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("reconcilia el contador con las unidades confirmadas por el servidor tras un refresco (DECOR-22)", async () => {
+    const arcId = fixture[1]?.id as string;
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    const { rerender } = render(
+      <PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" serverCounts={{ [arcId]: 2 }} />,
+    );
+
+    expect(await screen.findByText("Agregado 2 veces")).toBeInTheDocument();
+
+    rerender(
+      <PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" serverCounts={{ [arcId]: 1 }} />,
+    );
+
+    expect(await screen.findByText("Agregado a tu paquete")).toBeInTheDocument();
   });
 
   it("avisa cuando la API de paquetes está simulada", async () => {

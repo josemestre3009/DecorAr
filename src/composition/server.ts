@@ -9,6 +9,7 @@ import { createPackageOwnerReader } from "@/infrastructure/supabase/package-owne
 import { createSessionGateway } from "@/infrastructure/supabase/session-gateway";
 import { SupabaseCatalogModuleReader } from "@/infrastructure/supabase/supabase-catalog-module-reader";
 import { SupabasePackageGroupRepository } from "@/infrastructure/supabase/supabase-package-group-repository";
+import { SupabasePackageDetailReader } from "@/infrastructure/supabase/supabase-package-detail-reader";
 import { SupabasePackageReader } from "@/infrastructure/supabase/supabase-package-reader";
 import { SupabasePackageRepository } from "@/infrastructure/supabase/supabase-package-repository";
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
@@ -40,6 +41,7 @@ import type { PackageChangeConsumer } from "@/modules/packages/application/ports
 import { AddModuleToGroupUseCase } from "@/modules/packages/application/use-cases/add-module-to-group.use-case";
 import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
 import { ClonePackageUseCase } from "@/modules/packages/application/use-cases/clone-package.use-case";
+import { GetPackageDetailUseCase } from "@/modules/packages/application/use-cases/get-package-detail.use-case";
 import { CreatePackageGroupUseCase } from "@/modules/packages/application/use-cases/create-package-group.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
@@ -248,6 +250,26 @@ export async function createBudgetQueryDependencies(options: SessionClientOption
   const supabase = await createClient(options);
 
   return { getBudget: new GetBudgetUseCase(createSupabaseBudgetReader(supabase)) };
+}
+
+/**
+ * Package configurator (DECOR-22): what the `/packages/{id}` Server Component
+ * reads. Ownership and the budget use the session client (RLS applies); the
+ * detail reader uses service_role like the other package readers and filters
+ * by owner after `authorizePackageAccess` succeeded. Budget is combined here,
+ * never inside `packages` (packages-budget-coupling).
+ */
+export async function createPackageQueryDependencies(options: SessionClientOptions = {}) {
+  const sessionClient = await createClient(options);
+
+  return {
+    authorizePackageAccess: new AuthorizePackageAccessUseCase(
+      createSessionGateway(sessionClient),
+      createPackageOwnerReader(sessionClient),
+    ),
+    getBudget: new GetBudgetUseCase(createSupabaseBudgetReader(sessionClient)),
+    getPackageDetail: new GetPackageDetailUseCase(new SupabasePackageDetailReader(createAdminClient())),
+  };
 }
 
 /**

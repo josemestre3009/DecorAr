@@ -7,7 +7,8 @@ import type { PackageGroupsClient } from "../_lib/package-groups-client";
 import { WelcomeZoneButton } from "./welcome-zone-button";
 
 const push = vi.fn();
-const router = { push };
+const refresh = vi.fn();
+const router = { push, refresh };
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
@@ -35,16 +36,44 @@ const CATALOG = [
 const catalogFetcher = (body: unknown = CATALOG, status = 200) =>
   vi.fn<typeof fetch>().mockResolvedValue(Response.json(body, { status }));
 
-function createClient(createGroup: PackageGroupsClient["createGroup"]): PackageGroupsClient {
-  return { createGroup, mode: "live" };
+function createClient(
+  createGroup: PackageGroupsClient["createGroup"],
+  mode: PackageGroupsClient["mode"] = "live",
+): PackageGroupsClient {
+  return { createGroup, mode };
 }
+
+const CREATED = {
+  depth: 1,
+  groupId: "grp-1",
+  itemIds: ["item-a", "item-m"],
+  name: "Zona de bienvenida",
+  packageVersion: 3,
+  parentGroupId: null,
+};
 
 describe("WelcomeZoneButton (Composite visible en la interfaz)", () => {
   beforeEach(() => {
     push.mockReset();
+    refresh.mockReset();
   });
 
-  it("crea la Zona de bienvenida con el arco y la mesa del catálogo y muestra sus hijos", async () => {
+  it("con la API real crea la Zona y refresca la página para que el contenido la muestre (DECOR-22)", async () => {
+    const createGroup = vi.fn().mockResolvedValue(ok(CREATED));
+
+    render(<WelcomeZoneButton client={createClient(createGroup)} fetcher={catalogFetcher()} packageId="pkg-1" />);
+    fireEvent.click(screen.getByRole("button", { name: "Agregar Zona de bienvenida" }));
+
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Zona de bienvenida se agregó a tu paquete.");
+    expect(createGroup).toHaveBeenCalledWith("pkg-1", {
+      moduleIds: ["id-arco", "id-mesa"],
+      name: "Zona de bienvenida",
+    });
+    expect(screen.queryByRole("article")).not.toBeInTheDocument();
+  });
+
+  it("en modo simulado crea la Zona de bienvenida con el arco y la mesa y muestra sus hijos aquí", async () => {
     const createGroup = vi.fn().mockResolvedValue(
       ok({
         depth: 1,
@@ -56,7 +85,13 @@ describe("WelcomeZoneButton (Composite visible en la interfaz)", () => {
       }),
     );
 
-    render(<WelcomeZoneButton client={createClient(createGroup)} fetcher={catalogFetcher()} packageId="pkg-1" />);
+    render(
+      <WelcomeZoneButton
+        client={createClient(createGroup, "simulated")}
+        fetcher={catalogFetcher()}
+        packageId="pkg-1"
+      />,
+    );
 
     const button = screen.getByRole("button", { name: "Agregar Zona de bienvenida" });
     fireEvent.click(button);
