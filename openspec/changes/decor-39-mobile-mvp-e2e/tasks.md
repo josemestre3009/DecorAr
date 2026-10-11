@@ -17,5 +17,5 @@
 - [x] 3.1 `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`.
 - [x] 3.2 `npm run test:e2e:mvp` en verde contra Docker en modo live, dos veces seguidas.
 - [x] 3.3 Artefactos de fallo (trace, captura y video) comprobados con un fallo real de la primera corrida (resincronización), ya corregido.
-- [ ] 3.4 Evidencia manual de AR en Android (Scene Viewer) e iPhone (Quick Look).
-- [ ] 3.5 Ejecutar `openspec validate decor-39-mobile-mvp-e2e --type change --strict`.
+- [x] 3.4 Evidencia manual de AR en Android (Scene Viewer) e iPhone (Quick Look).
+- [x] 3.5 Ejecutar `openspec validate decor-39-mobile-mvp-e2e --type change --strict`. Válido (`npx @fission-ai/openspec@1.14.1`, telemetría desactivada).
