@@ -42,7 +42,15 @@ export function SpaceForm({ client }: SpaceFormProps) {
     setFormError(undefined);
     setPending(true);
 
-    const result = await (client ?? getPackagesClient()).createPackage(validation.value);
+    let result: Awaited<ReturnType<PackagesClient["createPackage"]>>;
+
+    try {
+      result = await (client ?? getPackagesClient()).createPackage(validation.value);
+    } catch {
+      setPending(false);
+      setFormError("No pudimos crear el paquete. Inténtalo de nuevo.");
+      return;
+    }
 
     if (result.ok) {
       // El botón sigue deshabilitado mientras se navega para evitar un doble envío.

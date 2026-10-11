@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { crearActivo3DCompartido, type DatosActivo3D } from "./activo-3d-compartido";
-import { ArcoAR, crearElementoAR, MesaAR, PistaAR } from "./elemento-ar";
+import { ArcoAR, crearElementoAR, MesaAR, PistaAR, SillaAR } from "./elemento-ar";
 import { InstanciaDecorativa } from "./instancia-decorativa";
 import {
   RenderizadorQuickLook,
@@ -47,27 +47,29 @@ class RenderizadorEspia implements RenderizadorAR {
 
 describe("ElementoAR (abstracción del Bridge)", () => {
   it.each([
-    ["mesa", MesaAR],
-    ["arco", ArcoAR],
-    ["pista", PistaAR],
-  ] as const)("crea %s con su abstracción refinada", (assetId, Clase) => {
+    ["mesa", MesaAR, "mesa"],
+    ["mesa-auxiliar", MesaAR, "mesa"],
+    ["silla", SillaAR, "silla"],
+    ["arco", ArcoAR, "arco"],
+    ["pista", PistaAR, "pista"],
+  ] as const)("crea %s con su abstracción refinada", (assetId, Clase, tipo) => {
     const resultado = crearElementoAR("Nombre", instanciaDe({ assetId }), new RenderizadorQuickLook());
 
     expect(resultado.ok).toBe(true);
     if (!resultado.ok) return;
     expect(resultado.value).toBeInstanceOf(Clase);
-    expect(resultado.value.tipo).toBe(assetId);
+    expect(resultado.value.tipo).toBe(tipo);
   });
 
-  it("los tres módulos del MVP se colocan sobre el piso", () => {
-    for (const assetId of ["mesa", "arco", "pista"]) {
+  it("los módulos del MVP se colocan sobre el piso", () => {
+    for (const assetId of ["mesa", "mesa-auxiliar", "silla", "arco", "pista"]) {
       const elemento = crearElementoAR("X", instanciaDe({ assetId }), new RenderizadorQuickLook());
       expect(elemento.ok && elemento.value.colocacion).toBe("floor");
     }
   });
 
   it("rechaza un assetId sin elemento AR", () => {
-    const resultado = crearElementoAR("Silla", instanciaDe({ assetId: "silla" }), new RenderizadorQuickLook());
+    const resultado = crearElementoAR("Lámpara", instanciaDe({ assetId: "lampara" }), new RenderizadorQuickLook());
 
     expect(resultado.ok).toBe(false);
     if (resultado.ok) return;

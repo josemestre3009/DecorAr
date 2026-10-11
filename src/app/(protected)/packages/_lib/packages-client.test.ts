@@ -246,6 +246,25 @@ describe("createSimulatedPackagesClient", () => {
 
     await expect(client.addItem(created.value.id, "mesa")).resolves.toMatchObject({ ok: true });
   });
+
+  it("usa memoria si el navegador bloquea sessionStorage", async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(window, "sessionStorage");
+    Object.defineProperty(window, "sessionStorage", {
+      configurable: true,
+      get: () => {
+        throw new DOMException("Access denied", "SecurityError");
+      },
+    });
+
+    try {
+      const client = createSimulatedPackagesClient(undefined, 0);
+      await expect(
+        client.createPackage({ spaceType: "casa", capacityM2: 30 }),
+      ).resolves.toMatchObject({ ok: true });
+    } finally {
+      if (descriptor) Object.defineProperty(window, "sessionStorage", descriptor);
+    }
+  });
 });
 
 describe("resolvePackagesMode", () => {

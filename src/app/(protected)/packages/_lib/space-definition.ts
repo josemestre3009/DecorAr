@@ -28,12 +28,19 @@ export type SpaceDefinitionErrors = Partial<Record<SpaceDefinitionField, string>
 
 export type SpaceDefinitionResult = Result<SpaceDefinition, SpaceDefinitionErrors>;
 
+export const MAX_CAPACITY_M2 = 999999.99;
+
 export function isSpaceType(value: unknown): value is SpaceType {
   return SPACE_TYPES.some((type) => type.value === value);
 }
 
 export function isValidCapacity(value: unknown): value is number {
-  return typeof value === "number" && Number.isFinite(value) && value > 0;
+  return (
+    typeof value === "number" &&
+    Number.isFinite(value) &&
+    value > 0 &&
+    value <= MAX_CAPACITY_M2
+  );
 }
 
 export const CAPACITY_MESSAGES = {
@@ -72,7 +79,7 @@ export function parseCapacity(raw: string): Result<number, string> {
   const value = Number(text.replace(",", "."));
 
   // Cientos de dígitos se convierten en Infinity al pasar a número.
-  if (!Number.isFinite(value)) {
+  if (!Number.isFinite(value) || value > MAX_CAPACITY_M2) {
     return err(CAPACITY_MESSAGES.tooLarge);
   }
 

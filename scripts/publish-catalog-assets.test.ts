@@ -16,10 +16,17 @@ describe("parsePublishOptions", () => {
     });
   });
 
+  it("permite publicar la mesa auxiliar pequeña", () => {
+    expect(parsePublishOptions(["--asset=mesa-auxiliar", "--version=1"])).toEqual({
+      assetId: "mesa-auxiliar",
+      version: 1,
+    });
+  });
+
   it("permite publicar la silla", () => {
-    expect(parsePublishOptions(["--asset=silla", "--version=2"])).toEqual({
+    expect(parsePublishOptions(["--asset=silla", "--version=1"])).toEqual({
       assetId: "silla",
-      version: 2,
+      version: 1,
     });
   });
 

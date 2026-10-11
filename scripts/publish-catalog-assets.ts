@@ -32,6 +32,10 @@ const MODULES_TO_PUBLISH: readonly ModuleDefinition[] = [
     version: DEFAULT_CATALOG_ASSET_VERSION,
   },
   {
+    assetId: "mesa-auxiliar",
+    version: 2,
+  },
+  {
     assetId: "silla",
     version: 2,
   },

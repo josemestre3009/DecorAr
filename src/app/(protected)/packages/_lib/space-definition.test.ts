@@ -76,4 +76,11 @@ describe("parseCapacity", () => {
       error: CAPACITY_MESSAGES.tooLarge,
     });
   });
+
+  it("rechaza una capacidad mayor que la aceptada por el servidor", () => {
+    expect(parseCapacity("1000000")).toEqual({
+      ok: false,
+      error: CAPACITY_MESSAGES.tooLarge,
+    });
+  });
 });

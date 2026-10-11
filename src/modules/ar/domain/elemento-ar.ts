@@ -4,7 +4,7 @@ import { err, ok, type Result } from "../../../shared/domain/result";
 import type { InstanciaDecorativa } from "./instancia-decorativa";
 import type { ColocacionAR, ConfiguracionVisor, RenderizadorAR } from "./renderizador-ar";
 
-export type TipoElementoAR = "mesa" | "arco" | "pista";
+export type TipoElementoAR = "mesa" | "silla" | "arco" | "pista";
 
 const METROS = new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 });
 
@@ -60,6 +60,17 @@ export class MesaAR extends ElementoAR {
   }
 }
 
+/** Silla: asiento individual que se apoya en el piso. */
+export class SillaAR extends ElementoAR {
+  readonly tipo = "silla";
+  readonly colocacion = "floor";
+  protected readonly descripcion = "silla decorativa tapizada";
+
+  constructor(nombre: string, instancia: InstanciaDecorativa, renderizador: RenderizadorAR) {
+    super(nombre, instancia, renderizador);
+  }
+}
+
 /**
  * Arco: estructura de pie (2,4 m de alto) que se apoya en el piso, no se cuelga
  * de una pared.
@@ -93,7 +104,10 @@ export function crearElementoAR(
 ): Result<ElementoAR, DomainError> {
   switch (instancia.activo.assetId) {
     case "mesa":
+    case "mesa-auxiliar":
       return ok(new MesaAR(nombre, instancia, renderizador));
+    case "silla":
+      return ok(new SillaAR(nombre, instancia, renderizador));
     case "arco":
       return ok(new ArcoAR(nombre, instancia, renderizador));
     case "pista":

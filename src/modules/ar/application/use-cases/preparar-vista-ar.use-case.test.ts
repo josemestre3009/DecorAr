@@ -87,7 +87,7 @@ describe("PrepararVistaARUseCase", () => {
   });
 
   it("informa cuando el módulo no tiene elemento AR", () => {
-    const vista = new PrepararVistaARUseCase(new FabricaActivos3D()).execute(modulo("silla"), IOS);
+    const vista = new PrepararVistaARUseCase(new FabricaActivos3D()).execute(modulo("lampara"), IOS);
 
     expect(vista.ok).toBe(false);
     if (vista.ok) return;
