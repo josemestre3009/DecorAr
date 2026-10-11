@@ -105,6 +105,17 @@ describe("inspectAllAssets", () => {
     expect(bounds.min[2] + bounds.max[2]).toBeCloseTo(0, 2);
   });
 
+  it("mantiene la mesa auxiliar pequeña, centrada y apoyada en el piso", async () => {
+    const bounds = extractGlbBoundingBox(
+      await readFile("assets/3d/mesa-auxiliar/v2/mesa-auxiliar.glb"),
+    );
+
+    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual([0.6, 0.55, 0.45]);
+    expect(bounds.min[1]).toBeCloseTo(0, 3);
+    expect(bounds.min[0] + bounds.max[0]).toBeCloseTo(0, 3);
+    expect(bounds.min[2] + bounds.max[2]).toBeCloseTo(0, 3);
+  });
+
   it("mantiene la silla plástica a escala real y apoyada en el piso", async () => {
     const bounds = extractGlbBoundingBox(await readFile("assets/3d/silla/v2/silla.glb"));
 

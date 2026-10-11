@@ -148,10 +148,18 @@ function failure(kind: ApiFailure["kind"], status: number, code: string, message
  * se comparan con el área de los módulos (eso es del Builder de DECOR-27).
  */
 export function createSimulatedPackagesClient(
-  storage: KeyValueStorage | null = typeof window === "undefined" ? null : window.sessionStorage,
+  storage?: KeyValueStorage | null,
   delayMs = 300,
 ): PackagesClient {
   let memory: Record<string, SimulatedPackage> = {};
+
+  if (storage === undefined && typeof window !== "undefined") {
+    try {
+      storage = window.sessionStorage;
+    } catch {
+      storage = null;
+    }
+  }
 
   const load = (): Record<string, SimulatedPackage> => {
     try {

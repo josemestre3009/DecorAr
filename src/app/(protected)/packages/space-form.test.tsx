@@ -110,6 +110,21 @@ describe("SpaceForm", () => {
     expect(screen.getByRole("button", { name: "Crear paquete" })).toBeEnabled();
   });
 
+  it("permite reintentar si el cliente lanza una excepción", async () => {
+    const createPackage = vi
+      .fn<PackagesClient["createPackage"]>()
+      .mockRejectedValue(new Error("storage unavailable"));
+    render(<SpaceForm client={fakeClient(createPackage)} />);
+
+    fill("30");
+    submit();
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "No pudimos crear el paquete. Inténtalo de nuevo.",
+    );
+    expect(screen.getByRole("button", { name: "Crear paquete" })).toBeEnabled();
+  });
+
   it("vuelve al login si la sesión terminó", async () => {
     const createPackage = vi
       .fn<PackagesClient["createPackage"]>()
