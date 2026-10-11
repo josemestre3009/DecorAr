@@ -36,12 +36,24 @@ export type AddedItem = {
   readonly packageVersion: number;
 };
 
+export type ClonedPackage = {
+  readonly id: string;
+  readonly spaceType: SpaceType;
+  readonly capacityM2: number;
+  readonly style?: string | null;
+  readonly colors?: readonly string[];
+  readonly notes?: string;
+  readonly version?: number;
+  readonly itemCount?: number;
+};
+
 export type PackagesClientMode = "live" | "simulated";
 
 export interface PackagesClient {
   readonly mode: PackagesClientMode;
   createPackage(definition: SpaceDefinition): Promise<Result<CreatedPackage, ApiFailure>>;
   addItem(packageId: string, moduleId: string): Promise<Result<AddedItem, ApiFailure>>;
+  clonePackage(packageId: string): Promise<Result<ClonedPackage, ApiFailure>>;
 }
 
 export const PACKAGES_ENDPOINT = "/api/packages";
@@ -60,6 +72,14 @@ function isAddedItem(value: unknown): value is AddedItem {
   const body = value as Record<string, unknown>;
 
   return typeof body.itemId === "string" && typeof body.packageVersion === "number";
+}
+
+function isClonedPackage(value: unknown): value is ClonedPackage {
+  if (typeof value !== "object" || value === null) return false;
+
+  const body = value as Record<string, unknown>;
+
+  return typeof body.id === "string" && isSpaceType(body.spaceType) && isValidCapacity(body.capacityM2);
 }
 
 async function postJson<T>(
@@ -113,6 +133,13 @@ export function createHttpPackagesClient(fetcher: typeof fetch = fetch): Package
         `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items`,
         { moduleId },
         isAddedItem,
+      ),
+    clonePackage: (packageId) =>
+      postJson(
+        fetcher,
+        `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/clone`,
+        {},
+        isClonedPackage,
       ),
   };
 }
@@ -235,6 +262,35 @@ export function createSimulatedPackagesClient(
       save({ ...packages, [packageId]: updated });
 
       return ok({ itemId, packageVersion: updated.version });
+    },
+    async clonePackage(packageId) {
+      await wait();
+
+      const packages = load();
+      const current = packages[packageId];
+
+      if (!current) {
+        return failure("not_found", 404, "package.not_found", "No encontramos este paquete.");
+      }
+
+      const clonedId = newId();
+      const cloned: SimulatedPackage = {
+        capacityM2: current.capacityM2,
+        id: clonedId,
+        items: current.items.map((item) => ({ itemId: newId(), moduleId: item.moduleId })),
+        spaceType: current.spaceType,
+        version: 1,
+      };
+
+      save({ ...packages, [clonedId]: cloned });
+
+      return ok({
+        capacityM2: cloned.capacityM2,
+        id: cloned.id,
+        itemCount: cloned.items.length,
+        spaceType: cloned.spaceType,
+        version: cloned.version,
+      });
     },
   };
 }

@@ -428,6 +428,20 @@ a {
   margin-bottom: 1.5rem;
 }
 
+.catalog-nav {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.duplicate-package-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
 .catalog-header .auth-title {
   margin: 0.75rem 0 1.25rem;
 }

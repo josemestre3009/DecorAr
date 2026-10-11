@@ -49,6 +49,44 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
     expect(JSON.parse(String(init?.body))).toEqual({ moduleId: "m1" });
   });
 
+  it("clona un paquete con POST /api/packages/{id}/clone", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json(
+        {
+          capacityM2: 50,
+          colors: ["#fff"],
+          id: "p-cloned",
+          itemCount: 2,
+          notes: "Nota",
+          spaceType: "salonSocial",
+          style: "bohemio",
+          version: 1,
+        },
+        { status: 201 },
+      ),
+    );
+    const client = createHttpPackagesClient(fetcher);
+
+    const result = await client.clonePackage("p 1");
+
+    expect(result).toEqual({
+      ok: true,
+      value: {
+        capacityM2: 50,
+        colors: ["#fff"],
+        id: "p-cloned",
+        itemCount: 2,
+        notes: "Nota",
+        spaceType: "salonSocial",
+        style: "bohemio",
+        version: 1,
+      },
+    });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/packages/p%201/clone");
+    expect(init?.method).toBe("POST");
+  });
+
   it("devuelve el mensaje del envelope en un 422", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(
@@ -147,6 +185,35 @@ describe("createSimulatedPackagesClient", () => {
 
     await expect(afterReload.addItem(created.value.id, "arco")).resolves.toMatchObject({
       ok: true,
+    });
+  });
+
+  it("clona un paquete existente con nuevo id y version 1 en modo simulado", async () => {
+    const storage = memoryStorage();
+    const client = createSimulatedPackagesClient(storage, 0);
+    const created = await client.createPackage({ spaceType: "salonSocial", capacityM2: 50 });
+    if (!created.ok) throw new Error("no se creó el paquete");
+
+    await client.addItem(created.value.id, "arco");
+
+    const cloned = await client.clonePackage(created.value.id);
+    expect(cloned.ok).toBe(true);
+    if (cloned.ok) {
+      expect(cloned.value.id).not.toBe(created.value.id);
+      expect(cloned.value.spaceType).toBe("salonSocial");
+      expect(cloned.value.capacityM2).toBe(50);
+      expect(cloned.value.itemCount).toBe(1);
+      expect(cloned.value.version).toBe(1);
+    }
+  });
+
+  it("responde 404 para un paquete desconocido al clonar en modo simulado", async () => {
+    const result = await createSimulatedPackagesClient(memoryStorage(), 0).clonePackage("desconocido");
+
+    expect(!result.ok && result.error).toMatchObject({
+      code: "package.not_found",
+      kind: "not_found",
+      status: 404,
     });
   });
 

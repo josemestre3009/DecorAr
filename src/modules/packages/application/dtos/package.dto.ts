@@ -28,3 +28,20 @@ export interface RemoveModuleFromPackageDto {
   readonly userId: string;
   readonly itemId: string;
 }
+
+export interface ClonePackageDto {
+  readonly sourcePackageId: string;
+  readonly userId: string;
+}
+
+export interface ClonedPackageDto {
+  readonly id: string;
+  readonly spaceType: TipoEspacio;
+  readonly capacityM2: number;
+  readonly style?: string | null;
+  readonly colors?: readonly string[];
+  readonly notes?: string;
+  readonly version: number;
+  readonly itemCount: number;
+}
+
