@@ -295,8 +295,24 @@ describe("PackageController", () => {
       expect(mocks.drainOutbox.execute).toHaveBeenCalledTimes(1);
     });
 
-    it("sin parentGroupId (o vacío/null) sigue usando AddModuleToPackageUseCase", async () => {
-      for (const parentGroupId of [undefined, null, "  "]) {
+    it("parentGroupId vacío o en blanco devuelve 400 package.invalid_group sin agregar en la raíz", async () => {
+      for (const parentGroupId of ["", "   "]) {
+        const mocks = createGroupMocks();
+        const req = new Request("http://localhost/api/packages/pkg-1/items", {
+          body: JSON.stringify({ moduleId: "mod-1", parentGroupId }),
+          method: "POST",
+        });
+
+        const res = await mocks.controller.handleAddItem(req, "pkg-1");
+        expect(res.status).toBe(400);
+        expect((await res.json()).error.code).toBe("package.invalid_group");
+        expect(mocks.addModuleToPackageUseCase.execute).not.toHaveBeenCalled();
+        expect(mocks.addModuleToGroupUseCase.execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it("sin parentGroupId (ausente o null) sigue usando AddModuleToPackageUseCase", async () => {
+      for (const parentGroupId of [undefined, null]) {
         const mocks = createGroupMocks();
         const req = new Request("http://localhost/api/packages/pkg-1/items", {
           body: JSON.stringify({ moduleId: "mod-1", parentGroupId }),
@@ -553,6 +569,8 @@ describe("PackageController", () => {
         ["{no-json", "package.invalid_body"],
         [{ children: [] }, "package.invalid_group_name"],
         [{ name: "X", parentGroupId: 7 }, "package.invalid_group"],
+        [{ name: "X", parentGroupId: "" }, "package.invalid_group"],
+        [{ name: "X", parentGroupId: "   " }, "package.invalid_group"],
         [{ children: "mesa", name: "X" }, "package.invalid_module"],
         [{ children: [{ id: "mesa" }], name: "X" }, "package.invalid_module"],
       ];

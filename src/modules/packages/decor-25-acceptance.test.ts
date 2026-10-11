@@ -239,7 +239,11 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
 
       expect(result.ok).toBe(true);
       expect(await rows(packageId)).toEqual({ events: 2, groups: 1, items: 2, version: 3 });
-      expect(consumer.consume).toHaveBeenCalledTimes(2);
+      // Dos eventos en la outbox, pero un solo recálculo de Presupuesto (el último).
+      expect(consumer.consume).toHaveBeenCalledTimes(1);
+      expect(consumer.consume).toHaveBeenCalledWith(
+        expect.objectContaining({ payload: expect.objectContaining({ moduleId: MODULE_MESA }) }),
+      );
     });
   });
 

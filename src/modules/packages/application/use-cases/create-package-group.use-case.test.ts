@@ -121,7 +121,11 @@ describe("CreatePackageGroupUseCase", () => {
       parentGroupId: null,
       userId: "user-1",
     });
-    expect(consumer.consume).toHaveBeenCalledTimes(2);
+    // Un solo recálculo por petición, con el último evento (versión final).
+    expect(consumer.consume).toHaveBeenCalledTimes(1);
+    expect(consumer.consume).toHaveBeenCalledWith(
+      expect.objectContaining({ eventId: "id-5", payload: { itemId: "id-3", moduleId: MESA.id } }),
+    );
   });
 
   it("un grupo sin hojas no emite eventos ni recalcula", async () => {
@@ -200,6 +204,7 @@ describe("CreatePackageGroupUseCase", () => {
   it("rechaza grupo padre inexistente, módulo inexistente y nombre inválido antes del RPC", async () => {
     const cases = [
       { code: "package.group_not_found", dto: { name: "X", parentGroupId: "no-existe" } },
+      { code: "package.invalid_group", dto: { name: "X", parentGroupId: "   " } },
       { code: "package.module_not_found", dto: { moduleIds: ["no-existe"], name: "X" } },
       { code: "package.invalid_group_name", dto: { name: "  " } },
       { code: "package.invalid_module", dto: { moduleIds: [" "], name: "X" } },

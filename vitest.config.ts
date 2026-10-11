@@ -3,6 +3,21 @@ import { fileURLToPath } from "node:url";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
+const BASE_EXCLUDE = ["e2e/**", "node_modules/**", ".opencode/**", ".next/**"];
+
+// Suites que arrancan PostgreSQL embebido (PGlite) y aplican todas las
+// migraciones en beforeAll. Corren en su propio proyecto, en serie y al final,
+// con timeouts largos solo para ellas; el resto conserva los valores por
+// defecto. Si añades otra suite con PGlite, agrégala aquí.
+const PGLITE_TESTS = [
+  "src/modules/packages/decor-24-acceptance.test.ts",
+  "src/modules/packages/decor-25-acceptance.test.ts",
+  "src/modules/packages/decor-27-acceptance.test.ts",
+  "supabase/migrations/authorize-packages-and-private-channels.test.ts",
+  "supabase/migrations/create-idempotent-budget-consumer.test.ts",
+  "supabase/migrations/create-package-groups.test.ts",
+];
+
 export default defineConfig({
   plugins: [react()],
   resolve: {
@@ -14,12 +29,26 @@ export default defineConfig({
   },
   test: {
     environment: "jsdom",
-    exclude: ["e2e/**", "node_modules/**", ".opencode/**", ".next/**"],
-    // Las suites PGlite arrancan PostgreSQL embebido y aplican todas las
-    // migraciones en beforeAll; en paralelo con el resto superan los 10 s/5 s
-    // por defecto aunque cada una sola tarde ~2-3 s.
-    hookTimeout: 60_000,
-    testTimeout: 20_000,
+    exclude: BASE_EXCLUDE,
     setupFiles: ["./vitest.setup.ts"],
+    projects: [
+      {
+        extends: true,
+        test: {
+          name: "unit",
+          exclude: [...BASE_EXCLUDE, ...PGLITE_TESTS],
+        },
+      },
+      {
+        extends: true,
+        test: {
+          name: "pglite",
+          include: PGLITE_TESTS,
+          hookTimeout: 60_000,
+          testTimeout: 20_000,
+          maxWorkers: 1,
+        },
+      },
+    ],
   },
 });

@@ -210,7 +210,13 @@ export class PackageController {
         );
       }
 
-      if (parentGroupId !== undefined && parentGroupId !== null && typeof parentGroupId !== "string") {
+      // Ausente o null = raíz. Un valor presente debe ser un id no vacío: un
+      // texto en blanco se rechaza en lugar de caer en la raíz en silencio.
+      if (
+        parentGroupId !== undefined &&
+        parentGroupId !== null &&
+        (typeof parentGroupId !== "string" || parentGroupId.trim().length === 0)
+      ) {
         return Response.json(
           { error: { code: "package.invalid_group", message: "El grupo no es válido" } },
           { headers: this.defaultHeaders, status: 400 },
@@ -441,7 +447,13 @@ export class PackageController {
         );
       }
 
-      if (parentGroupId !== undefined && parentGroupId !== null && typeof parentGroupId !== "string") {
+      // Ausente o null = raíz. Un valor presente debe ser un id no vacío: un
+      // texto en blanco se rechaza en lugar de caer en la raíz en silencio.
+      if (
+        parentGroupId !== undefined &&
+        parentGroupId !== null &&
+        (typeof parentGroupId !== "string" || parentGroupId.trim().length === 0)
+      ) {
         return Response.json(
           { error: { code: "package.invalid_group", message: "El grupo no es válido" } },
           { headers: this.defaultHeaders, status: 400 },

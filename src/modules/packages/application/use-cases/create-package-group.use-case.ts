@@ -54,7 +54,11 @@ export class CreatePackageGroupUseCase {
       return err(new DomainError("package.invalid_module", "El módulo no es válido"));
     }
 
-    const parentGroupId = dto.parentGroupId?.trim() || null;
+    // Ausente o null = raíz; un id en blanco es un error, no la raíz.
+    if (typeof dto.parentGroupId === "string" && dto.parentGroupId.trim().length === 0) {
+      return err(new DomainError("package.invalid_group", "El grupo no es válido"));
+    }
+    const parentGroupId = dto.parentGroupId?.trim() ?? null;
     const groupId = this.idGenerator.generate();
 
     const newGroup = ModuloCompuesto.crear(groupId, dto.name);
@@ -122,8 +126,12 @@ export class CreatePackageGroupUseCase {
       return err(created.error);
     }
 
-    for (const event of events) {
-      await notifyPackageChange(this.changeConsumer, event);
+    // Un solo recálculo por petición: Presupuesto relee el paquete con la
+    // versión final, así que el último evento ya incluye todas las hojas; los
+    // anteriores darían `applied=false`. Un grupo vacío no notifica.
+    const lastEvent = events.at(-1);
+    if (lastEvent) {
+      await notifyPackageChange(this.changeConsumer, lastEvent);
     }
 
     return ok({

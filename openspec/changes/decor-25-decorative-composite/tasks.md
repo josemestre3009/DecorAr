@@ -31,3 +31,11 @@
 - [x] 5.2 Ejecutar `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`.
 - [ ] 5.3 Ejecutar `openspec validate decor-25-decorative-composite --type change --strict` (CLI no instalado en el entorno).
 - [ ] 5.4 Aplicar la migración en el Supabase alojado (requiere acceso de Jose/Luis).
+
+## 6. Revisión del PR #18
+
+- [x] 6.1 F2: una sola notificación a Presupuesto por grupo creado (último evento).
+- [x] 6.2 F3: `parentGroupId` vacío o en blanco responde 400 `package.invalid_group` en `POST /items` y `POST /groups`.
+- [x] 6.3 F4: timeouts largos solo para las suites PGlite (proyecto `pglite` en `vitest.config.ts`, en serie).
+- [x] 6.4 Smoke test opt-in `e2e/package-groups-live.spec.ts` (`DECOR_LIVE_SMOKE=1`) contra la API real.
+- [ ] 6.5 Ejecutar el smoke test cuando la migración esté aplicada (5.4).
