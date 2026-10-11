@@ -295,12 +295,12 @@ describe("DECOR-31 async recovery SQL migration", () => {
   });
 
   it("status check now accepts failed in addition to pending and published", async () => {
-    const sql = await readFile(resolve("supabase/migrations/20261011000000_async_recovery.sql"), "utf8");
+    const sql = await readFile(resolve("supabase/migrations/20261011000001_async_recovery.sql"), "utf8");
     expect(sql).toContain("CHECK (status IN ('pending', 'published', 'failed'))");
   });
 
   it("declares every new function SECURITY INVOKER with an empty search_path", async () => {
-    const sql = await readFile(resolve("supabase/migrations/20261011000000_async_recovery.sql"), "utf8");
+    const sql = await readFile(resolve("supabase/migrations/20261011000001_async_recovery.sql"), "utf8");
     const definitions = [
       ...sql.split("CREATE FUNCTION").slice(1),
       ...sql.split("CREATE OR REPLACE FUNCTION").slice(1),

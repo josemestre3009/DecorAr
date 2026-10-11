@@ -138,6 +138,19 @@ describe("PackageController", () => {
       const data = await res.json();
       expect(data).toEqual({ capacityM2: 50, id: "pkg-1", spaceType: "salonSocial" });
     });
+
+    it("propaga x-correlation-id a la respuesta (DECOR-31)", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages", {
+        body: JSON.stringify({ capacityM2: 50, spaceType: "salonSocial" }),
+        headers: { "x-correlation-id": "corr-create" },
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleCreatePackage(req);
+
+      expect(res.headers.get("x-correlation-id")).toBe("corr-create");
+    });
   });
 
   describe("handleAddItem", () => {

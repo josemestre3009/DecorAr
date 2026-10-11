@@ -89,12 +89,15 @@ export class PackageController {
 
 
   async handleCreatePackage(request: Request): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
     try {
       const user = await this.sessionGateway.currentUser();
       if (!user) {
         return Response.json(
           { error: { code: "auth.unauthenticated", message: "Inicia sesión para continuar." } },
-          { headers: this.defaultHeaders, status: 401 },
+          { headers: responseHeaders, status: 401 },
         );
       }
 
@@ -104,14 +107,14 @@ export class PackageController {
       } catch {
         return Response.json(
           { error: { code: "package.invalid_body", message: "Cuerpo de solicitud JSON inválido." } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
       if (typeof body !== "object" || body === null) {
         return Response.json(
           { error: { code: "package.invalid_body", message: "Se requiere un objeto JSON." } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
@@ -134,20 +137,20 @@ export class PackageController {
 
         return Response.json(
           { error: { code, message } },
-          { headers: this.defaultHeaders, status },
+          { headers: responseHeaders, status },
         );
       }
 
       return Response.json(result.value, {
-        headers: this.defaultHeaders,
+        headers: responseHeaders,
         status: 201,
       });
     } catch (cause) {
-      const correlationId = randomUUID();
-      console.error(`[PackageController.create] Error inesperado (${correlationId}):`, cause);
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.create] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
-        { headers: this.defaultHeaders, status: 500 },
+        { headers: responseHeaders, status: 500 },
       );
     }
   }

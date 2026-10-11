@@ -59,6 +59,32 @@ export class RecoveryController {
     }
   }
 
+  /**
+   * Authorizes before dispatching on `?action` (DECOR-31). Checking the
+   * secret first keeps the documented contract for every request: `503`
+   * when the secret is unconfigured, `401` when it is missing or wrong, and
+   * `400` for an unknown action only once the caller is authorized.
+   */
+  async handlePost(request: Request): Promise<Response> {
+    const authorized = this.authorize(request);
+    if (!authorized.ok) return authorized.response;
+
+    const action = new URL(request.url).searchParams.get("action");
+
+    if (action === "retry") return this.handleRetry(request);
+    if (action === "reconcile") return this.handleReconcile(request);
+
+    return Response.json(
+      {
+        error: {
+          code: "recovery.invalid_action",
+          message: "El parámetro action debe ser 'retry' o 'reconcile'.",
+        },
+      },
+      { status: 400 },
+    );
+  }
+
   async handleRetry(request: Request): Promise<Response> {
     const authorized = this.authorize(request);
     if (!authorized.ok) return authorized.response;

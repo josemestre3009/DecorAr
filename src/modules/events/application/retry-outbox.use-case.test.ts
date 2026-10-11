@@ -209,6 +209,17 @@ describe("RetryOutboxUseCase", () => {
     );
   });
 
+  it("marks failed instead of staying pending when the published mark fails on the last retry", async () => {
+    const { rows, store } = memoryStore([{ attempts: 3, event: packageModuleAddedExample }]);
+    vi.mocked(store.markPublished).mockResolvedValue(err(new DomainError("outbox.persistence_error", "db down")));
+
+    const result = await new RetryOutboxUseCase(store, publisherOk(), fakeSleep()).execute();
+
+    expect(result).toEqual(ok({ exhausted: 1, failed: 1, published: 0, retried: 1 }));
+    expect(store.markFailed).toHaveBeenCalledWith(packageModuleAddedExample.eventId, expect.any(String));
+    expect(rows[0]).toMatchObject({ attempts: 4, status: "failed" });
+  });
+
   it("records an invalid stored event as a failure without publishing it", async () => {
     const { rows, store } = memoryStore([
       { attempts: 1, event: { ...packageModuleAddedExample, schemaVersion: 2 } },

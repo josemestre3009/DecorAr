@@ -169,4 +169,33 @@ describe("RecoveryController", () => {
     expect(res.status).toBe(500);
     expect((await res.json()).correlationId).toBeTruthy();
   });
+
+  it("authorizes before validating ?action: 503 for an unknown action when the secret is unset", async () => {
+    const { controller, retryOutbox, reconcileBudget } = harness({ recoverySecret: null });
+
+    const res = await controller.handlePost(requestWith(`Bearer ${SECRET}`, { method: "POST" }));
+
+    expect(res.status).toBe(503);
+    expect(retryOutbox.execute).not.toHaveBeenCalled();
+    expect(reconcileBudget.execute).not.toHaveBeenCalled();
+  });
+
+  it("responds 401 for an unknown action without a valid secret", async () => {
+    const { controller } = harness();
+
+    const res = await controller.handlePost(requestWith("Bearer wrong", { method: "POST" }));
+
+    expect(res.status).toBe(401);
+  });
+
+  it("responds 400 for an unknown action once authorized, without running any action", async () => {
+    const { controller, retryOutbox, reconcileBudget } = harness();
+
+    const res = await controller.handlePost(requestWith(`Bearer ${SECRET}`, { method: "POST" }));
+
+    expect(res.status).toBe(400);
+    expect((await res.json()).error.code).toBe("recovery.invalid_action");
+    expect(retryOutbox.execute).not.toHaveBeenCalled();
+    expect(reconcileBudget.execute).not.toHaveBeenCalled();
+  });
 });
