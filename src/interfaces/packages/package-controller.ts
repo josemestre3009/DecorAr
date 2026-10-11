@@ -3,14 +3,33 @@ import { randomUUID } from "node:crypto";
 import type { DrainOutboxUseCase } from "../../modules/events/application/drain-outbox.use-case";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
 import type { AddModuleToPackageUseCase } from "../../modules/packages/application/use-cases/add-module-to-package.use-case";
-import { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
+import type { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
 import type { SessionGateway } from "../../shared/application/ports";
 import { checkPackageAccess } from "./package-access";
 
+export type PackageControllerOptions = {
+  readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
+  readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
+  readonly defaultHeaders?: Record<string, string>;
+  readonly headers?: Record<string, string>;
+};
+
+function isPackageControllerOptions(
+  arg: unknown,
+): arg is PackageControllerOptions {
+  if (typeof arg !== "object" || arg === null) return false;
+  return (
+    "clonePackageUseCase" in arg ||
+    "drainOutbox" in arg ||
+    "defaultHeaders" in arg ||
+    "headers" in arg
+  );
+}
+
 export class PackageController {
-  private readonly clonePackageUseCase?: ClonePackageUseCase;
+  private readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
   private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   private readonly defaultHeaders: Record<string, string>;
 
@@ -20,19 +39,35 @@ export class PackageController {
     private readonly createPackageUseCase: CreatePackageUseCase,
     private readonly addModuleToPackageUseCase: AddModuleToPackageUseCase,
     private readonly removeModuleFromPackageUseCase: RemoveModuleFromPackageUseCase,
-    clonePackageOrDrain?: ClonePackageUseCase | Pick<DrainOutboxUseCase, "execute">,
+    optionsOrCloneOrDrain?:
+      | PackageControllerOptions
+      | Pick<ClonePackageUseCase, "execute">
+      | Pick<DrainOutboxUseCase, "execute">,
     drainOrHeaders?: Pick<DrainOutboxUseCase, "execute"> | Record<string, string>,
     headersOrEmpty: Record<string, string> = {},
   ) {
+    if (isPackageControllerOptions(optionsOrCloneOrDrain)) {
+      this.clonePackageUseCase = optionsOrCloneOrDrain.clonePackageUseCase;
+      this.drainOutbox = optionsOrCloneOrDrain.drainOutbox;
+      this.defaultHeaders =
+        optionsOrCloneOrDrain.headers ??
+        optionsOrCloneOrDrain.defaultHeaders ??
+        {};
+      return;
+    }
+
     if (
-      clonePackageOrDrain instanceof ClonePackageUseCase ||
-      (drainOrHeaders && typeof (drainOrHeaders as Record<string, unknown>).execute === "function")
+      drainOrHeaders &&
+      typeof (drainOrHeaders as Record<string, unknown>).execute === "function"
     ) {
-      this.clonePackageUseCase = clonePackageOrDrain as ClonePackageUseCase;
+      this.clonePackageUseCase = optionsOrCloneOrDrain as Pick<ClonePackageUseCase, "execute">;
       this.drainOutbox = drainOrHeaders as Pick<DrainOutboxUseCase, "execute">;
       this.defaultHeaders = headersOrEmpty;
-    } else if (clonePackageOrDrain && typeof (clonePackageOrDrain as Record<string, unknown>).execute === "function") {
-      this.drainOutbox = clonePackageOrDrain as Pick<DrainOutboxUseCase, "execute">;
+    } else if (
+      optionsOrCloneOrDrain &&
+      typeof (optionsOrCloneOrDrain as Record<string, unknown>).execute === "function"
+    ) {
+      this.drainOutbox = optionsOrCloneOrDrain as Pick<DrainOutboxUseCase, "execute">;
       this.defaultHeaders = (drainOrHeaders as Record<string, string>) ?? {};
     } else {
       this.defaultHeaders = headersOrEmpty;

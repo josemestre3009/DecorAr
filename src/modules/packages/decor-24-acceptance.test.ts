@@ -236,7 +236,7 @@ describe("DECOR-24 Criterios de Aceptación: Prototype y Clonación Profunda", (
         emptyUseCase as CreatePackageUseCase,
         emptyUseCase as AddModuleToPackageUseCase,
         emptyUseCase as RemoveModuleFromPackageUseCase,
-        emptyUseCase as ClonePackageUseCase,
+        { clonePackageUseCase: emptyUseCase as ClonePackageUseCase },
       );
 
       const req = new Request("http://localhost/api/packages/pkg-123/clone", {
@@ -268,7 +268,7 @@ describe("DECOR-24 Criterios de Aceptación: Prototype y Clonación Profunda", (
         emptyUseCase as CreatePackageUseCase,
         emptyUseCase as AddModuleToPackageUseCase,
         emptyUseCase as RemoveModuleFromPackageUseCase,
-        emptyUseCase as ClonePackageUseCase,
+        { clonePackageUseCase: emptyUseCase as ClonePackageUseCase },
       );
 
       const req = new Request("http://localhost/api/packages/pkg-de-otro/clone", {
@@ -334,6 +334,49 @@ describe("DECOR-24 Criterios de Aceptación: Prototype y Clonación Profunda", (
       `);
 
       expect(eventsAfter.rows[0].count).toBe(eventsBefore.rows[0].count);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Criterio 5: Prototype visible en UI (PackagesClient y acción de duplicar)
+  // --------------------------------------------------------------------------
+  describe("5. Prototype visible en UI: El cliente de interfaz expone clonePackage para clonar paquetes", () => {
+    it("PackagesClient permite disparar la clonación tanto en modo live como simulated", async () => {
+      const { createHttpPackagesClient, createSimulatedPackagesClient } = await import(
+        "../../app/(protected)/packages/_lib/packages-client"
+      );
+
+      const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+        Response.json(
+          {
+            capacityM2: 50,
+            id: "pkg-cloned-ui",
+            itemCount: 1,
+            spaceType: "casa",
+            version: 1,
+          },
+          { status: 201 },
+        ),
+      );
+
+      const httpClient = createHttpPackagesClient(fetcher);
+      const httpResult = await httpClient.clonePackage("pkg-original");
+      expect(httpResult.ok).toBe(true);
+      if (httpResult.ok) {
+        expect(httpResult.value.id).toBe("pkg-cloned-ui");
+      }
+
+      const simulatedClient = createSimulatedPackagesClient(null, 0);
+      const created = await simulatedClient.createPackage({ capacityM2: 40, spaceType: "salonSocial" });
+      expect(created.ok).toBe(true);
+      if (created.ok) {
+        const simCloned = await simulatedClient.clonePackage(created.value.id);
+        expect(simCloned.ok).toBe(true);
+        if (simCloned.ok) {
+          expect(simCloned.value.id).not.toBe(created.value.id);
+          expect(simCloned.value.capacityM2).toBe(40);
+        }
+      }
     });
   });
 });

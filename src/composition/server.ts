@@ -177,9 +177,11 @@ export async function createPackageController(
     createPackageUseCase,
     addModuleToPackageUseCase,
     removeModuleFromPackageUseCase,
-    clonePackageUseCase,
-    drainOutbox,
-    pendingHeaders,
+    {
+      clonePackageUseCase,
+      defaultHeaders: pendingHeaders,
+      drainOutbox,
+    },
   );
 }
 

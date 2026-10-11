@@ -349,6 +349,50 @@ describe("PackageController", () => {
       const data = await res.json();
       expect(data.error.code).toBe("package.persistence_error");
     });
+
+    it("funciona con mock duck-typed de ClonePackageUseCase usando objeto de opciones (resuelve F3)", async () => {
+      const mocks = createMocks();
+      const mockDuckTypedClone = {
+        execute: vi.fn().mockResolvedValue(
+          ok({
+            capacityM2: 25,
+            colors: ["#112233"],
+            id: "pkg-cloned-duck",
+            itemCount: 1,
+            notes: "Clon con mock",
+            spaceType: "casa",
+            style: "minimalista",
+            version: 1,
+          }),
+        ),
+      };
+
+      const controller = new PackageController(
+        mocks.sessionGateway,
+        mocks.authorizePackageAccess as unknown as AuthorizePackageAccessUseCase,
+        mocks.createPackageUseCase as unknown as CreatePackageUseCase,
+        mocks.addModuleToPackageUseCase as unknown as AddModuleToPackageUseCase,
+        mocks.removeModuleFromPackageUseCase as unknown as RemoveModuleFromPackageUseCase,
+        {
+          clonePackageUseCase: mockDuckTypedClone,
+          headers: { "x-test-header": "test-value" },
+        },
+      );
+
+      const req = new Request("http://localhost/api/packages/pkg-1/clone", {
+        method: "POST",
+      });
+
+      const res = await controller.handleClonePackage(req, "pkg-1");
+      expect(res.status).toBe(201);
+      expect(res.headers.get("x-test-header")).toBe("test-value");
+      const data = await res.json();
+      expect(data.id).toBe("pkg-cloned-duck");
+      expect(mockDuckTypedClone.execute).toHaveBeenCalledWith({
+        sourcePackageId: "pkg-1",
+        userId: "user-1",
+      });
+    });
   });
 });
 
