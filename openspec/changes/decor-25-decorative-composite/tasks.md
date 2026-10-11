@@ -29,7 +29,7 @@
 
 - [x] 5.1 Prueba de aceptación `decor-25-acceptance.test.ts`.
 - [x] 5.2 Ejecutar `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`.
-- [ ] 5.3 Ejecutar `openspec validate decor-25-decorative-composite --type change --strict` (CLI no instalado en el entorno).
+- [x] 5.3 Ejecutar `openspec validate decor-25-decorative-composite --type change --strict`: válido (`npx -y @fission-ai/openspec@1.14.1`, sin instalar el CLI).
 - [ ] 5.4 Aplicar la migración en el Supabase alojado (requiere acceso de Jose/Luis).
 
 ## 6. Revisión del PR #18
