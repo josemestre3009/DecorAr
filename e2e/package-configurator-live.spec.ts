@@ -38,16 +38,26 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
   const email = `decor22-e2e-${randomUUID()}@decorar.test`;
   const password = `${randomUUID()}Aa1!`;
   let userId: string | null = null;
+  let otherUserId: string | null = null;
 
   test.beforeAll(async () => {
     const created = await admin.auth.admin.createUser({ email, password, email_confirm: true });
     if (created.error) throw created.error;
     userId = created.data.user.id;
+
+    const other = await admin.auth.admin.createUser({
+      email: `decor22-e2e-otro-${randomUUID()}@decorar.test`,
+      email_confirm: true,
+      password: `${randomUUID()}Aa1!`,
+    });
+    if (other.error) throw other.error;
+    otherUserId = other.data.user.id;
   });
 
   test.afterAll(async () => {
     // packages.user_id → auth.users ON DELETE CASCADE: se van paquetes, grupos e ítems.
     if (userId) await admin.auth.admin.deleteUser(userId);
+    if (otherUserId) await admin.auth.admin.deleteUser(otherUserId);
   });
 
   async function signIn(page: Page) {
@@ -153,10 +163,20 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await expect(facts(page)).toHaveText(["Salón social", "50 m²", "32 m²", "18 m²"]);
   });
 
-  test("un paquete ajeno responde 404", async ({ page }) => {
+  test("un paquete de otro usuario o inexistente responde 404 sin revelar que existe", async ({ page }) => {
+    const foreign = await admin
+      .from("packages")
+      .insert({ capacity_m2: 30, space_type: "casa", user_id: otherUserId })
+      .select("id")
+      .single<{ id: string }>();
+    if (foreign.error) throw foreign.error;
+
     await signIn(page);
 
-    const response = await page.goto(`/packages/${randomUUID()}`);
-    expect(response?.status()).toBe(404);
+    const foreignResponse = await page.goto(`/packages/${foreign.data.id}`);
+    expect(foreignResponse?.status()).toBe(404);
+
+    const missingResponse = await page.goto(`/packages/${randomUUID()}`);
+    expect(missingResponse?.status()).toBe(404);
   });
 });

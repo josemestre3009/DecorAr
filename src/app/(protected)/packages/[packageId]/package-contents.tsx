@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
 
@@ -12,11 +12,14 @@ import { getPackagesClient, type PackagesClient } from "../_lib/packages-client"
 type PackageContentsProps = {
   readonly packageId: string;
   readonly nodes: readonly PackageDetailNode[];
+  /** Versión del paquete leída del servidor; un error solo se muestra para la versión en la que ocurrió. */
+  readonly version: number;
   /** Inyectable para las pruebas. */
   readonly client?: PackagesClient;
 };
 
 type LeavesRow = Extract<ContentRow, { kind: "leaves" }>;
+type RowError = { readonly message: string; readonly version: number };
 
 /**
  * Contenido del paquete (DECOR-22): hojas sueltas y grupos (Composite) tal como
@@ -24,22 +27,31 @@ type LeavesRow = Extract<ContentRow, { kind: "leaves" }>;
  * bien, vuelve a pedir la página al servidor; si falla, no cambia nada y
  * muestra el error junto al elemento.
  */
-export function PackageContents({ packageId, nodes, client }: PackageContentsProps) {
+export function PackageContents({ packageId, nodes, version, client }: PackageContentsProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
   const rows = useMemo(() => toContentRows(nodes), [nodes]);
+  const headingRef = useRef<HTMLHeadingElement>(null);
   const [removingKey, setRemovingKey] = useState<string | null>(null);
-  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [errors, setErrors] = useState<Record<string, RowError>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
   const [announcement, setAnnouncement] = useState("");
-  const [, startTransition] = useTransition();
+  const [isRefreshing, startTransition] = useTransition();
+  // Mientras llega la página nueva los itemIds en pantalla ya no son fiables:
+  // ningún "Quitar" se acepta hasta que termine el refresco.
+  const isBusy = removingKey !== null || isRefreshing;
+
+  function refreshFromServer() {
+    startTransition(() => router.refresh());
+  }
 
   async function removeOne(key: string, row: LeavesRow) {
-    if (removingKey !== null) {
+    if (isBusy) {
       return;
     }
 
     const itemId = row.itemIds[row.itemIds.length - 1];
+    const isLastUnit = row.itemIds.length === 1;
     setRemovingKey(key);
     setErrors((current) => {
       const next = { ...current };
@@ -49,21 +61,32 @@ export function PackageContents({ packageId, nodes, client }: PackageContentsPro
     setAnnouncement(`Quitando ${row.name}…`);
 
     const result = await packages.removeItem(packageId, itemId);
-    setRemovingKey(null);
 
     if (result.ok) {
       setAnnouncement(`Se quitó una unidad de ${row.name}.`);
-      startTransition(() => router.refresh());
+      // La fila desaparece con el refresco: el foco no debe quedarse en el aire.
+      if (isLastUnit) {
+        headingRef.current?.focus();
+      }
+      refreshFromServer();
+      setRemovingKey(null);
       return;
     }
+
+    setRemovingKey(null);
 
     if (result.error.kind === "unauthorized") {
       router.push("/login");
       return;
     }
 
-    setErrors((current) => ({ ...current, [key]: result.error.message }));
+    setErrors((current) => ({ ...current, [key]: { message: result.error.message, version } }));
     setAnnouncement("");
+
+    // Si el elemento ya no existe, la pantalla está desactualizada: se resincroniza.
+    if (result.error.code === "package.item_not_found") {
+      refreshFromServer();
+    }
   }
 
   function renderRows(list: readonly ContentRow[], parentKey: string) {
@@ -111,7 +134,8 @@ export function PackageContents({ packageId, nodes, client }: PackageContentsPro
 
           const key = `${parentKey}/m:${row.moduleId}`;
           const isRemoving = removingKey === key;
-          const error = errors[key];
+          // Un error de una versión anterior ya no describe lo que hay en pantalla.
+          const error = errors[key]?.version === version ? errors[key].message : null;
           const errorId = `${key.replace(/[^a-zA-Z0-9-]/g, "-")}-error`;
           const subtotal = rowSubtotal(row);
 
@@ -128,7 +152,7 @@ export function PackageContents({ packageId, nodes, client }: PackageContentsPro
                 <button
                   aria-busy={isRemoving}
                   aria-describedby={error ? errorId : undefined}
-                  aria-disabled={removingKey !== null}
+                  aria-disabled={isBusy}
                   aria-label={isRemoving ? `Quitando ${row.name}` : `Quitar una unidad de ${row.name}`}
                   className="secondary-button content-remove"
                   onClick={() => removeOne(key, row)}
@@ -151,7 +175,8 @@ export function PackageContents({ packageId, nodes, client }: PackageContentsPro
 
   return (
     <section aria-labelledby="package-contents-title" className="configurator-card package-contents">
-      <h2 className="section-title" id="package-contents-title">
+      {/* Destino de foco cuando desaparece la fila que se acaba de quitar. */}
+      <h2 className="section-title page-heading" id="package-contents-title" ref={headingRef} tabIndex={-1}>
         Contenido del paquete
       </h2>
       <p className="content-hint">Los subtotales son informativos; el total confirmado lo calcula Presupuesto.</p>

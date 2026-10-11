@@ -36,6 +36,7 @@ export function WelcomeZoneButton({ packageId, client, fetcher }: WelcomeZoneBut
   const [isPending, setIsPending] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [zones, setZones] = useState<CreatedZone[]>([]);
+  const [announcement, setAnnouncement] = useState("");
 
   async function handleCreate() {
     setIsPending(true);
@@ -72,6 +73,7 @@ export function WelcomeZoneButton({ packageId, client, fetcher }: WelcomeZoneBut
     if (result.ok) {
       if (groups.mode === "live") {
         // El contenido del paquete (DECOR-22) muestra el grupo leído del servidor.
+        setAnnouncement(`${WELCOME_ZONE_NAME} se agregó a tu paquete.`);
         router.refresh();
         return;
       }
@@ -110,6 +112,7 @@ export function WelcomeZoneButton({ packageId, client, fetcher }: WelcomeZoneBut
       ) : null}
 
       <div aria-live="polite" role="status">
+        {announcement ? <p className="visually-hidden">{announcement}</p> : null}
         {zones.map((zone) => (
           <article aria-label={WELCOME_ZONE_NAME} key={zone.groupId}>
             <h3>{WELCOME_ZONE_NAME}</h3>

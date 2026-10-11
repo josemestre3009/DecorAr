@@ -65,6 +65,7 @@ describe("WelcomeZoneButton (Composite visible en la interfaz)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Agregar Zona de bienvenida" }));
 
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+    expect(screen.getByRole("status")).toHaveTextContent("Zona de bienvenida se agregó a tu paquete.");
     expect(createGroup).toHaveBeenCalledWith("pkg-1", {
       moduleIds: ["id-arco", "id-mesa"],
       name: "Zona de bienvenida",
