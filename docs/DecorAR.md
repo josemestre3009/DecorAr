@@ -334,6 +334,47 @@ classDiagram
     ConfiguracionClonable <|.. PaqueteDecoracion : copia profunda
 ```
 
+### 2.2.9 E2E móvil del MVP con Playwright (DECOR-39)
+
+La suite `e2e/mobile-mvp/` recorre el flujo de demo en un **Pixel 5** contra la app en Docker y el Supabase alojado de pruebas, sin editar datos a mano. Tiene su propia configuración, `playwright.mvp.config.ts`, y no forma parte de `npm run test:e2e`.
+
+1. **Preparación**: el setup (`mvp.setup.ts`) espera `GET /api/health` = `{"status":"ok"}`. Así no se confunde con otro servidor en el puerto 3000. Después ejecuta el seed, inicia sesión por la interfaz con los usuarios A y B y guarda su `storageState` en `e2e/.auth/` (ignorado por git). Por último comprueba que la imagen está en modo `live`.
+2. **Seed idempotente** (`scripts/seed-e2e.ts`, server-side con `service_role`):
+   - crea o reajusta los usuarios dedicados A y B con el correo confirmado;
+   - borra solo los paquetes de A y B (cascada a ítems, grupos, presupuesto y eventos);
+   - verifica que `arco`, `mesa` y `pista` están activos con GLB y USDZ HTTPS. No los activa: si faltan, falla y remite a `npm run catalog:publish-assets` (DECOR-36).
+3. **Flujo** (`mvp-flow.spec.ts`, usuario A):
+   - espacio Casa de 30 m² y pista desde el catálogo;
+   - segunda pista rechazada con `422 package.capacity_exceeded` y "(32/30 m²)", sin mutar la interfaz;
+   - Zona de bienvenida (Composite);
+   - total confirmado igual a `GET /budget`;
+   - resincronización al recuperar la conexión;
+   - Duplicar paquete (Prototype) con clon independiente;
+   - vista 3D: en Android, GLB, `ar-modes="scene-viewer webxr"`, `ar-scale="fixed"`, `ar-placement="floor"` y `data-testid="ar-launch"`; en iPhone, `ios-src` USDZ y `quick-look`.
+4. **Acceso** (`mvp-access.spec.ts`): anónimo redirigido a `/login` y `401 auth.unauthenticated`; el usuario B recibe 404 en la página y en el presupuesto de un paquete de A.
+5. **Evidencia al fallar**: trace, captura y video (`retain-on-failure`) en `test-results/`; el reporte se abre con `npx playwright show-report`.
+6. **Fuera de la automatización**: Playwright no abre Scene Viewer ni Quick Look. Esa apertura, con la colocación sobre el piso, el movimiento y la rotación a escala 1:1, se evidencia manualmente en Android y iPhone.
+
+Variables (`.env`, ver `.env.example`):
+
+| Variable | Uso |
+| --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Seed (server-side) |
+| `DECOR_E2E_USER_A_EMAIL` / `_PASSWORD` | Usuario A, dueño del flujo |
+| `DECOR_E2E_USER_B_EMAIL` / `_PASSWORD` | Usuario B, verifica el aislamiento |
+| `DECOR_E2E_BASE_URL` (opcional) | Otra URL; por defecto `http://127.0.0.1:3000` |
+
+Las cuentas A y B son dedicadas y distintas de `DECOR_E2E_EMAIL`. El logout de `e2e/auth.spec.ts` revoca la sesión de esa cuenta.
+
+Ejecución (PowerShell):
+
+```powershell
+$env:NEXT_PUBLIC_DECOR_PACKAGES_API = "live"   # se fija al construir la imagen
+docker compose up --build -d                   # esperar a que el servicio esté "healthy"
+npm run e2e:seed                               # opcional: el setup también lo ejecuta
+npm run test:e2e:mvp
+```
+
 ### 2.3 Diagrama de contenedores
 
 ```mermaid
