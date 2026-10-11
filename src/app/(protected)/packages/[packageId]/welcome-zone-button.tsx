@@ -26,8 +26,9 @@ type CreatedZone = {
 
 /**
  * Hace visible el Composite desde la interfaz: crea el grupo "Zona de
- * bienvenida" con el arco y la mesa activos del catálogo y muestra sus hijos.
- * La vista completa de grupos (expandibles, subtotales) pertenece a DECOR-22.
+ * bienvenida" con el arco y la mesa activos del catálogo. Con la API real
+ * refresca la página y el grupo aparece en el contenido del paquete
+ * (DECOR-22); en modo simulado lo muestra aquí mismo.
  */
 export function WelcomeZoneButton({ packageId, client, fetcher }: WelcomeZoneButtonProps) {
   const router = useRouter();
@@ -69,6 +70,12 @@ export function WelcomeZoneButton({ packageId, client, fetcher }: WelcomeZoneBut
     setIsPending(false);
 
     if (result.ok) {
+      if (groups.mode === "live") {
+        // El contenido del paquete (DECOR-22) muestra el grupo leído del servidor.
+        router.refresh();
+        return;
+      }
+
       setZones((current) => [...current, { children: modules, groupId: result.value.groupId }]);
       return;
     }

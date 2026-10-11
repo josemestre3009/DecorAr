@@ -141,9 +141,65 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
 
     expect(!result.ok && result.error.kind).toBe("network");
   });
+
+  it("quita un elemento con DELETE /api/packages/{id}/items/{itemId} y acepta 204 sin cuerpo (DECOR-22)", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(new Response(null, { status: 204 }));
+
+    const result = await createHttpPackagesClient(fetcher).removeItem("p 1", "i/1");
+
+    expect(result).toEqual({ ok: true, value: undefined });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/packages/p%201/items/i%2F1");
+    expect(init?.method).toBe("DELETE");
+  });
+
+  it.each([
+    [404, "package.item_not_found", "not_found"],
+    [409, "package.version_conflict", "invalid"],
+  ])("al quitar, un %i se traduce con el envelope (%s)", async (status, code, kind) => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ error: { code, message: "mensaje" } }, { status }));
+
+    const result = await createHttpPackagesClient(fetcher).removeItem("p1", "i1");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe(code);
+      expect(result.error.kind).toBe(kind);
+    }
+  });
+
+  it("al quitar, un 200 inesperado o un fallo de red son errores", async () => {
+    const unexpected = await createHttpPackagesClient(
+      vi.fn<typeof fetch>().mockResolvedValue(Response.json({}, { status: 200 })),
+    ).removeItem("p1", "i1");
+    expect(unexpected.ok).toBe(false);
+
+    const offline = await createHttpPackagesClient(
+      vi.fn<typeof fetch>().mockRejectedValue(new TypeError("offline")),
+    ).removeItem("p1", "i1");
+    expect(!offline.ok && offline.error.kind).toBe("network");
+  });
 });
 
 describe("createSimulatedPackagesClient", () => {
+  it("quita un elemento, sube la versión y responde 404 si no existe", async () => {
+    const client = createSimulatedPackagesClient(memoryStorage(), 0);
+    const created = await client.createPackage({ spaceType: "casa", capacityM2: 30 });
+    if (!created.ok) throw new Error("no se creó el paquete");
+    const added = await client.addItem(created.value.id, "mesa");
+    if (!added.ok) throw new Error("no se agregó");
+
+    expect(await client.removeItem(created.value.id, added.value.itemId)).toEqual({ ok: true, value: undefined });
+
+    const again = await client.removeItem(created.value.id, added.value.itemId);
+    expect(!again.ok && again.error.code).toBe("package.item_not_found");
+
+    const unknown = await client.removeItem("desconocido", "x");
+    expect(!unknown.ok && unknown.error.code).toBe("package.not_found");
+  });
+
   it("responde con la misma forma que el contrato y guarda en sessionStorage", async () => {
     const storage = memoryStorage();
     const client = createSimulatedPackagesClient(storage, 0);

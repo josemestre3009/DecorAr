@@ -54,6 +54,8 @@ export interface PackagesClient {
   createPackage(definition: SpaceDefinition): Promise<Result<CreatedPackage, ApiFailure>>;
   addItem(packageId: string, moduleId: string): Promise<Result<AddedItem, ApiFailure>>;
   clonePackage(packageId: string): Promise<Result<ClonedPackage, ApiFailure>>;
+  /** `DELETE /api/packages/{id}/items/{itemId}` → 204 sin cuerpo (DECOR-27). */
+  removeItem(packageId: string, itemId: string): Promise<Result<void, ApiFailure>>;
 }
 
 export const PACKAGES_ENDPOINT = "/api/packages";
@@ -117,6 +119,22 @@ async function postJson<T>(
   return isExpected(body) ? ok(body) : err(unexpectedResponseFailure(response.status));
 }
 
+async function deleteNoContent(fetcher: typeof fetch, url: string): Promise<Result<void, ApiFailure>> {
+  let response: Response;
+
+  try {
+    response = await fetcher(url, { headers: { Accept: "application/json" }, method: "DELETE" });
+  } catch {
+    return err(networkFailure());
+  }
+
+  if (response.status === 204) {
+    return ok(undefined);
+  }
+
+  return err(response.ok ? unexpectedResponseFailure(response.status) : await readApiError(response));
+}
+
 export function createHttpPackagesClient(fetcher: typeof fetch = fetch): PackagesClient {
   return {
     mode: "live",
@@ -140,6 +158,11 @@ export function createHttpPackagesClient(fetcher: typeof fetch = fetch): Package
         `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/clone`,
         {},
         isClonedPackage,
+      ),
+    removeItem: (packageId, itemId) =>
+      deleteNoContent(
+        fetcher,
+        `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items/${encodeURIComponent(itemId)}`,
       ),
   };
 }
@@ -291,6 +314,31 @@ export function createSimulatedPackagesClient(
         spaceType: cloned.spaceType,
         version: cloned.version,
       });
+    },
+    async removeItem(packageId, itemId) {
+      await wait();
+
+      const packages = load();
+      const current = packages[packageId];
+
+      if (!current) {
+        return failure("not_found", 404, "package.not_found", "No encontramos este paquete.");
+      }
+
+      if (!current.items.some((item) => item.itemId === itemId)) {
+        return failure("not_found", 404, "package.item_not_found", "No encontramos este elemento en el paquete.");
+      }
+
+      save({
+        ...packages,
+        [packageId]: {
+          ...current,
+          items: current.items.filter((item) => item.itemId !== itemId),
+          version: current.version + 1,
+        },
+      });
+
+      return ok(undefined);
     },
   };
 }

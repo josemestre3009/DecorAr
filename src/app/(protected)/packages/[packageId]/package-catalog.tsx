@@ -75,6 +75,10 @@ export function PackageCatalog({ packageId, client, fetcher }: PackageCatalogPro
       setAddedCounts((counts) => ({ ...counts, [module.id]: (counts[module.id] ?? 0) + 1 }));
       setAddStates((states) => ({ ...states, [module.id]: { count, status: "added" } }));
       setAnnouncement(`${module.name} se agregó a tu paquete.`);
+      // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
+      if (packages.mode === "live") {
+        router.refresh();
+      }
       return;
     }
 
