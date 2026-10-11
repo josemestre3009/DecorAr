@@ -3,6 +3,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 
 import { createAdminClient } from "@/infrastructure/supabase/admin";
+import { createJsonLogger } from "@/infrastructure/logging/json-logger";
 import { createClient, type SessionClientOptions } from "@/infrastructure/supabase/server";
 import { createPackageOwnerReader } from "@/infrastructure/supabase/package-owner-reader";
 import { createSessionGateway } from "@/infrastructure/supabase/session-gateway";
@@ -12,6 +13,7 @@ import { SupabasePackageReader } from "@/infrastructure/supabase/supabase-packag
 import { SupabasePackageRepository } from "@/infrastructure/supabase/supabase-package-repository";
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
 import { PackageController } from "@/interfaces/packages/package-controller";
+import { RecoveryController } from "@/interfaces/recovery/recovery-controller";
 import { type AssetStoragePort } from "@/modules/catalog/application/ports/asset-storage.port";
 import { type CatalogActivationPort } from "@/modules/catalog/application/ports/catalog-activation.port";
 import { type CatalogRepository } from "@/modules/catalog/application/ports/catalog-repository.port";
@@ -24,10 +26,13 @@ import { SupabaseCatalogActivationAdapter } from "@/modules/catalog/infrastructu
 import { SupabaseCatalogRepository } from "@/modules/catalog/infrastructure/supabase-catalog-repository";
 import { ConsumePackageChangedEvent } from "@/modules/budget/application/consume-package-changed-event.use-case";
 import { GetBudgetUseCase } from "@/modules/budget/application/get-budget.use-case";
+import { ReconcileBudgetUseCase } from "@/modules/budget/application/reconcile-budget.use-case";
 import { createSupabaseBudgetReader } from "@/modules/budget/infrastructure/supabase-budget-reader";
 import { SupabaseBudgetConsumer } from "@/modules/budget/infrastructure/supabase-budget-consumer";
 import { createSupabasePackageSnapshotReader } from "@/modules/budget/infrastructure/supabase-package-snapshot-reader";
+import { SupabaseBudgetReconciler } from "@/modules/budget/infrastructure/supabase-budget-reconciler";
 import { DrainOutboxUseCase } from "@/modules/events/application/drain-outbox.use-case";
+import { RetryOutboxUseCase } from "@/modules/events/application/retry-outbox.use-case";
 import { SupabaseBroadcastEventPublisher } from "@/modules/events/infrastructure/supabase-broadcast-event-publisher";
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
 import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
@@ -40,11 +45,13 @@ import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/c
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
 
 import { createAuthUseCases } from "@/shared/application/auth";
-import type { Clock, IdGenerator } from "@/shared/application/ports";
+import { getRecoverySecret } from "@/lib/env";
+import type { Clock, IdGenerator, Sleep } from "@/shared/application/ports";
 import { err, ok } from "@/shared/domain/result";
 
 const systemClock: Clock = { now: () => new Date() };
 const uuidGenerator: IdGenerator = { generate: () => randomUUID() };
+const realSleep: Sleep = { wait: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) };
 
 /**
  * El cliente de Supabase se queda aquí dentro a propósito: la única puerta de
@@ -241,4 +248,38 @@ export async function createBudgetQueryDependencies(options: SessionClientOption
   const supabase = await createClient(options);
 
   return { getBudget: new GetBudgetUseCase(createSupabaseBudgetReader(supabase)) };
+}
+
+/**
+ * Recovery (DECOR-31): runs with the service-role client, same as the
+ * outbox and the budget consumer, because every table and function it
+ * touches denies anon/authenticated. Builds its own `RetryOutboxUseCase`
+ * (real `Sleep`, so a retry actually waits 1/2/4s) and
+ * `ReconcileBudgetUseCase`, both logging through the sanitized JSON logger.
+ */
+export function createRecoveryController(): RecoveryController {
+  const supabase = createAdminClient();
+  const outbox = new SupabaseEventOutbox(supabase);
+  const logger = createJsonLogger(systemClock);
+
+  const retryOutbox = new RetryOutboxUseCase(
+    outbox,
+    new SupabaseBroadcastEventPublisher(supabase),
+    realSleep,
+    logger,
+  );
+
+  const reconcileBudget = new ReconcileBudgetUseCase(
+    createSupabasePackageSnapshotReader(supabase),
+    new SupabaseBudgetReconciler(supabase),
+    logger,
+  );
+
+  return new RecoveryController({
+    logger,
+    outbox,
+    reconcileBudget,
+    retryOutbox,
+    recoverySecret: getRecoverySecret(),
+  });
 }

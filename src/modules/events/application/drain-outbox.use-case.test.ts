@@ -44,6 +44,12 @@ function memoryStore(events: unknown[]) {
       if (row) row.error = reason;
       return ok(undefined);
     }),
+    // Retry/reconciliation surface (DECOR-31): unused by this suite, which only
+    // exercises the initial drain. Present so `OutboxStore` is fully implemented.
+    claimRetry: vi.fn(async () => ok(null)),
+    listRetryable: vi.fn(async () => ok([])),
+    listUnresolved: vi.fn(async () => ok([])),
+    markFailed: vi.fn(async () => ok(undefined)),
   };
 
   return { rows, store };

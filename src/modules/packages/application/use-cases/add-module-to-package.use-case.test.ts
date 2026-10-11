@@ -84,6 +84,46 @@ describe("AddModuleToPackageUseCase", () => {
     );
   });
 
+  it("pasa correlationId al outbox cuando se recibe en el dto (DECOR-31)", async () => {
+    idCounter = 1;
+    const mockPackageReader: PackageReader = {
+      getItemModuleId: vi.fn(),
+      getPackage: vi.fn().mockResolvedValue(
+        ok({
+          capacityM2: 30,
+          id: "pkg-1",
+          items: [],
+          spaceType: "casa",
+          userId: "user-1",
+          version: 1,
+        }),
+      ),
+    };
+    const mockCatalogReader: CatalogModuleReader = {
+      getModuleById: vi.fn().mockResolvedValue(
+        ok({ areaM2: 16, id: "mod-1", name: "Pista de baile", priceCop: 600000 }),
+      ),
+    };
+    const mockOutbox: PackageChangeOutbox = { commit: vi.fn().mockResolvedValue(ok(2)) };
+
+    const useCase = new AddModuleToPackageUseCase(
+      mockPackageReader,
+      mockCatalogReader,
+      mockOutbox,
+      mockClock,
+      mockIdGenerator,
+    );
+
+    await useCase.execute({
+      correlationId: "corr-abc",
+      moduleId: "mod-1",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(mockOutbox.commit).toHaveBeenCalledWith(expect.anything(), 1, "corr-abc");
+  });
+
   it("notifica al consumidor de presupuesto con el mismo evento tras el commit", async () => {
     idCounter = 1;
     const mockPackageReader: PackageReader = {

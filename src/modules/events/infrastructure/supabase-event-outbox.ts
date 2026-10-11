@@ -9,6 +9,8 @@ import type {
   OutboxStore,
   PackageChangeEvent,
   PackageChangeOutbox,
+  RetryableOutboxEvent,
+  UnresolvedOutboxEvent,
 } from "../application/outbox";
 
 /** Codes raised by `public.commit_package_change` with RAISE EXCEPTION. */
@@ -50,6 +52,20 @@ const toDomainError = (error: RpcError): DomainError => {
 };
 
 type ClaimRow = { event_id: string; event: unknown };
+type RetryableRow = {
+  event_id: string;
+  event: unknown;
+  attempts: number;
+  correlation_id: string | null;
+};
+type UnresolvedRow = {
+  event_id: string;
+  status: "pending" | "failed";
+  attempts: number;
+  last_error: string | null;
+  correlation_id: string | null;
+  package_id: string;
+};
 
 /**
  * Server-only adapter over the outbox RPCs. Must be built with the
@@ -61,9 +77,11 @@ export class SupabaseEventOutbox implements PackageChangeOutbox, OutboxStore {
   async commit(
     event: PackageChangeEvent,
     expectedVersion?: number,
+    correlationId?: string,
   ): Promise<Result<number, DomainError>> {
     try {
       const { data, error } = await this.client.rpc("commit_package_change", {
+        p_correlation_id: correlationId ?? null,
         p_event: event,
         p_expected_version: expectedVersion ?? null,
       });
@@ -97,6 +115,82 @@ export class SupabaseEventOutbox implements PackageChangeOutbox, OutboxStore {
 
   async recordFailure(eventId: string, reason: string): Promise<Result<void, DomainError>> {
     return this.call("record_domain_event_failure", { p_error: reason, p_event_id: eventId });
+  }
+
+  async listRetryable(limit: number): Promise<Result<readonly RetryableOutboxEvent[], DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("list_retryable_domain_events", {
+        p_limit: limit,
+      });
+
+      if (error) return err(persistenceError(error));
+
+      return ok(
+        ((data ?? []) as RetryableRow[]).map((row) => ({
+          attempts: row.attempts,
+          correlationId: row.correlation_id,
+          event: row.event,
+          eventId: row.event_id,
+        })),
+      );
+    } catch (cause) {
+      return err(persistenceError(cause));
+    }
+  }
+
+  async claimRetry(
+    eventId: string,
+    expectedAttempts: number,
+  ): Promise<Result<RetryableOutboxEvent | null, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("claim_retry_domain_event", {
+        p_event_id: eventId,
+        p_expected_attempts: expectedAttempts,
+      });
+
+      if (error) return err(persistenceError(error));
+
+      const rows = (data ?? []) as RetryableRow[];
+      const row = rows[0];
+
+      if (!row) return ok(null);
+
+      return ok({
+        attempts: row.attempts,
+        correlationId: row.correlation_id,
+        event: row.event,
+        eventId: row.event_id,
+      });
+    } catch (cause) {
+      return err(persistenceError(cause));
+    }
+  }
+
+  async markFailed(eventId: string, reason: string): Promise<Result<void, DomainError>> {
+    return this.call("mark_domain_event_failed", { p_error: reason, p_event_id: eventId });
+  }
+
+  async listUnresolved(limit: number): Promise<Result<readonly UnresolvedOutboxEvent[], DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("list_unresolved_domain_events", {
+        p_limit: limit,
+      });
+
+      if (error) return err(persistenceError(error));
+
+      return ok(
+        ((data ?? []) as UnresolvedRow[]).map((row) => ({
+          attempts: row.attempts,
+          correlationId: row.correlation_id,
+          eventId: row.event_id,
+          lastError: row.last_error,
+          packageId: row.package_id,
+          status: row.status,
+        })),
+      );
+    } catch (cause) {
+      return err(persistenceError(cause));
+    }
   }
 
   private async call(fn: string, args: Record<string, unknown>): Promise<Result<void, DomainError>> {

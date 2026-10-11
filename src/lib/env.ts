@@ -42,3 +42,14 @@ export function getCloudinaryEnv() {
   };
 }
 
+/**
+ * `null`, never throws, when `DECOR_RECOVERY_SECRET` is unset: the recovery
+ * endpoint (DECOR-31) must respond 503 in that case instead of accepting any
+ * bearer value or silently running unprotected.
+ */
+export function getRecoverySecret(): string | null {
+  const value = process.env.DECOR_RECOVERY_SECRET;
+
+  return value && value.length > 0 ? value : null;
+}
+

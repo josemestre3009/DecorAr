@@ -53,7 +53,9 @@ export class RemoveModuleFromPackageUseCase {
       userId: dto.userId,
     };
 
-    const commitResult = await this.outbox.commit(event);
+    const commitResult = dto.correlationId
+      ? await this.outbox.commit(event, undefined, dto.correlationId)
+      : await this.outbox.commit(event);
     if (!commitResult.ok) {
       return err(commitResult.error);
     }

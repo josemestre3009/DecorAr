@@ -92,7 +92,9 @@ export class AddModuleToPackageUseCase {
       userId: dto.userId,
     };
 
-    const commitResult = await this.outbox.commit(event, packageDetail.version);
+    const commitResult = dto.correlationId
+      ? await this.outbox.commit(event, packageDetail.version, dto.correlationId)
+      : await this.outbox.commit(event, packageDetail.version);
     if (!commitResult.ok) {
       return err(commitResult.error);
     }

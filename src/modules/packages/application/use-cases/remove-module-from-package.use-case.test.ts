@@ -49,6 +49,30 @@ describe("RemoveModuleFromPackageUseCase", () => {
     });
   });
 
+  it("pasa correlationId al outbox cuando se recibe en el dto (DECOR-31)", async () => {
+    const mockPackageReader: PackageReader = {
+      getItemModuleId: vi.fn().mockResolvedValue(ok("mod-123")),
+      getPackage: vi.fn(),
+    };
+    const mockOutbox: PackageChangeOutbox = { commit: vi.fn().mockResolvedValue(ok(4)) };
+
+    const useCase = new RemoveModuleFromPackageUseCase(
+      mockPackageReader,
+      mockOutbox,
+      mockClock,
+      mockIdGenerator,
+    );
+
+    await useCase.execute({
+      correlationId: "corr-del",
+      itemId: "item-456",
+      packageId: "pkg-789",
+      userId: "user-1",
+    });
+
+    expect(mockOutbox.commit).toHaveBeenCalledWith(expect.anything(), undefined, "corr-del");
+  });
+
   it("notifica al consumidor de presupuesto con el evento de eliminación", async () => {
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn().mockResolvedValue(ok("mod-123")),
