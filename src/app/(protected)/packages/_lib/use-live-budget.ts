@@ -56,17 +56,25 @@ export type LiveBudgetState = {
  * Escucha eventos en el canal privado `package:{packageId}` vía Broadcast (DECOR-30):
  * - `package.module.added` / `package.module.removed` marcan el estado como actualizando.
  * - `budget.recalculated` (DECOR-29 / DECOR-33) aplica el nuevo total confirmado.
- * - Ignora eventos duplicados (`eventId`) y versiones anteriores.
+ * - Ignora eventos duplicados (`eventId`); la versión solo se compara en la respuesta de
+ *   resync, porque `budget.recalculated` no transporta `packageVersion` por contrato
+ *   (DECOR-29). El evento se marca con la versión conocida de forma monótona (nunca baja).
  * - Ante reconexión, online, `visibilitychange` o hueco de versión, consulta `GET /api/packages/{id}/budget`.
  * - Ante fallo de red o error de sincronización, conserva el último total confirmado.
+ *
+ * El cliente HTTP por defecto se crea una sola vez: si se recreara en cada render,
+ * cambiaría la identidad de `resync`/`handleStatus` y el canal se destruiría y
+ * recrearía en cada actualización de estado.
  */
 export function useLiveBudget({
   packageId,
   initialBudget,
   packageVersion,
-  budgetClient = createHttpBudgetClient(),
+  budgetClient,
   subscriber = defaultSubscriber,
 }: UseLiveBudgetOptions): LiveBudgetState {
+  const [defaultBudgetClient] = useState(createHttpBudgetClient);
+  const client = budgetClient ?? defaultBudgetClient;
   const [budget, setBudget] = useState<ConfiguratorBudget>(initialBudget);
   const [isUpdating, setIsUpdating] = useState<boolean>(() => {
     return initialBudget.status === "confirmed" && initialBudget.packageVersion < packageVersion;
@@ -78,6 +86,9 @@ export function useLiveBudget({
 
   const hasDisconnected = useRef<boolean>(false);
   const isResyncingRef = useRef<boolean>(false);
+  const confirmedVersionRef = useRef<number>(
+    initialBudget.status === "confirmed" ? initialBudget.packageVersion : 0,
+  );
   const lastSyncedPackageVersion = useRef<number>(
     initialBudget.status === "confirmed" ? initialBudget.packageVersion : 0,
   );
@@ -85,6 +96,10 @@ export function useLiveBudget({
   useEffect(() => {
     packageVersionRef.current = packageVersion;
   }, [packageVersion]);
+
+  useEffect(() => {
+    confirmedVersionRef.current = budget.status === "confirmed" ? budget.packageVersion : 0;
+  }, [budget]);
 
   // Sincronizar durante render si el presupuesto inicial del servidor cambia (React pattern para props derivadas)
   const [lastInitialKey, setLastInitialKey] = useState<string>(() =>
@@ -109,13 +124,12 @@ export function useLiveBudget({
   }
 
   const resync = useCallback(async () => {
-    if (isResyncingRef.current) return;
+    if (packageId === "" || isResyncingRef.current) return;
     isResyncingRef.current = true;
     setIsUpdating(true);
 
     try {
-      const result = await budgetClient.getBudget(packageId);
-      setIsUpdating(false);
+      const result = await client.getBudget(packageId);
 
       if (result.ok) {
         const fresh = result.value;
@@ -131,7 +145,12 @@ export function useLiveBudget({
           };
         });
         setSyncError(false);
+        // Si la versión efectiva sigue atrasada respecto al paquete, el hueco persiste:
+        // se mantiene el aviso de recálculo hasta que llegue el total confirmado.
+        const effectiveVersion = Math.max(confirmedVersionRef.current, fresh.packageVersion);
+        setIsUpdating(effectiveVersion < packageVersionRef.current);
       } else {
+        setIsUpdating(false);
         if (result.error.kind === "not_found" && result.error.code === "budget.not_found") {
           setBudget((prev) => (prev.status === "confirmed" ? prev : { status: "pending" }));
           setSyncError(false);
@@ -140,10 +159,14 @@ export function useLiveBudget({
           setSyncError(true);
         }
       }
+    } catch {
+      // Un fallo inesperado del cliente tampoco borra el último confirmado.
+      setIsUpdating(false);
+      setSyncError(true);
     } finally {
       isResyncingRef.current = false;
     }
-  }, [budgetClient, packageId]);
+  }, [client, packageId]);
 
   const handleEvent = useCallback((event: DomainEvent) => {
     if (seenEventIds.current.has(event.eventId)) {
@@ -186,6 +209,8 @@ export function useLiveBudget({
 
   // Suscripción al canal privado de Realtime
   useEffect(() => {
+    if (packageId === "") return;
+
     let isMounted = true;
     let cleanup: (() => Promise<void>) | undefined;
 
@@ -244,6 +269,7 @@ export function useLiveBudget({
   // Detección de hueco / versión retrasada
   useEffect(() => {
     if (
+      packageId !== "" &&
       budget.status === "confirmed" &&
       budget.packageVersion < packageVersion &&
       lastSyncedPackageVersion.current !== packageVersion
@@ -251,7 +277,7 @@ export function useLiveBudget({
       lastSyncedPackageVersion.current = packageVersion;
       void resync();
     }
-  }, [budget, packageVersion, resync]);
+  }, [budget, packageId, packageVersion, resync]);
 
   return {
     budget,

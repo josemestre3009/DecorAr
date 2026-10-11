@@ -16,8 +16,9 @@
 
 3. **Concurrencia, idempotencia y deduplicación:**
    - **Deduplicación por `eventId`:** `useLiveBudget` registra los identificadores procesados en un conjunto `seenEventIds: Set<string>`.
-   - **Monotonía de versión:** Si `GET /api/packages/{id}/budget` responde con una `packageVersion` inferior a la que el cliente ya tiene confirmada, se descarta para evitar regresiones.
-   - **Detección de huecos:** Si `budget.packageVersion < packageVersion`, se detecta un desfase y se invoca la resincronización automática.
+   - **Monotonía de versión:** Si `GET /api/packages/{id}/budget` responde con una `packageVersion` inferior a la que el cliente ya tiene confirmada, se descarta para evitar regresiones. `budget.recalculated` no transporta `packageVersion` por contrato (DECOR-29), así que el evento marca la versión conocida de forma monótona (nunca hacia atrás); la comparación por versión solo aplica a las respuestas de resync.
+   - **Detección de huecos:** Si `budget.packageVersion < packageVersion`, se detecta un desfase y se invoca la resincronización automática. El aviso de recálculo se mantiene hasta que la versión confirmada alcanza la del paquete.
+   - **Cliente estable:** el `BudgetClient` por defecto se instancia una sola vez por montaje para no recrear la suscripción Realtime en cada render.
 
 4. **Tolerancia a fallos y resincronización reactiva:**
    - Se registran listeners para:

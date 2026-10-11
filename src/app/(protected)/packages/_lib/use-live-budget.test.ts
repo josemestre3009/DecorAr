@@ -208,6 +208,8 @@ describe("useLiveBudget (DECOR-21)", () => {
       status: "confirmed",
       totalCop: 950000,
     });
+    // El total ya está al día: no debe quedar marcado como "actualizando"
+    expect(result.current.isUpdating).toBe(false);
   });
 
   it("resincroniza ante reconexión del canal Realtime tras una desconexión", async () => {
@@ -362,5 +364,94 @@ describe("useLiveBudget (DECOR-21)", () => {
     });
 
     expect(mockUnsubscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("mantiene una sola suscripción aunque cambie el estado (DECOR-21)", () => {
+    renderHook(() =>
+      useLiveBudget({
+        // Sin budgetClient inyectado: usa el cliente por defecto, que antes se
+        // recreaba en cada render y forzaba a resuscribir el canal.
+        initialBudget: { packageVersion: 1, status: "confirmed", totalCop: 300000 },
+        packageId: "pkg-1",
+        packageVersion: 1,
+        subscriber: mockSubscriber,
+      }),
+    );
+
+    act(() => {
+      mockEventCallback({
+        eventId: "evt-single-sub",
+        occurredAt: "2026-10-11T12:00:00.000Z",
+        packageId: "pkg-1",
+        payload: { budgetId: "pkg-1", causationEventId: "cause-1", totalCop: 123000 },
+        schemaVersion: 1,
+        type: "budget.recalculated",
+        userId: "user-1",
+      });
+    });
+
+    expect(mockSubscriber).toHaveBeenCalledTimes(1);
+  });
+
+  it("mantiene isUpdating cuando el resync devuelve una versión todavía atrasada (DECOR-21)", async () => {
+    mockBudgetClient.getBudget = vi.fn().mockResolvedValue(
+      ok<ConfirmedBudget>({
+        currency: "COP",
+        packageVersion: 2,
+        totalCop: 400000,
+        updatedAt: "2026-10-11T12:00:00.000Z",
+      }),
+    );
+
+    const { result } = renderHook(() =>
+      useLiveBudget({
+        budgetClient: mockBudgetClient,
+        initialBudget: { packageVersion: 2, status: "confirmed", totalCop: 300000 },
+        packageId: "pkg-1",
+        packageVersion: 3,
+        subscriber: mockSubscriber,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.retry();
+    });
+
+    expect(result.current.budget).toEqual({
+      packageVersion: 2,
+      status: "confirmed",
+      totalCop: 400000,
+    });
+    expect(result.current.isUpdating).toBe(true);
+  });
+
+  it("no consulta el endpoint ni se suscribe si falta el packageId (DECOR-21)", async () => {
+    const client = {
+      getBudget: vi.fn().mockResolvedValue(
+        ok<ConfirmedBudget>({
+          currency: "COP",
+          packageVersion: 3,
+          totalCop: 900000,
+          updatedAt: "2026-10-11T12:00:00.000Z",
+        }),
+      ),
+    };
+
+    const { result } = renderHook(() =>
+      useLiveBudget({
+        budgetClient: client,
+        initialBudget: { packageVersion: 1, status: "confirmed", totalCop: 100000 },
+        packageId: "",
+        packageVersion: 3,
+        subscriber: mockSubscriber,
+      }),
+    );
+
+    await act(async () => {
+      await result.current.retry();
+    });
+
+    expect(client.getBudget).not.toHaveBeenCalled();
+    expect(mockSubscriber).not.toHaveBeenCalled();
   });
 });

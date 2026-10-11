@@ -32,7 +32,7 @@ export function BudgetTotal({
     initialBudget,
     packageId: packageId ?? "",
     packageVersion,
-    subscriber: packageId ? subscriber : async () => async () => {},
+    subscriber,
   });
 
   const budget = packageId ? live.budget : initialBudget;
