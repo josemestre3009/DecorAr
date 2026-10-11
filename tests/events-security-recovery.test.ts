@@ -7,8 +7,9 @@
  * 2. Idempotencia y Desorden: eventos duplicados, desordenados y versiones desconocidas.
  * 3. Seguridad Negativa: A/B/anónimo en RLS, tablas privadas inaccesibles, broadcast privado package:{packageId},
  *    y ausencia de client CRUD / service_role en el browser.
- * 4. Fallo y Recuperación: 2 drainers sin duplicar publicación, publicación fallida retenida,
- *    transición a failed y reconciliación sin doble total.
+ * 4. Fallo y Recuperación: reclamos de drainers sin duplicar (el lock `FOR UPDATE SKIP LOCKED`
+ *    se verifica en la definición SQL; PGlite no reproduce concurrencia multi-conexión),
+ *    publicación fallida retenida, transición a failed y reconciliación sin doble total.
  *
  * Ejecución limpia y determinista en memoria mediante @electric-sql/pglite.
  */
@@ -16,7 +17,7 @@ import { PGlite } from "@electric-sql/pglite";
 import { readdir, readFile } from "node:fs/promises";
 import { existsSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 
 import { collectImports, isProductionSource, resolveSpecifier } from "../scripts/scan-architecture";
 
@@ -113,6 +114,18 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
     await db?.close();
   });
 
+  // Aísla cada prueba: limpia todo el estado mutable y reinicia las versiones,
+  // para que ningún caso dependa del orden de ejecución ni de las demás pruebas.
+  beforeEach(async () => {
+    await db.exec(`
+      DELETE FROM private.processed_events;
+      DELETE FROM private.domain_events;
+      DELETE FROM public.budgets;
+      DELETE FROM public.package_items;
+      UPDATE public.packages SET version = 1;
+    `);
+  });
+
   async function asRole<T extends Record<string, unknown>>(
     role: "anon" | "authenticated" | "service_role",
     userId: string | null,
@@ -191,7 +204,7 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
     it("commit_package_change revierte todo si la versión esperada no coincide", async () => {
       const event = createModuleAddedEvent(PACKAGE_A, USER_A);
 
-      // Paquete A está en versión 2, pero le pasamos expectedVersion = 99
+      // Paquete A está en versión 1, pero le pasamos expectedVersion = 99
       await expect(
         asRole(
           "service_role",
@@ -219,7 +232,7 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
         "SELECT version FROM public.packages WHERE id = $1",
         [PACKAGE_A],
       );
-      expect(pkg.rows[0].version).toBe(2);
+      expect(pkg.rows[0].version).toBe(1);
     });
 
     it("commit_package_change con package.module.removed elimina el ítem y persiste en outbox atómicamente", async () => {
@@ -295,7 +308,7 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
           null,
           null,
           "SELECT public.commit_package_change($1, $2, $3)",
-          [nonexistentRemove, 3, "corr-atom-missing-item"],
+          [nonexistentRemove, 1, "corr-atom-missing-item"],
         ),
       ).rejects.toMatchObject({ message: expect.stringContaining("package.item_not_found") });
 
@@ -353,6 +366,71 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
       );
       expect(budgetRow.rows).toEqual([{ package_version: 2, total_cop: MODULE_PRICE_COP }]);
     });
+
+    it("commit_package_change revierte la mutación si la escritura del outbox colisiona (rama unique_violation)", async () => {
+      const event = createModuleAddedEvent(PACKAGE_A, USER_A, { eventId: "force-duplicate-evt-001" });
+
+      // Simula la carrera de outbox: la fila no existe todavía (el pre-check pasa)
+      // pero el INSERT choca, como si otro drainer insertara el mismo eventId
+      // entre el pre-check y el INSERT. PGlite no permite concurrencia real.
+      await db.exec(`
+        CREATE FUNCTION private.force_event_duplicate() RETURNS trigger
+        LANGUAGE plpgsql AS $$
+        BEGIN
+          IF NEW.event_id = 'force-duplicate-evt-001' THEN
+            RAISE EXCEPTION 'simulated race' USING ERRCODE = '23505';
+          END IF;
+          RETURN NEW;
+        END $$;
+        CREATE TRIGGER force_event_duplicate BEFORE INSERT ON private.domain_events
+          FOR EACH ROW EXECUTE FUNCTION private.force_event_duplicate();
+      `);
+
+      try {
+        await expect(
+          asRole(
+            "service_role",
+            null,
+            null,
+            "SELECT public.commit_package_change($1, $2, $3)",
+            [event, 1, "corr-race"],
+          ),
+        ).rejects.toMatchObject({ message: expect.stringContaining("event.duplicate") });
+      } finally {
+        await db.exec(`
+          DROP TRIGGER IF EXISTS force_event_duplicate ON private.domain_events;
+          DROP FUNCTION IF EXISTS private.force_event_duplicate();
+        `);
+      }
+
+      // La mutación del paquete se revirtió por completo: sin ítem, sin bump de versión, sin outbox
+      const items = await asRole<{ count: string }>(
+        "service_role",
+        null,
+        null,
+        "SELECT count(*)::text AS count FROM public.package_items WHERE package_id = $1",
+        [PACKAGE_A],
+      );
+      expect(items.rows[0].count).toBe("0");
+
+      const pkg = await asRole<{ version: number }>(
+        "service_role",
+        null,
+        null,
+        "SELECT version FROM public.packages WHERE id = $1",
+        [PACKAGE_A],
+      );
+      expect(pkg.rows[0].version).toBe(1);
+
+      const outbox = await asRole<{ count: string }>(
+        "service_role",
+        null,
+        null,
+        "SELECT count(*)::text AS count FROM private.domain_events WHERE event_id = $1",
+        [event.eventId],
+      );
+      expect(outbox.rows[0].count).toBe("0");
+    });
   });
 
   // =========================================================================
@@ -361,13 +439,13 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
   describe("2. Idempotencia y tolerancia al desorden", () => {
     it("commit_package_change rechaza un eventId duplicado antes de mutar el paquete", async () => {
       const event = createModuleAddedEvent(PACKAGE_A, USER_A);
-      // Primer commit exitoso
+      // Primer commit exitoso: versión 1 -> 2
       await asRole(
         "service_role",
         null,
         null,
         "SELECT public.commit_package_change($1, $2, $3)",
-        [event, 2, "corr-dup-1"],
+        [event, 1, "corr-dup-1"],
       );
 
       // Reintento con el mismo eventId
@@ -377,11 +455,11 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
           null,
           null,
           "SELECT public.commit_package_change($1, $2, $3)",
-          [event, 3, "corr-dup-2"],
+          [event, 2, "corr-dup-2"],
         ),
       ).rejects.toMatchObject({ message: expect.stringContaining("event.duplicate") });
 
-      // La versión sigue en 3 y no se agregaron ítems duplicados
+      // La versión sigue en 2 y no se agregaron ítems duplicados
       const pkg = await asRole<{ version: number }>(
         "service_role",
         null,
@@ -389,7 +467,7 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
         "SELECT version FROM public.packages WHERE id = $1",
         [PACKAGE_A],
       );
-      expect(pkg.rows[0].version).toBe(3);
+      expect(pkg.rows[0].version).toBe(2);
     });
 
     it("process_budget_event ignora eventId repetido y no altera el presupuesto (applied=false)", async () => {
@@ -428,6 +506,15 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
     });
 
     it("process_budget_event ante un evento desordenado (versión vieja) no sobrescribe el total", async () => {
+      // Precondición: el presupuesto ya está en versión 3 con total 300000
+      await asRole(
+        "service_role",
+        null,
+        null,
+        "SELECT * FROM public.process_budget_event($1, $2, $3, $4, $5)",
+        ["budget-consumer", "seed-high-version", PACKAGE_A, 3, 300000],
+      );
+
       const outOfOrderEventId = "out-of-order-evt-001";
 
       const outOfOrder = await asRole<{ applied: boolean; total_cop: number; package_version: number }>(
@@ -453,25 +540,48 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
       expect(processed.rows[0].count).toBe("1");
     });
 
-    it("evento con versión de esquema desconocida no es procesado por el consumidor", async () => {
+    it("commit_package_change rechaza un schemaVersion desconocido sin mutar nada", async () => {
       const unknownVersionEvent = createModuleAddedEvent(PACKAGE_A, USER_A, {
         eventId: "unknown-schema-ver-001",
         schemaVersion: 99,
       });
 
-      // El contrato exige schemaVersion: 1. Simulamos validación previa en aplicación:
-      const isValid = (unknownVersionEvent as { schemaVersion: number }).schemaVersion === 1;
-      expect(isValid).toBe(false);
-
-      // Confirmamos que en budgets el total no cambió
-      const budget = await asRole<{ total_cop: number }>(
+      const before = await asRole<{ version: number }>(
         "service_role",
         null,
         null,
-        "SELECT total_cop FROM public.budgets WHERE package_id = $1",
+        "SELECT version FROM public.packages WHERE id = $1",
         [PACKAGE_A],
       );
-      expect(budget.rows[0].total_cop).toBe(300000);
+
+      await expect(
+        asRole(
+          "service_role",
+          null,
+          null,
+          "SELECT public.commit_package_change($1, $2, $3)",
+          [unknownVersionEvent, null, "corr-unknown-version"],
+        ),
+      ).rejects.toMatchObject({ message: expect.stringContaining("event.unsupported_version") });
+
+      // Ni outbox ni versión del paquete se alteraron
+      const outbox = await asRole<{ count: string }>(
+        "service_role",
+        null,
+        null,
+        "SELECT count(*)::text AS count FROM private.domain_events WHERE event_id = $1",
+        [unknownVersionEvent.eventId],
+      );
+      expect(outbox.rows[0].count).toBe("0");
+
+      const after = await asRole<{ version: number }>(
+        "service_role",
+        null,
+        null,
+        "SELECT version FROM public.packages WHERE id = $1",
+        [PACKAGE_A],
+      );
+      expect(after.rows[0].version).toBe(before.rows[0].version);
     });
   });
 
@@ -517,6 +627,15 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
     });
 
     it("Usuario B no ve el presupuesto de Usuario A; Usuario A sí lee su presupuesto", async () => {
+      // Precondición: existe un presupuesto para PACKAGE_A (creado como service_role)
+      await asRole(
+        "service_role",
+        null,
+        null,
+        "SELECT * FROM public.process_budget_event($1, $2, $3, $4, $5)",
+        ["budget-consumer", "seed-budget-a", PACKAGE_A, 1, 300000],
+      );
+
       const budgetA = await asRole<{ package_id: string; total_cop: number }>(
         "authenticated",
         USER_A,
@@ -705,40 +824,46 @@ describe("DECOR-34: Suite de eventos, seguridad y recuperación", () => {
   // 4. CONCURRENCIA, FALLO Y RECUPERACIÓN
   // =========================================================================
   describe("4. Concurrencia, fallo y recuperación", () => {
-    it("Dos drainers concurrentes reclamando con SKIP LOCKED no duplican eventos", async () => {
+    it("Reclamos de claim_initial_domain_events no duplican eventos y conservan el lock SQL", async () => {
+      // PGlite expone una única conexión y serializa las consultas, así que no
+      // reproduce concurrencia real entre conexiones. Se verifica el reparto
+      // sin solapamiento de dos reclamos sucesivos y, estructuralmente, que la
+      // definición SQL conserva el locking que lo garantiza en producción.
+      const def = await db.query<{ body: string }>(
+        "SELECT prosrc AS body FROM pg_catalog.pg_proc WHERE proname = 'claim_initial_domain_events'",
+      );
+      expect(def.rows[0].body).toMatch(/FOR UPDATE\s+SKIP LOCKED/i);
+
       // Insertamos 6 eventos pending en private.domain_events
-      const batchEventIds: string[] = [];
       for (let i = 0; i < 6; i++) {
         const evtId = `drainer-test-${i}-${Date.now()}`;
-        batchEventIds.push(evtId);
         await db.exec(`
           INSERT INTO private.domain_events (event_id, package_id, user_id, event_type, occurred_at, event, status, attempts)
           VALUES ('${evtId}', '${PACKAGE_A}', '${USER_A}', 'package.module.added', now(), '{"eventId": "${evtId}"}', 'pending', 0);
         `);
       }
 
-      // Simulamos 2 drainers ejecutando claim_initial_domain_events concurrentemente
-      const [drainer1, drainer2] = await Promise.all([
-        asRole<{ event_id: string }>(
-          "service_role",
-          null,
-          null,
-          "SELECT event_id FROM public.claim_initial_domain_events(3)",
-        ),
-        asRole<{ event_id: string }>(
-          "service_role",
-          null,
-          null,
-          "SELECT event_id FROM public.claim_initial_domain_events(3)",
-        ),
-      ]);
+      // Dos drainers reclamando el mismo lote (claim_initial_domain_events(3) cada uno)
+      const drainer1 = await asRole<{ event_id: string }>(
+        "service_role",
+        null,
+        null,
+        "SELECT event_id FROM public.claim_initial_domain_events(3)",
+      );
+      const drainer2 = await asRole<{ event_id: string }>(
+        "service_role",
+        null,
+        null,
+        "SELECT event_id FROM public.claim_initial_domain_events(3)",
+      );
 
       const ids1 = drainer1.rows.map((r) => r.event_id);
       const ids2 = drainer2.rows.map((r) => r.event_id);
 
-      // Verificamos que no hay intersección entre los eventos reclamados
-      const intersection = ids1.filter((id) => ids2.includes(id));
-      expect(intersection).toEqual([]);
+      // Reparto sin solapamiento: cada evento reclamado una sola vez
+      expect(ids1.length).toBeGreaterThan(0);
+      expect(ids2.length).toBeGreaterThan(0);
+      expect(ids1.filter((id) => ids2.includes(id))).toEqual([]);
 
       // Todos los eventos reclamados avanzaron su attempts a 1
       for (const id of [...ids1, ...ids2]) {

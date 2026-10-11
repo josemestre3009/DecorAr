@@ -18,7 +18,7 @@
 - [x] 3.5 Verificar límites arquitectónicos del navegador (sin CRUD directo ni imports de service role)
 
 ## 4. Pruebas de Concurrencia y Recuperación
-- [x] 4.1 Verificar que dos drainers concurrentes con `claim_initial_domain_events` no duplican eventos
+- [x] 4.1 Verificar que reclamos de drainers con `claim_initial_domain_events` no duplican eventos (lock `FOR UPDATE SKIP LOCKED` verificado estructuralmente)
 - [x] 4.2 Verificar flujo de reintentos, fallo transitorio y transición a `failed` tras agotar intentos
 - [x] 4.3 Verificar reconciliación de presupuesto (`reconcile_budget`) corrigiendo desvíos sin doble total
 

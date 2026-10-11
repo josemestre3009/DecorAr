@@ -45,5 +45,5 @@ La suite instancia:
 - Se integra la comprobación estática de frontera de navegador (análoga a `service-role-boundary.test.ts`), garantizando que ningún componente cliente acceda a credenciales de `service_role`.
 
 ### 4. Concurrencia y Fallo
-- Se simulan 2 drainers ejecutando en paralelo `claim_initial_domain_events` sobre un lote de eventos, demostrando que `FOR UPDATE SKIP LOCKED` previene reclamaciones duplicadas.
+- PGlite expone una única conexión y serializa las consultas, por lo que no puede reproducir concurrencia real entre conexiones. La suite verifica dos reclamos sucesivos de `claim_initial_domain_events` sobre un lote que se reparten sin solaparse, y comprueba estructuralmente que la definición SQL conserva `FOR UPDATE SKIP LOCKED` (el mecanismo que evita duplicados en producción). La concurrencia real multi-conexión queda fuera del alcance de PGlite.
 - Se prueba la degradación y reintento: publicación fallida permanece en `pending`; 3er fallo consecutivo transiciona a `failed`; la reconciliación vía `reconcile_budget` recalcula y subsana la desviación sin duplicar el total.

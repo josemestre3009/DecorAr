@@ -15,7 +15,7 @@ DECOR-29 definió los contratos de eventos, DECOR-30 configuró RLS, canales pri
   1. **Atomicidad:** `commit_package_change` (paquete + outbox) y `process_budget_event` (presupuesto + processed_events).
   2. **Idempotencia y Desorden:** Eventos duplicados ignorados sin doble cálculo; eventos con versión anterior sin alterar el total vigente; eventos de versión de contrato desconocida rechazados.
   3. **Seguridad y Autorización Negativa:** Aislamiento de lectura A/B/anónimo en `packages`, `package_items` y `budgets`; esquemas y tablas privadas (`private.domain_events`, `private.processed_events`) inaccesibles al cliente; canales Realtime restringidos exclusivamente al dueño; ausencia de dependencias de `service_role` en código cliente.
-  4. **Fallo, Concurrencia y Recuperación:** 2 drainers concurrentes sin duplicación (`FOR UPDATE SKIP LOCKED`); retención en `pending` ante fallo transitorio; transición a `failed` tras 3 reintentos fallidos; reconciliación idempotente que detecta drift y ajusta el presupuesto sin duplicar totales.
+  4. **Fallo, Concurrencia y Recuperación:** reclamos de drainers sin duplicación (el lock `FOR UPDATE SKIP LOCKED` se verifica estructuralmente sobre la definición SQL; la concurrencia multi-conexión no es reproducible en PGlite); retención en `pending` ante fallo transitorio; transición a `failed` tras 3 reintentos fallidos; reconciliación idempotente que detecta drift y ajusta el presupuesto sin duplicar totales.
 
 ## Capabilities
 
