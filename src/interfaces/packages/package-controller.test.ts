@@ -326,12 +326,14 @@ describe("PackageController", () => {
       const res = await mocks.controller.handleAddItem(req, "pkg-1");
       expect(res.status).toBe(201);
       expect(await res.json()).toEqual({ itemId: "item-g", packageVersion: 5 });
-      expect(mocks.addModuleToGroupUseCase.execute).toHaveBeenCalledWith({
-        groupId: "grupo-1",
-        moduleId: "mod-1",
-        packageId: "pkg-1",
-        userId: "user-1",
-      });
+      expect(mocks.addModuleToGroupUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          groupId: "grupo-1",
+          moduleId: "mod-1",
+          packageId: "pkg-1",
+          userId: "user-1",
+        }),
+      );
       expect(mocks.addModuleToPackageUseCase.execute).not.toHaveBeenCalled();
       expect(mocks.drainOutbox.execute).toHaveBeenCalledTimes(1);
     });
@@ -600,14 +602,33 @@ describe("PackageController", () => {
         packageVersion: 6,
         parentGroupId: null,
       });
-      expect(mocks.createPackageGroupUseCase.execute).toHaveBeenCalledWith({
-        moduleIds: ["mod-arco", "mod-mesa"],
-        name: "Zona de bienvenida",
-        packageId: "pkg-1",
-        parentGroupId: null,
-        userId: "user-1",
-      });
+      expect(mocks.createPackageGroupUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({
+          moduleIds: ["mod-arco", "mod-mesa"],
+          name: "Zona de bienvenida",
+          packageId: "pkg-1",
+          parentGroupId: null,
+          userId: "user-1",
+        }),
+      );
       expect(mocks.drainOutbox.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("propaga x-correlation-id al caso de uso y a la respuesta (DECOR-31)", async () => {
+      const mocks = createGroupMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/groups", {
+        body: JSON.stringify({ name: "Zona" }),
+        headers: { "x-correlation-id": "corr-group" },
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleCreateGroup(req, "pkg-1");
+
+      expect(res.status).toBe(201);
+      expect(res.headers.get("x-correlation-id")).toBe("corr-group");
+      expect(mocks.createPackageGroupUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ correlationId: "corr-group" }),
+      );
     });
 
     it("un grupo sin hojas no drena la outbox (no hay eventos)", async () => {

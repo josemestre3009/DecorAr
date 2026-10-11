@@ -45,6 +45,7 @@ describe("SupabasePackageGroupRepository", () => {
     const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).createGroup(command);
 
     expect(rpc).toHaveBeenCalledWith("create_package_group", {
+      p_correlation_id: null,
       p_events: [event],
       p_expected_version: 3,
       p_group_id: "grp-1",
@@ -102,11 +103,34 @@ describe("SupabasePackageGroupRepository", () => {
     const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).addItemToGroup(event, "grp-1", 6);
 
     expect(rpc).toHaveBeenCalledWith("add_package_item_to_group", {
+      p_correlation_id: null,
       p_event: event,
       p_expected_version: 6,
       p_group_id: "grp-1",
     });
     expect(result).toEqual({ ok: true, value: 7 });
+  });
+
+  it("propaga el correlationId a create_package_group y add_package_item_to_group", async () => {
+    const createRpc = vi.fn().mockResolvedValue({
+      data: { depth: 1, groupId: "grp-1", itemIds: [], packageVersion: 4 },
+      error: null,
+    });
+    await new SupabasePackageGroupRepository(clientWithRpc(createRpc)).createGroup({
+      ...command,
+      correlationId: "corr-1",
+    });
+    expect(createRpc).toHaveBeenCalledWith(
+      "create_package_group",
+      expect.objectContaining({ p_correlation_id: "corr-1" }),
+    );
+
+    const addRpc = vi.fn().mockResolvedValue({ data: 7, error: null });
+    await new SupabasePackageGroupRepository(clientWithRpc(addRpc)).addItemToGroup(event, "grp-1", 6, "corr-2");
+    expect(addRpc).toHaveBeenCalledWith(
+      "add_package_item_to_group",
+      expect.objectContaining({ p_correlation_id: "corr-2" }),
+    );
   });
 
   it("addItemToGroup traduce package.group_not_found", async () => {

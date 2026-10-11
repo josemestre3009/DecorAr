@@ -254,6 +254,7 @@ export class PackageController {
       const result =
         groupId.length > 0 && this.addModuleToGroupUseCase
           ? await this.addModuleToGroupUseCase.execute({
+              correlationId,
               groupId,
               moduleId: moduleId.trim(),
               packageId,
@@ -428,11 +429,14 @@ export class PackageController {
    * Body: `{ name, parentGroupId?, children?: [{ moduleId }] }`.
    */
   async handleCreateGroup(request: Request, packageId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
     try {
       const access = await checkPackageAccess(
         this.authorizePackageAccess,
         packageId,
-        this.defaultHeaders,
+        responseHeaders,
       );
       if (!access.ok) {
         return access.response;
@@ -441,7 +445,7 @@ export class PackageController {
       if (!this.createPackageGroupUseCase) {
         return Response.json(
           { error: { code: "internal_error", message: "Caso de uso de grupos no disponible." } },
-          { headers: this.defaultHeaders, status: 500 },
+          { headers: responseHeaders, status: 500 },
         );
       }
 
@@ -451,14 +455,14 @@ export class PackageController {
       } catch {
         return Response.json(
           { error: { code: "package.invalid_body", message: "Cuerpo de solicitud JSON inválido." } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
       if (typeof body !== "object" || body === null) {
         return Response.json(
           { error: { code: "package.invalid_body", message: "Se requiere un objeto JSON." } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
@@ -467,7 +471,7 @@ export class PackageController {
       if (typeof name !== "string") {
         return Response.json(
           { error: { code: "package.invalid_group_name", message: "El nombre del grupo es obligatorio" } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
@@ -480,7 +484,7 @@ export class PackageController {
       ) {
         return Response.json(
           { error: { code: "package.invalid_group", message: "El grupo no es válido" } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
@@ -498,11 +502,12 @@ export class PackageController {
       if (moduleIds === null || moduleIds.some((moduleId) => moduleId === null)) {
         return Response.json(
           { error: { code: "package.invalid_module", message: "Cada elemento debe indicar un moduleId" } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
       const result = await this.createPackageGroupUseCase.execute({
+        correlationId,
         moduleIds: moduleIds as string[],
         name,
         packageId,
@@ -514,7 +519,7 @@ export class PackageController {
         const { code, message } = result.error;
         return Response.json(
           { error: { code, message } },
-          { headers: this.defaultHeaders, status: groupErrorStatus(code) },
+          { headers: responseHeaders, status: groupErrorStatus(code) },
         );
       }
 
@@ -528,15 +533,15 @@ export class PackageController {
       }
 
       return Response.json(result.value, {
-        headers: this.defaultHeaders,
+        headers: responseHeaders,
         status: 201,
       });
     } catch (cause) {
-      const correlationId = randomUUID();
-      console.error(`[PackageController.createGroup] Error inesperado (${correlationId}):`, cause);
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.createGroup] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
-        { headers: this.defaultHeaders, status: 500 },
+        { headers: responseHeaders, status: 500 },
       );
     }
   }

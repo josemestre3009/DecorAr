@@ -119,6 +119,7 @@ export class SupabasePackageGroupRepository implements PackageGroupReader, Packa
   async createGroup(command: CreatePackageGroupCommand): Promise<Result<CreatedGroupRecord, DomainError>> {
     try {
       const { data, error } = await this.client.rpc("create_package_group", {
+        p_correlation_id: command.correlationId ?? null,
         p_events: command.events,
         p_expected_version: command.expectedVersion,
         p_group_id: command.groupId,
@@ -152,9 +153,11 @@ export class SupabasePackageGroupRepository implements PackageGroupReader, Packa
     event: PackageModuleAddedEvent,
     groupId: string,
     expectedVersion: number,
+    correlationId?: string,
   ): Promise<Result<number, DomainError>> {
     try {
       const { data, error } = await this.client.rpc("add_package_item_to_group", {
+        p_correlation_id: correlationId ?? null,
         p_event: event,
         p_expected_version: expectedVersion,
         p_group_id: groupId,

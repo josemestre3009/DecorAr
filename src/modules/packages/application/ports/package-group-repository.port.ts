@@ -23,6 +23,8 @@ export interface CreatePackageGroupCommand {
   /** Un `package.module.added` por hoja; se confirman en la misma transacción. */
   readonly events: readonly PackageModuleAddedEvent[];
   readonly expectedVersion: number;
+  /** Se guarda en cada fila del outbox y en los logs de recuperación (DECOR-31). */
+  readonly correlationId?: string | null;
 }
 
 export interface CreatedGroupRecord {
@@ -46,5 +48,6 @@ export interface PackageGroupRepository {
     event: PackageModuleAddedEvent,
     groupId: string,
     expectedVersion: number,
+    correlationId?: string,
   ): Promise<Result<number, DomainError>>;
 }

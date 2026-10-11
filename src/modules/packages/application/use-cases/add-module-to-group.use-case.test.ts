@@ -81,8 +81,23 @@ describe("AddModuleToGroupUseCase", () => {
       },
       "zona",
       4,
+      undefined,
     );
     expect(consumer.consume).toHaveBeenCalledTimes(1);
+  });
+
+  it("propaga el correlationId al RPC del grupo", async () => {
+    const { groupRepository, useCase } = setup();
+
+    await useCase.execute({
+      correlationId: "corr-1",
+      groupId: "zona",
+      moduleId: "mod-mesa",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(vi.mocked(groupRepository.addItemToGroup).mock.calls[0][3]).toBe("corr-1");
   });
 
   it("rechaza un grupo que no está en el paquete sin llamar al RPC", async () => {

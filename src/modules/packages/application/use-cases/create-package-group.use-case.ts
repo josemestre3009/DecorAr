@@ -114,6 +114,7 @@ export class CreatePackageGroupUseCase {
     }));
 
     const created = await this.groupRepository.createGroup({
+      correlationId: dto.correlationId ?? null,
       events,
       expectedVersion: tree.value.detail.version,
       groupId,
