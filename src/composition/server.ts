@@ -7,6 +7,7 @@ import { createClient, type SessionClientOptions } from "@/infrastructure/supaba
 import { createPackageOwnerReader } from "@/infrastructure/supabase/package-owner-reader";
 import { createSessionGateway } from "@/infrastructure/supabase/session-gateway";
 import { SupabaseCatalogModuleReader } from "@/infrastructure/supabase/supabase-catalog-module-reader";
+import { SupabasePackageGroupRepository } from "@/infrastructure/supabase/supabase-package-group-repository";
 import { SupabasePackageReader } from "@/infrastructure/supabase/supabase-package-reader";
 import { SupabasePackageRepository } from "@/infrastructure/supabase/supabase-package-repository";
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
@@ -31,8 +32,10 @@ import { SupabaseBroadcastEventPublisher } from "@/modules/events/infrastructure
 import { SupabaseEventOutbox } from "@/modules/events/infrastructure/supabase-event-outbox";
 import { AuthorizePackageAccessUseCase } from "@/modules/packages/application/authorize-package-access.use-case";
 import type { PackageChangeConsumer } from "@/modules/packages/application/ports/package-change-consumer.port";
+import { AddModuleToGroupUseCase } from "@/modules/packages/application/use-cases/add-module-to-group.use-case";
 import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
 import { ClonePackageUseCase } from "@/modules/packages/application/use-cases/clone-package.use-case";
+import { CreatePackageGroupUseCase } from "@/modules/packages/application/use-cases/create-package-group.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
 
@@ -142,6 +145,7 @@ export async function createPackageController(
   const packageRepository = new SupabasePackageRepository(adminClient);
   const packageReader = new SupabasePackageReader(adminClient);
   const catalogReader = new SupabaseCatalogModuleReader(adminClient);
+  const packageGroupRepository = new SupabasePackageGroupRepository(adminClient);
   const { drainOutbox, outbox } = createEventOutboxDependencies();
   const { consumePackageChangedEvent } = createBudgetConsumerDependencies();
 
@@ -170,6 +174,25 @@ export async function createPackageController(
     packageChangeConsumer,
   );
   const clonePackageUseCase = new ClonePackageUseCase(packageRepository);
+  // Composite (DECOR-25): grupos y hojas dentro de grupos, misma notificación a Presupuesto.
+  const createPackageGroupUseCase = new CreatePackageGroupUseCase(
+    packageReader,
+    packageGroupRepository,
+    catalogReader,
+    packageGroupRepository,
+    systemClock,
+    uuidGenerator,
+    packageChangeConsumer,
+  );
+  const addModuleToGroupUseCase = new AddModuleToGroupUseCase(
+    packageReader,
+    packageGroupRepository,
+    catalogReader,
+    packageGroupRepository,
+    systemClock,
+    uuidGenerator,
+    packageChangeConsumer,
+  );
 
   return new PackageController(
     sessionGateway,
@@ -178,7 +201,9 @@ export async function createPackageController(
     addModuleToPackageUseCase,
     removeModuleFromPackageUseCase,
     {
+      addModuleToGroupUseCase,
       clonePackageUseCase,
+      createPackageGroupUseCase,
       defaultHeaders: pendingHeaders,
       drainOutbox,
     },

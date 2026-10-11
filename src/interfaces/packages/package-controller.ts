@@ -2,8 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import type { DrainOutboxUseCase } from "../../modules/events/application/drain-outbox.use-case";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
+import type { AddModuleToGroupUseCase } from "../../modules/packages/application/use-cases/add-module-to-group.use-case";
 import type { AddModuleToPackageUseCase } from "../../modules/packages/application/use-cases/add-module-to-package.use-case";
 import type { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
+import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
 import type { SessionGateway } from "../../shared/application/ports";
@@ -11,10 +13,37 @@ import { checkPackageAccess } from "./package-access";
 
 export type PackageControllerOptions = {
   readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
+  readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
+  readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
   readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   readonly defaultHeaders?: Record<string, string>;
   readonly headers?: Record<string, string>;
 };
+
+/** Estado HTTP de los errores al agregar elementos o grupos (incluye el Composite, DECOR-25). */
+function groupErrorStatus(code: string): number {
+  if (
+    code === "package.capacity_exceeded" ||
+    code === "package.group_depth_exceeded" ||
+    code === "package.group_cycle"
+  ) {
+    return 422;
+  }
+  if (
+    code === "package.not_found" ||
+    code === "package.module_not_found" ||
+    code === "package.group_not_found"
+  ) {
+    return 404;
+  }
+  if (code === "package.version_conflict" || code === "event.duplicate") {
+    return 409;
+  }
+  if (code.startsWith("outbox.") || code === "package.persistence_error") {
+    return 500;
+  }
+  return 400;
+}
 
 function isPackageControllerOptions(
   arg: unknown,
@@ -22,6 +51,8 @@ function isPackageControllerOptions(
   if (typeof arg !== "object" || arg === null) return false;
   return (
     "clonePackageUseCase" in arg ||
+    "createPackageGroupUseCase" in arg ||
+    "addModuleToGroupUseCase" in arg ||
     "drainOutbox" in arg ||
     "defaultHeaders" in arg ||
     "headers" in arg
@@ -30,6 +61,8 @@ function isPackageControllerOptions(
 
 export class PackageController {
   private readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
+  private readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
+  private readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
   private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   private readonly defaultHeaders: Record<string, string>;
 
@@ -48,6 +81,8 @@ export class PackageController {
   ) {
     if (isPackageControllerOptions(optionsOrCloneOrDrain)) {
       this.clonePackageUseCase = optionsOrCloneOrDrain.clonePackageUseCase;
+      this.createPackageGroupUseCase = optionsOrCloneOrDrain.createPackageGroupUseCase;
+      this.addModuleToGroupUseCase = optionsOrCloneOrDrain.addModuleToGroupUseCase;
       this.drainOutbox = optionsOrCloneOrDrain.drainOutbox;
       this.defaultHeaders =
         optionsOrCloneOrDrain.headers ??
@@ -175,37 +210,39 @@ export class PackageController {
         );
       }
 
-      if (typeof parentGroupId === "string" && parentGroupId.trim().length > 0) {
+      if (parentGroupId !== undefined && parentGroupId !== null && typeof parentGroupId !== "string") {
         return Response.json(
-          {
-            error: {
-              code: "package.grouping_not_supported",
-              message: "La agrupación de elementos estará disponible en una entrega posterior.",
-            },
-          },
+          { error: { code: "package.invalid_group", message: "El grupo no es válido" } },
           { headers: this.defaultHeaders, status: 400 },
         );
       }
 
-      const result = await this.addModuleToPackageUseCase.execute({
-        moduleId: moduleId.trim(),
-        packageId,
-        userId: access.user.id,
-      });
+      // Con parentGroupId la hoja entra en un grupo existente (Composite, DECOR-25).
+      const groupId = typeof parentGroupId === "string" ? parentGroupId.trim() : "";
+      if (groupId.length > 0 && !this.addModuleToGroupUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de grupos no disponible." } },
+          { headers: this.defaultHeaders, status: 500 },
+        );
+      }
+
+      const result =
+        groupId.length > 0 && this.addModuleToGroupUseCase
+          ? await this.addModuleToGroupUseCase.execute({
+              groupId,
+              moduleId: moduleId.trim(),
+              packageId,
+              userId: access.user.id,
+            })
+          : await this.addModuleToPackageUseCase.execute({
+              moduleId: moduleId.trim(),
+              packageId,
+              userId: access.user.id,
+            });
 
       if (!result.ok) {
         const { code, message } = result.error;
-        let status = 400;
-
-        if (code === "package.capacity_exceeded") {
-          status = 422;
-        } else if (code === "package.module_not_found" || code === "package.not_found") {
-          status = 404;
-        } else if (code === "package.version_conflict" || code === "event.duplicate") {
-          status = 409;
-        } else if (code.startsWith("outbox.") || code === "package.persistence_error") {
-          status = 500;
-        }
+        const status = groupErrorStatus(code);
 
         return Response.json(
           { error: { code, message } },
@@ -353,5 +390,118 @@ export class PackageController {
       );
     }
   }
-}
 
+  /**
+   * `POST /api/packages/{packageId}/groups` (DECOR-25; endpoint propuesto,
+   * Jose lo confirma en la revisión): crea un grupo decorativo, opcionalmente
+   * dentro de otro grupo y con sus hojas, en una sola transacción.
+   * Body: `{ name, parentGroupId?, children?: [{ moduleId }] }`.
+   */
+  async handleCreateGroup(request: Request, packageId: string): Promise<Response> {
+    try {
+      const access = await checkPackageAccess(
+        this.authorizePackageAccess,
+        packageId,
+        this.defaultHeaders,
+      );
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.createPackageGroupUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de grupos no disponible." } },
+          { headers: this.defaultHeaders, status: 500 },
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json(
+          { error: { code: "package.invalid_body", message: "Cuerpo de solicitud JSON inválido." } },
+          { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
+      if (typeof body !== "object" || body === null) {
+        return Response.json(
+          { error: { code: "package.invalid_body", message: "Se requiere un objeto JSON." } },
+          { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
+      const { children, name, parentGroupId } = body as Record<string, unknown>;
+
+      if (typeof name !== "string") {
+        return Response.json(
+          { error: { code: "package.invalid_group_name", message: "El nombre del grupo es obligatorio" } },
+          { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
+      if (parentGroupId !== undefined && parentGroupId !== null && typeof parentGroupId !== "string") {
+        return Response.json(
+          { error: { code: "package.invalid_group", message: "El grupo no es válido" } },
+          { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
+      const childList = children ?? [];
+      const moduleIds = Array.isArray(childList)
+        ? childList.map((child: unknown) =>
+            typeof child === "object" &&
+            child !== null &&
+            typeof (child as { moduleId?: unknown }).moduleId === "string"
+              ? (child as { moduleId: string }).moduleId
+              : null,
+          )
+        : null;
+
+      if (moduleIds === null || moduleIds.some((moduleId) => moduleId === null)) {
+        return Response.json(
+          { error: { code: "package.invalid_module", message: "Cada elemento debe indicar un moduleId" } },
+          { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
+      const result = await this.createPackageGroupUseCase.execute({
+        moduleIds: moduleIds as string[],
+        name,
+        packageId,
+        parentGroupId: typeof parentGroupId === "string" ? parentGroupId : null,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: this.defaultHeaders, status: groupErrorStatus(code) },
+        );
+      }
+
+      // Un grupo sin hojas no escribe eventos: no hay nada que drenar.
+      if (result.value.itemIds.length > 0 && this.drainOutbox) {
+        try {
+          await this.drainOutbox.execute();
+        } catch (err) {
+          console.error("[PackageController.handleCreateGroup] Drain outbox error:", err);
+        }
+      }
+
+      return Response.json(result.value, {
+        headers: this.defaultHeaders,
+        status: 201,
+      });
+    } catch (cause) {
+      const correlationId = randomUUID();
+      console.error(`[PackageController.createGroup] Error inesperado (${correlationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: this.defaultHeaders, status: 500 },
+      );
+    }
+  }
+}

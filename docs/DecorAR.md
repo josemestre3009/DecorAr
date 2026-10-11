@@ -558,6 +558,8 @@ classDiagram
 
 **Consecuencias:** Simplifica recorridos y cálculos recursivos; facilita crear paquetes anidados. La implementación rechaza ciclos y limita los grupos a tres niveles.
 
+**Implementación (DECOR-25):** `ComponenteDecorativo` (`calcularPrecio`, `calcularAreaM2`, `obtenerModulos`, `profundidad`) lo implementan `ElementoDecorativo` y `ModuloCompuesto` en `src/modules/packages/domain`. "Tres niveles" significa grupo → subgrupo → sub-subgrupo; las hojas pueden estar en cualquiera de ellos. `PaqueteDecoracion` y `PaqueteDecoracionBuilderImpl` validan capacidad sobre el contrato común (`agregarZonaBienvenida`, `agregarComponente`). Los grupos se persisten en `public.package_groups` mediante las RPC atómicas `create_package_group` y `add_package_item_to_group` (`POST /api/packages/{packageId}/groups` y `POST /items` con `parentGroupId`). Cada hoja emite `package.module.added` en la misma transacción; un grupo sin hojas no emite eventos ni recalcula. La base calcula la profundidad por trigger e impide re-asignar el padre de un grupo, de modo que no puede formarse un ciclo. `clone_package` copia los grupos conservando la estructura.
+
 ### 4.4. Bridge: desacoplar decoración y render AR
 
 **Intención:** Separar la abstracción del elemento decorativo de la implementación de renderizado para que ambas jerarquías evolucionen de manera independiente.

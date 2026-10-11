@@ -15,6 +15,11 @@ export default defineConfig({
   test: {
     environment: "jsdom",
     exclude: ["e2e/**", "node_modules/**", ".opencode/**", ".next/**"],
+    // Las suites PGlite arrancan PostgreSQL embebido y aplican todas las
+    // migraciones en beforeAll; en paralelo con el resto superan los 10 s/5 s
+    // por defecto aunque cada una sola tarde ~2-3 s.
+    hookTimeout: 60_000,
+    testTimeout: 20_000,
     setupFiles: ["./vitest.setup.ts"],
   },
 });
