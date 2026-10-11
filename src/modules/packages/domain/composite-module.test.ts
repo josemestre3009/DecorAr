@@ -195,6 +195,22 @@ describe("Builder y PaqueteDecoracion usan el contrato común del Composite", ()
     if (!sinGrupo.ok) expect(sinGrupo.error.code).toBe("package.group_not_found");
   });
 
+  it("una hoja que ya está en el paquete no se agrega otra vez (ni en la raíz ni en un grupo)", () => {
+    const zona = crearZonaBienvenida("zona-1");
+    if (!zona.ok) throw zona.error;
+    const pkg = PaqueteDecoracion.create({ capacidadM2: 50, componentes: [zona.value], tipoEspacio: "casa" });
+    if (!pkg.ok) throw pkg.error;
+    const mesa = hoja();
+    expect(pkg.value.agregarComponente(mesa).ok).toBe(true);
+
+    for (const grupoPadreId of ["zona-1", undefined]) {
+      const repetida = pkg.value.agregarComponente(mesa, grupoPadreId);
+      expect(repetida.ok).toBe(false);
+      if (!repetida.ok) expect(repetida.error.code).toBe("package.component_already_grouped");
+    }
+    expect(pkg.value.espacioUsadoM2).toBe(10); // 6 de la zona + 4 de la mesa, sin duplicar
+  });
+
   it("removerModulo() quita una hoja que está dentro de un grupo", () => {
     const zona = crearZonaBienvenida("zona-1");
     if (!zona.ok) throw zona.error;

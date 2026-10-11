@@ -14,21 +14,22 @@ import type { PackageModuleAddedEvent } from "../../modules/events/domain/event-
 
 /**
  * Codes raised with RAISE EXCEPTION by create_package_group,
- * add_package_item_to_group and the commit_package_change they reuse.
+ * add_package_item_to_group and the commit_package_change they reuse, with
+ * the message shown to the user (the SQL only raises the code).
  */
-const KNOWN_CODES = new Set([
-  "package.not_found",
-  "package.invalid_group",
-  "package.invalid_group_name",
-  "package.group_not_found",
-  "package.group_depth_exceeded",
-  "package.group_immutable",
-  "package.version_conflict",
-  "package.item_not_found",
-  "event.duplicate",
-  "event.invalid",
-  "event.unsupported_type",
-  "event.unsupported_version",
+const KNOWN_CODES: ReadonlyMap<string, string> = new Map([
+  ["package.not_found", "No encontramos este paquete."],
+  ["package.invalid_group", "El grupo no es válido."],
+  ["package.invalid_group_name", "El nombre del grupo debe tener entre 1 y 80 caracteres."],
+  ["package.group_not_found", "No encontramos ese grupo en el paquete."],
+  ["package.group_depth_exceeded", "Los grupos admiten como máximo 3 niveles."],
+  ["package.group_immutable", "No se puede mover un grupo a otra posición."],
+  ["package.version_conflict", "El paquete cambió mientras guardabas. Vuelve a intentarlo."],
+  ["package.item_not_found", "No encontramos este elemento en el paquete."],
+  ["event.duplicate", "Esta operación ya se registró."],
+  ["event.invalid", "No pudimos registrar el cambio del paquete."],
+  ["event.unsupported_type", "No pudimos registrar el cambio del paquete."],
+  ["event.unsupported_version", "No pudimos registrar el cambio del paquete."],
 ]);
 
 const FOREIGN_KEY_VIOLATION = "23503";
@@ -54,16 +55,18 @@ const persistenceError = (cause: unknown, fallback: string): DomainError =>
   );
 
 const toDomainError = (error: RpcError): DomainError => {
-  if (KNOWN_CODES.has(error.message)) {
-    return new DomainError(error.message, error.message, { cause: error });
+  const knownMessage = KNOWN_CODES.get(error.message);
+  if (knownMessage) {
+    return new DomainError(error.message, knownMessage, { cause: error });
   }
 
   if (error.code === FOREIGN_KEY_VIOLATION) {
     return new DomainError("package.module_not_found", "El módulo no existe en el catálogo", { cause: error });
   }
 
+  // Un uuid mal formado (grupo, paquete o ítem) no debe confundirse con "no encontrado".
   if (error.code === INVALID_TEXT_REPRESENTATION) {
-    return new DomainError("package.group_not_found", "No encontramos ese grupo en el paquete.", { cause: error });
+    return new DomainError("package.invalid_group", "El identificador enviado no es válido.", { cause: error });
   }
 
   return persistenceError(error, "Error inesperado al guardar el grupo");

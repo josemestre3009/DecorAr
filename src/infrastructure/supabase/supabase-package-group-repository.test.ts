@@ -64,7 +64,7 @@ describe("SupabasePackageGroupRepository", () => {
     [{ message: "package.not_found" }, "package.not_found"],
     [{ message: "package.version_conflict" }, "package.version_conflict"],
     [{ code: "23503", message: "fk violation" }, "package.module_not_found"],
-    [{ code: "22P02", message: "invalid uuid" }, "package.group_not_found"],
+    [{ code: "22P02", message: "invalid uuid" }, "package.invalid_group"],
     [{ code: "XX000", message: "boom" }, "package.persistence_error"],
   ])("traduce el error %j a %s", async (error, code) => {
     const rpc = vi.fn().mockResolvedValue({ data: null, error });
@@ -73,6 +73,18 @@ describe("SupabasePackageGroupRepository", () => {
 
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe(code);
+  });
+
+  it("los códigos conocidos llevan un mensaje en español, no el código crudo", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: "package.version_conflict" } });
+
+    const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).createGroup(command);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.error.code).toBe("package.version_conflict");
+      expect(result.error.message).toBe("El paquete cambió mientras guardabas. Vuelve a intentarlo.");
+    }
   });
 
   it("createGroup convierte una excepción en package.persistence_error", async () => {

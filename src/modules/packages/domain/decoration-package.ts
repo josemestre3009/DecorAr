@@ -136,15 +136,7 @@ export class PaqueteDecoracion {
       );
     }
 
-    if (grupoPadreId !== undefined) {
-      const grupoPadre = this.buscarGrupo(grupoPadreId);
-      if (!grupoPadre) {
-        return err(new DomainError("package.group_not_found", "No encontramos ese grupo en el paquete."));
-      }
-
-      return grupoPadre.agregar(componente);
-    }
-
+    // Un componente que ya está en el paquete (raíz o grupo) no se agrega dos veces.
     if (this._componentes.some((c) => c.contiene(componente))) {
       return err(
         new DomainError(
@@ -152,6 +144,15 @@ export class PaqueteDecoracion {
           `"${componente.nombre}" ya forma parte del paquete.`,
         ),
       );
+    }
+
+    if (grupoPadreId !== undefined) {
+      const grupoPadre = this.buscarGrupo(grupoPadreId);
+      if (!grupoPadre) {
+        return err(new DomainError("package.group_not_found", "No encontramos ese grupo en el paquete."));
+      }
+
+      return grupoPadre.agregar(componente);
     }
 
     const treeValidation = validarRaiz(componente);
