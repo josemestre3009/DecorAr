@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { requireSessionUser } from "@/composition/session-guard";
 
+import { DuplicatePackageButton } from "./duplicate-package-button";
 import { PackageCatalog } from "./package-catalog";
 import { PageHeading } from "./page-heading";
 
@@ -24,9 +25,12 @@ export default async function PackagePage({ params }: PackagePageProps) {
   return (
     <main className="catalog-page">
       <header className="catalog-header">
-        <Link className="auth-link" href="/packages">
-          ← Cambiar espacio
-        </Link>
+        <div className="catalog-nav">
+          <Link className="auth-link" href="/packages">
+            ← Cambiar espacio
+          </Link>
+          <DuplicatePackageButton packageId={packageId} />
+        </div>
         <PageHeading>Tu paquete</PageHeading>
         <p className="page-lead">Elige los módulos que quieres en tu decoración.</p>
       </header>

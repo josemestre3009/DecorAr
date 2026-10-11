@@ -5,7 +5,7 @@ import { CreatePackageUseCase } from "./create-package.use-case";
 
 describe("CreatePackageUseCase", () => {
   it("crea un paquete exitosamente cuando los datos son válidos", async () => {
-    const mockRepo: PackageRepository = {
+    const mockRepo: Pick<PackageRepository, "create"> = {
       create: vi.fn().mockResolvedValue(
         ok({
           capacityM2: 50,
@@ -36,7 +36,7 @@ describe("CreatePackageUseCase", () => {
   });
 
   it("rechaza si el usuario está vacío", async () => {
-    const mockRepo: PackageRepository = { create: vi.fn() };
+    const mockRepo: Pick<PackageRepository, "create"> = { create: vi.fn() };
     const useCase = new CreatePackageUseCase(mockRepo);
 
     const result = await useCase.execute({
@@ -53,7 +53,7 @@ describe("CreatePackageUseCase", () => {
   });
 
   it("rechaza tipo de espacio no soportado", async () => {
-    const mockRepo: PackageRepository = { create: vi.fn() };
+    const mockRepo: Pick<PackageRepository, "create"> = { create: vi.fn() };
     const useCase = new CreatePackageUseCase(mockRepo);
 
     const result = await useCase.execute({
@@ -70,7 +70,7 @@ describe("CreatePackageUseCase", () => {
   });
 
   it("rechaza capacidad negativa o cero", async () => {
-    const mockRepo: PackageRepository = { create: vi.fn() };
+    const mockRepo: Pick<PackageRepository, "create"> = { create: vi.fn() };
     const useCase = new CreatePackageUseCase(mockRepo);
 
     const result = await useCase.execute({
