@@ -5,7 +5,8 @@ import type { CreatedPackageDto, CreatePackageDto } from "../dtos/package.dto";
 import type { PackageRepository } from "../ports/package-repository.port";
 
 export class CreatePackageUseCase {
-  constructor(private readonly packageRepository: PackageRepository) {}
+  constructor(private readonly packageRepository: Pick<PackageRepository, "create">) {}
+
 
   async execute(dto: CreatePackageDto): Promise<Result<CreatedPackageDto, DomainError>> {
     if (!dto.userId || dto.userId.trim().length === 0) {

@@ -32,3 +32,20 @@ export interface RemoveModuleFromPackageDto {
   /** Propagated to the outbox row and the recovery logs (DECOR-31); never part of the event contract. */
   readonly correlationId?: string;
 }
+
+export interface ClonePackageDto {
+  readonly sourcePackageId: string;
+  readonly userId: string;
+}
+
+export interface ClonedPackageDto {
+  readonly id: string;
+  readonly spaceType: TipoEspacio;
+  readonly capacityM2: number;
+  readonly style?: string | null;
+  readonly colors?: readonly string[];
+  readonly notes?: string;
+  readonly version: number;
+  readonly itemCount: number;
+}
+

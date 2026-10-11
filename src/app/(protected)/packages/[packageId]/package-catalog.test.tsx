@@ -21,7 +21,7 @@ const fixture = JSON.parse(
 ) as CatalogModuleDto[];
 
 function client(addItem: PackagesClient["addItem"] = vi.fn()): PackagesClient {
-  return { addItem, createPackage: vi.fn(), mode: "live" };
+  return { addItem, clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live" };
 }
 
 const visible = (text: string | null) => (text ?? "").replace(/\s/g, " ");

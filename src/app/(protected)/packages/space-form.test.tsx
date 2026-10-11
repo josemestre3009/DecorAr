@@ -13,7 +13,7 @@ const router = { push };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 function fakeClient(createPackage: PackagesClient["createPackage"]): PackagesClient {
-  return { addItem: vi.fn(), createPackage, mode: "simulated" };
+  return { addItem: vi.fn(), clonePackage: vi.fn(), createPackage, mode: "simulated" };
 }
 
 function fill(capacity: string, spaceLabel = "Salón social") {

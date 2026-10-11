@@ -3,7 +3,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { DomainError } from "../../shared/domain/domain-error";
 import { err, ok, type Result } from "../../shared/domain/result";
-import type { CreatedPackageDto } from "../../modules/packages/application/dtos/package.dto";
+import type { ClonedPackageDto, ClonePackageDto, CreatedPackageDto } from "../../modules/packages/application/dtos/package.dto";
 import type { PackageRepository } from "../../modules/packages/application/ports/package-repository.port";
 import type { TipoEspacio } from "../../modules/packages/domain/space-type";
 
@@ -11,6 +11,8 @@ const KNOWN_CODES = new Set([
   "package.invalid_user",
   "package.invalid_space_type",
   "package.invalid_capacity",
+  "package.invalid_source",
+  "package.not_found",
 ]);
 
 type RpcPackageRow = {
@@ -18,6 +20,18 @@ type RpcPackageRow = {
   spaceType: TipoEspacio;
   capacityM2: number | string;
 };
+
+type RpcClonedPackageRow = {
+  id: string;
+  spaceType: TipoEspacio;
+  capacityM2: number | string;
+  style?: string | null;
+  colors?: string[];
+  notes?: string;
+  version?: number;
+  itemCount?: number;
+};
+
 
 export class SupabasePackageRepository implements PackageRepository {
   constructor(private readonly client: SupabaseClient) {}
@@ -60,4 +74,44 @@ export class SupabasePackageRepository implements PackageRepository {
       return err(new DomainError("package.persistence_error", message, { cause }));
     }
   }
+
+  async clone(params: ClonePackageDto): Promise<Result<ClonedPackageDto, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("clone_package", {
+        p_source_package_id: params.sourcePackageId,
+        p_target_user_id: params.userId,
+      });
+
+      if (error) {
+        if (KNOWN_CODES.has(error.message)) {
+          return err(new DomainError(error.message, error.message, { cause: error }));
+        }
+        return err(
+          new DomainError("package.persistence_error", error.message, { cause: error }),
+        );
+      }
+
+      if (!data) {
+        return err(
+          new DomainError("package.persistence_error", "RPC clone_package returned no data"),
+        );
+      }
+
+      const row = data as RpcClonedPackageRow;
+      return ok({
+        capacityM2: Number(row.capacityM2),
+        colors: Array.isArray(row.colors) ? row.colors : [],
+        id: row.id,
+        itemCount: Number(row.itemCount ?? 0),
+        notes: row.notes ?? "",
+        spaceType: row.spaceType,
+        style: row.style ?? null,
+        version: Number(row.version ?? 1),
+      });
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Error inesperado al clonar el paquete";
+      return err(new DomainError("package.persistence_error", message, { cause }));
+    }
+  }
 }
+
