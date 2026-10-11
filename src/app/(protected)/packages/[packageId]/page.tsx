@@ -6,6 +6,7 @@ import { requireSessionUser } from "@/composition/session-guard";
 import { DuplicatePackageButton } from "./duplicate-package-button";
 import { PackageCatalog } from "./package-catalog";
 import { PageHeading } from "./page-heading";
+import { WelcomeZoneButton } from "./welcome-zone-button";
 
 export const metadata: Metadata = {
   title: "Tu paquete · DecorAR",
@@ -34,6 +35,8 @@ export default async function PackagePage({ params }: PackagePageProps) {
         <PageHeading>Tu paquete</PageHeading>
         <p className="page-lead">Elige los módulos que quieres en tu decoración.</p>
       </header>
+
+      <WelcomeZoneButton packageId={packageId} />
 
       <PackageCatalog packageId={packageId} />
     </main>

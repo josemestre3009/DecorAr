@@ -5,6 +5,8 @@ import { err, ok } from "../../shared/domain/result";
 import type { SessionUser } from "../../shared/domain/session";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
 import type { AddModuleToPackageUseCase } from "../../modules/packages/application/use-cases/add-module-to-package.use-case";
+import type { AddModuleToGroupUseCase } from "../../modules/packages/application/use-cases/add-module-to-group.use-case";
+import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
 import { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
@@ -78,6 +80,43 @@ describe("PackageController", () => {
       removeModuleFromPackageUseCase,
       sessionGateway,
     };
+  };
+
+  /** Controlador con las dependencias del Composite (DECOR-25), por objeto de opciones. */
+  const createGroupMocks = () => {
+    const base = createMocks();
+
+    const createPackageGroupUseCase = {
+      execute: vi.fn().mockResolvedValue(
+        ok({
+          depth: 1,
+          groupId: "grp-1",
+          itemIds: ["item-a", "item-b"],
+          name: "Zona de bienvenida",
+          packageVersion: 6,
+          parentGroupId: null,
+        }),
+      ),
+    };
+
+    const addModuleToGroupUseCase = {
+      execute: vi.fn().mockResolvedValue(ok({ itemId: "item-g", packageVersion: 5 })),
+    };
+
+    const controller = new PackageController(
+      base.sessionGateway,
+      base.authorizePackageAccess as unknown as AuthorizePackageAccessUseCase,
+      base.createPackageUseCase as unknown as CreatePackageUseCase,
+      base.addModuleToPackageUseCase as unknown as AddModuleToPackageUseCase,
+      base.removeModuleFromPackageUseCase as unknown as RemoveModuleFromPackageUseCase,
+      {
+        addModuleToGroupUseCase: addModuleToGroupUseCase as unknown as AddModuleToGroupUseCase,
+        createPackageGroupUseCase: createPackageGroupUseCase as unknown as CreatePackageGroupUseCase,
+        drainOutbox: base.drainOutbox,
+      },
+    );
+
+    return { ...base, addModuleToGroupUseCase, controller, createPackageGroupUseCase };
   };
 
   describe("handleCreatePackage", () => {
@@ -277,7 +316,86 @@ describe("PackageController", () => {
       expect(data.error.code).toBe("package.version_conflict");
     });
 
-    it("devuelve 400 si se envía parentGroupId (agrupación fuera de alcance)", async () => {
+    it("con parentGroupId delega en AddModuleToGroupUseCase (Composite, DECOR-25)", async () => {
+      const mocks = createGroupMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: " mod-1 ", parentGroupId: " grupo-1 " }),
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({ itemId: "item-g", packageVersion: 5 });
+      expect(mocks.addModuleToGroupUseCase.execute).toHaveBeenCalledWith({
+        groupId: "grupo-1",
+        moduleId: "mod-1",
+        packageId: "pkg-1",
+        userId: "user-1",
+      });
+      expect(mocks.addModuleToPackageUseCase.execute).not.toHaveBeenCalled();
+      expect(mocks.drainOutbox.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("parentGroupId vacío o en blanco devuelve 400 package.invalid_group sin agregar en la raíz", async () => {
+      for (const parentGroupId of ["", "   "]) {
+        const mocks = createGroupMocks();
+        const req = new Request("http://localhost/api/packages/pkg-1/items", {
+          body: JSON.stringify({ moduleId: "mod-1", parentGroupId }),
+          method: "POST",
+        });
+
+        const res = await mocks.controller.handleAddItem(req, "pkg-1");
+        expect(res.status).toBe(400);
+        expect((await res.json()).error.code).toBe("package.invalid_group");
+        expect(mocks.addModuleToPackageUseCase.execute).not.toHaveBeenCalled();
+        expect(mocks.addModuleToGroupUseCase.execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it("sin parentGroupId (ausente o null) sigue usando AddModuleToPackageUseCase", async () => {
+      for (const parentGroupId of [undefined, null]) {
+        const mocks = createGroupMocks();
+        const req = new Request("http://localhost/api/packages/pkg-1/items", {
+          body: JSON.stringify({ moduleId: "mod-1", parentGroupId }),
+          method: "POST",
+        });
+
+        const res = await mocks.controller.handleAddItem(req, "pkg-1");
+        expect(res.status).toBe(201);
+        expect(mocks.addModuleToPackageUseCase.execute).toHaveBeenCalledTimes(1);
+        expect(mocks.addModuleToGroupUseCase.execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it("parentGroupId que no es texto devuelve 400 package.invalid_group", async () => {
+      const mocks = createGroupMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1", parentGroupId: 42 }),
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe("package.invalid_group");
+    });
+
+    it("grupo inexistente devuelve 404 package.group_not_found", async () => {
+      const mocks = createGroupMocks();
+      mocks.addModuleToGroupUseCase.execute.mockResolvedValue(
+        err(new DomainError("package.group_not_found", "No encontramos ese grupo en el paquete.")),
+      );
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1", parentGroupId: "grupo-x" }),
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+      expect(res.status).toBe(404);
+      expect((await res.json()).error.code).toBe("package.group_not_found");
+      expect(mocks.drainOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it("con parentGroupId pero sin caso de uso de grupos configurado devuelve 500 controlado", async () => {
       const mocks = createMocks();
       const req = new Request("http://localhost/api/packages/pkg-1/items", {
         body: JSON.stringify({ moduleId: "mod-1", parentGroupId: "grupo-1" }),
@@ -285,9 +403,8 @@ describe("PackageController", () => {
       });
 
       const res = await mocks.controller.handleAddItem(req, "pkg-1");
-      expect(res.status).toBe(400);
-      const data = await res.json();
-      expect(data.error.code).toBe("package.grouping_not_supported");
+      expect(res.status).toBe(500);
+      expect((await res.json()).error.code).toBe("internal_error");
       expect(mocks.addModuleToPackageUseCase.execute).not.toHaveBeenCalled();
     });
   });
@@ -458,5 +575,137 @@ describe("PackageController", () => {
       });
     });
   });
-});
 
+  describe("handleCreateGroup (Composite, DECOR-25)", () => {
+    const groupRequest = (body: unknown) =>
+      new Request("http://localhost/api/packages/pkg-1/groups", {
+        body: typeof body === "string" ? body : JSON.stringify(body),
+        method: "POST",
+      });
+
+    it("crea la Zona de bienvenida con sus hojas: 201, drena la outbox", async () => {
+      const mocks = createGroupMocks();
+
+      const res = await mocks.controller.handleCreateGroup(
+        groupRequest({ children: [{ moduleId: "mod-arco" }, { moduleId: "mod-mesa" }], name: "Zona de bienvenida" }),
+        "pkg-1",
+      );
+
+      expect(res.status).toBe(201);
+      expect(await res.json()).toEqual({
+        depth: 1,
+        groupId: "grp-1",
+        itemIds: ["item-a", "item-b"],
+        name: "Zona de bienvenida",
+        packageVersion: 6,
+        parentGroupId: null,
+      });
+      expect(mocks.createPackageGroupUseCase.execute).toHaveBeenCalledWith({
+        moduleIds: ["mod-arco", "mod-mesa"],
+        name: "Zona de bienvenida",
+        packageId: "pkg-1",
+        parentGroupId: null,
+        userId: "user-1",
+      });
+      expect(mocks.drainOutbox.execute).toHaveBeenCalledTimes(1);
+    });
+
+    it("un grupo sin hojas no drena la outbox (no hay eventos)", async () => {
+      const mocks = createGroupMocks();
+      mocks.createPackageGroupUseCase.execute.mockResolvedValue(
+        ok({ depth: 2, groupId: "grp-2", itemIds: [], name: "Sub", packageVersion: 3, parentGroupId: "grp-1" }),
+      );
+
+      const res = await mocks.controller.handleCreateGroup(
+        groupRequest({ name: "Sub", parentGroupId: "grp-1" }),
+        "pkg-1",
+      );
+
+      expect(res.status).toBe(201);
+      expect(mocks.createPackageGroupUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ moduleIds: [], parentGroupId: "grp-1" }),
+      );
+      expect(mocks.drainOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it("rechaza cuerpos inválidos con 400 sin llamar al caso de uso", async () => {
+      const cases: [unknown, string][] = [
+        ["{no-json", "package.invalid_body"],
+        [{ children: [] }, "package.invalid_group_name"],
+        [{ name: "X", parentGroupId: 7 }, "package.invalid_group"],
+        [{ name: "X", parentGroupId: "" }, "package.invalid_group"],
+        [{ name: "X", parentGroupId: "   " }, "package.invalid_group"],
+        [{ children: "mesa", name: "X" }, "package.invalid_module"],
+        [{ children: [{ id: "mesa" }], name: "X" }, "package.invalid_module"],
+      ];
+
+      for (const [body, code] of cases) {
+        const mocks = createGroupMocks();
+        const res = await mocks.controller.handleCreateGroup(groupRequest(body), "pkg-1");
+
+        expect(res.status).toBe(400);
+        expect((await res.json()).error.code).toBe(code);
+        expect(mocks.createPackageGroupUseCase.execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it.each([
+      ["package.group_depth_exceeded", 422],
+      ["package.group_cycle", 422],
+      ["package.capacity_exceeded", 422],
+      ["package.group_not_found", 404],
+      ["package.module_not_found", 404],
+      ["package.not_found", 404],
+      ["package.version_conflict", 409],
+      ["package.invalid_group_name", 400],
+      ["package.persistence_error", 500],
+    ])("traduce %s a %i con el envelope de error", async (code, status) => {
+      const mocks = createGroupMocks();
+      mocks.createPackageGroupUseCase.execute.mockResolvedValue(err(new DomainError(code, "mensaje")));
+
+      const res = await mocks.controller.handleCreateGroup(groupRequest({ name: "X" }), "pkg-1");
+
+      expect(res.status).toBe(status);
+      expect(await res.json()).toEqual({ error: { code, message: "mensaje" } });
+      expect(mocks.drainOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it("usuario ajeno: 404 desde checkPackageAccess, sin llamar al caso de uso", async () => {
+      const mocks = createGroupMocks();
+      mocks.authorizePackageAccess.execute.mockResolvedValue(
+        err(new DomainError("package.not_found", "No encontramos este paquete de decoración.")),
+      );
+
+      const res = await mocks.controller.handleCreateGroup(groupRequest({ name: "X" }), "pkg-de-otro");
+
+      expect(res.status).toBe(404);
+      expect(mocks.createPackageGroupUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("anónimo: 401 desde checkPackageAccess", async () => {
+      const mocks = createGroupMocks();
+      mocks.authorizePackageAccess.execute.mockResolvedValue(
+        err(new DomainError("auth.unauthenticated", "Inicia sesión para continuar.")),
+      );
+
+      const res = await mocks.controller.handleCreateGroup(groupRequest({ name: "X" }), "pkg-1");
+
+      expect(res.status).toBe(401);
+      expect(mocks.createPackageGroupUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("sin caso de uso configurado o ante una excepción devuelve 500 controlado", async () => {
+      const withoutUseCase = createMocks();
+      const res = await withoutUseCase.controller.handleCreateGroup(groupRequest({ name: "X" }), "pkg-1");
+      expect(res.status).toBe(500);
+
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const mocks = createGroupMocks();
+      mocks.createPackageGroupUseCase.execute.mockRejectedValue(new Error("boom"));
+      const thrown = await mocks.controller.handleCreateGroup(groupRequest({ name: "X" }), "pkg-1");
+      expect(thrown.status).toBe(500);
+      expect((await thrown.json()).error.code).toBe("internal_error");
+      consoleSpy.mockRestore();
+    });
+  });
+});
