@@ -138,6 +138,19 @@ describe("PackageController", () => {
       const data = await res.json();
       expect(data).toEqual({ capacityM2: 50, id: "pkg-1", spaceType: "salonSocial" });
     });
+
+    it("propaga x-correlation-id a la respuesta (DECOR-31)", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages", {
+        body: JSON.stringify({ capacityM2: 50, spaceType: "salonSocial" }),
+        headers: { "x-correlation-id": "corr-create" },
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleCreatePackage(req);
+
+      expect(res.headers.get("x-correlation-id")).toBe("corr-create");
+    });
   });
 
   describe("handleAddItem", () => {
@@ -219,6 +232,34 @@ describe("PackageController", () => {
       expect(mocks.drainOutbox.execute).toHaveBeenCalled();
     });
 
+    it("propaga x-correlation-id al caso de uso y a la respuesta (DECOR-31)", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1" }),
+        headers: { "x-correlation-id": "corr-from-client" },
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+
+      expect(res.headers.get("x-correlation-id")).toBe("corr-from-client");
+      expect(mocks.addModuleToPackageUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ correlationId: "corr-from-client" }),
+      );
+    });
+
+    it("genera un correlationId cuando el cliente no envía uno", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1" }),
+        method: "POST",
+      });
+
+      const res = await mocks.controller.handleAddItem(req, "pkg-1");
+
+      expect(res.headers.get("x-correlation-id")).toBeTruthy();
+    });
+
     it("devuelve 409 si hay conflicto de versión en la outbox", async () => {
       const mocks = createMocks();
       mocks.addModuleToPackageUseCase.execute.mockResolvedValue(
@@ -277,6 +318,29 @@ describe("PackageController", () => {
       const res = await mocks.controller.handleRemoveItem("pkg-1", "item-1");
       expect(res.status).toBe(204);
       expect(mocks.drainOutbox.execute).toHaveBeenCalled();
+    });
+
+    it("propaga x-correlation-id del request opcional al caso de uso y a la respuesta (DECOR-31)", async () => {
+      const mocks = createMocks();
+      const req = new Request("http://localhost/api/packages/pkg-1/items/item-1", {
+        headers: { "x-correlation-id": "corr-remove" },
+        method: "DELETE",
+      });
+
+      const res = await mocks.controller.handleRemoveItem("pkg-1", "item-1", req);
+
+      expect(res.headers.get("x-correlation-id")).toBe("corr-remove");
+      expect(mocks.removeModuleFromPackageUseCase.execute).toHaveBeenCalledWith(
+        expect.objectContaining({ correlationId: "corr-remove" }),
+      );
+    });
+
+    it("genera un correlationId cuando no se pasa request", async () => {
+      const mocks = createMocks();
+
+      const res = await mocks.controller.handleRemoveItem("pkg-1", "item-1");
+
+      expect(res.headers.get("x-correlation-id")).toBeTruthy();
     });
   });
 

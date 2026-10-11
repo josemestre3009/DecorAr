@@ -108,7 +108,7 @@ describe("DECOR-30 executable authorization policies", () => {
     }>(`
       SELECT
         has_schema_privilege('authenticated', 'private', 'USAGE') AS private_usage,
-        has_function_privilege('authenticated', 'public.commit_package_change(jsonb,integer)', 'EXECUTE') AS rpc_execute,
+        has_function_privilege('authenticated', 'public.commit_package_change(jsonb,integer,text)', 'EXECUTE') AS rpc_execute,
         has_table_privilege('authenticated', 'public.catalog_modules', 'SELECT') AS catalog_read,
         has_table_privilege('authenticated', 'public.catalog_modules', 'INSERT') AS catalog_write,
         has_function_privilege(

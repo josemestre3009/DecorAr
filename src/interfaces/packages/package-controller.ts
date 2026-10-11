@@ -28,6 +28,19 @@ function isPackageControllerOptions(
   );
 }
 
+const CORRELATION_ID_HEADER = "x-correlation-id";
+
+/**
+ * Reads `x-correlation-id` from the request or generates one (DECOR-31), so
+ * every package mutation can be traced from the HTTP request through the
+ * outbox row, its retries and any reconciliation, without changing the
+ * versioned event contract (DECOR-29).
+ */
+function correlationIdFor(request: Request): string {
+  const provided = request.headers.get(CORRELATION_ID_HEADER);
+  return provided && provided.trim().length > 0 ? provided.trim() : randomUUID();
+}
+
 export class PackageController {
   private readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
   private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
@@ -76,12 +89,15 @@ export class PackageController {
 
 
   async handleCreatePackage(request: Request): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
     try {
       const user = await this.sessionGateway.currentUser();
       if (!user) {
         return Response.json(
           { error: { code: "auth.unauthenticated", message: "Inicia sesión para continuar." } },
-          { headers: this.defaultHeaders, status: 401 },
+          { headers: responseHeaders, status: 401 },
         );
       }
 
@@ -91,14 +107,14 @@ export class PackageController {
       } catch {
         return Response.json(
           { error: { code: "package.invalid_body", message: "Cuerpo de solicitud JSON inválido." } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
       if (typeof body !== "object" || body === null) {
         return Response.json(
           { error: { code: "package.invalid_body", message: "Se requiere un objeto JSON." } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
@@ -121,25 +137,28 @@ export class PackageController {
 
         return Response.json(
           { error: { code, message } },
-          { headers: this.defaultHeaders, status },
+          { headers: responseHeaders, status },
         );
       }
 
       return Response.json(result.value, {
-        headers: this.defaultHeaders,
+        headers: responseHeaders,
         status: 201,
       });
     } catch (cause) {
-      const correlationId = randomUUID();
-      console.error(`[PackageController.create] Error inesperado (${correlationId}):`, cause);
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.create] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
-        { headers: this.defaultHeaders, status: 500 },
+        { headers: responseHeaders, status: 500 },
       );
     }
   }
 
   async handleAddItem(request: Request, packageId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
     try {
       const access = await checkPackageAccess(
         this.authorizePackageAccess,
@@ -188,6 +207,7 @@ export class PackageController {
       }
 
       const result = await this.addModuleToPackageUseCase.execute({
+        correlationId,
         moduleId: moduleId.trim(),
         packageId,
         userId: access.user.id,
@@ -209,7 +229,7 @@ export class PackageController {
 
         return Response.json(
           { error: { code, message } },
-          { headers: this.defaultHeaders, status },
+          { headers: responseHeaders, status },
         );
       }
 
@@ -222,20 +242,23 @@ export class PackageController {
       }
 
       return Response.json(result.value, {
-        headers: this.defaultHeaders,
+        headers: responseHeaders,
         status: 201,
       });
     } catch (cause) {
-      const correlationId = randomUUID();
-      console.error(`[PackageController.addItem] Error inesperado (${correlationId}):`, cause);
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.addItem] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
-        { headers: this.defaultHeaders, status: 500 },
+        { headers: responseHeaders, status: 500 },
       );
     }
   }
 
-  async handleRemoveItem(packageId: string, itemId: string): Promise<Response> {
+  async handleRemoveItem(packageId: string, itemId: string, request?: Request): Promise<Response> {
+    const correlationId = request ? correlationIdFor(request) : randomUUID();
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
     try {
       const access = await checkPackageAccess(
         this.authorizePackageAccess,
@@ -249,11 +272,12 @@ export class PackageController {
       if (!itemId || itemId.trim().length === 0) {
         return Response.json(
           { error: { code: "package.invalid_item", message: "Identificador de elemento inválido" } },
-          { headers: this.defaultHeaders, status: 400 },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
       const result = await this.removeModuleFromPackageUseCase.execute({
+        correlationId,
         itemId: itemId.trim(),
         packageId,
         userId: access.user.id,
@@ -273,7 +297,7 @@ export class PackageController {
 
         return Response.json(
           { error: { code, message } },
-          { headers: this.defaultHeaders, status },
+          { headers: responseHeaders, status },
         );
       }
 
@@ -286,15 +310,15 @@ export class PackageController {
       }
 
       return new Response(null, {
-        headers: this.defaultHeaders,
+        headers: responseHeaders,
         status: 204,
       });
     } catch (cause) {
-      const correlationId = randomUUID();
-      console.error(`[PackageController.removeItem] Error inesperado (${correlationId}):`, cause);
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.removeItem] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
-        { headers: this.defaultHeaders, status: 500 },
+        { headers: responseHeaders, status: 500 },
       );
     }
   }
