@@ -5,6 +5,8 @@ export interface CreatePackageGroupDto {
   readonly parentGroupId?: string | null;
   /** Módulos del catálogo que se agregan como hojas del grupo nuevo. */
   readonly moduleIds?: readonly string[];
+  /** Propagated to the outbox rows and the recovery logs (DECOR-31); never part of the event contract. */
+  readonly correlationId?: string;
 }
 
 export interface CreatedPackageGroupDto {
@@ -21,4 +23,6 @@ export interface AddModuleToGroupDto {
   readonly userId: string;
   readonly moduleId: string;
   readonly groupId: string;
+  /** Propagated to the outbox row and the recovery logs (DECOR-31); never part of the event contract. */
+  readonly correlationId?: string;
 }

@@ -94,6 +94,7 @@ describe("CreatePackageGroupUseCase", () => {
     );
 
     expect(groupRepository.createGroup).toHaveBeenCalledWith({
+      correlationId: null,
       events: [
         {
           eventId: "id-4",
@@ -126,6 +127,20 @@ describe("CreatePackageGroupUseCase", () => {
     expect(consumer.consume).toHaveBeenCalledWith(
       expect.objectContaining({ eventId: "id-5", payload: { itemId: "id-3", moduleId: MESA.id } }),
     );
+  });
+
+  it("propaga el correlationId al comando del RPC", async () => {
+    const { groupRepository, useCase } = setup();
+
+    await useCase.execute({
+      correlationId: "corr-1",
+      moduleIds: [ARCO.id],
+      name: "Zona",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(vi.mocked(groupRepository.createGroup).mock.calls[0][0].correlationId).toBe("corr-1");
   });
 
   it("un grupo sin hojas no emite eventos ni recalcula", async () => {

@@ -319,6 +319,45 @@ describe("DECOR-25 migración: grupos decorativos (Composite)", () => {
     expect(await snapshot(packageId)).toEqual(before);
   });
 
+  it("guarda el correlationId en el outbox de las hojas creadas o agregadas por el grupo", async () => {
+    const packageId = await newPackage();
+    const arco = addedEvent(packageId, USER_A, MODULE_ARCO);
+
+    await db.query(`SELECT public.create_package_group($1, $2, $3, $4, $5, $6::jsonb, $7, $8)`, [
+      packageId,
+      USER_A,
+      randomUUID(),
+      "Zona de bienvenida",
+      null,
+      JSON.stringify([arco]),
+      1,
+      "corr-create",
+    ]);
+
+    const created = await db.query<{ correlation_id: string | null }>(
+      `SELECT correlation_id FROM private.domain_events WHERE event_id = $1`,
+      [arco.eventId],
+    );
+    expect(created.rows[0].correlation_id).toBe("corr-create");
+
+    const group = await db.query<{ id: string }>(`SELECT id FROM public.package_groups WHERE package_id = $1`, [
+      packageId,
+    ]);
+    const mesa = addedEvent(packageId, USER_A, MODULE_MESA);
+    await db.query(`SELECT public.add_package_item_to_group($1::jsonb, $2, $3, $4)`, [
+      JSON.stringify(mesa),
+      group.rows[0].id,
+      2,
+      "corr-add",
+    ]);
+
+    const added = await db.query<{ correlation_id: string | null }>(
+      `SELECT correlation_id FROM private.domain_events WHERE event_id = $1`,
+      [mesa.eventId],
+    );
+    expect(added.rows[0].correlation_id).toBe("corr-add");
+  });
+
   it("anon y authenticated no pueden ejecutar los RPC ni escribir grupos", async () => {
     const packageId = await newPackage();
 

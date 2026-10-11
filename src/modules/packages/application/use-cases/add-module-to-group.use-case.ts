@@ -82,7 +82,12 @@ export class AddModuleToGroupUseCase {
       userId: dto.userId,
     };
 
-    const committed = await this.groupRepository.addItemToGroup(event, dto.groupId.trim(), tree.value.detail.version);
+    const committed = await this.groupRepository.addItemToGroup(
+      event,
+      dto.groupId.trim(),
+      tree.value.detail.version,
+      dto.correlationId,
+    );
     if (!committed.ok) {
       return err(committed.error);
     }
