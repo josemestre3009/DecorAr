@@ -1,5 +1,8 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { act, fireEvent, render, screen } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+
+import { ok, err } from "@/shared/domain/result";
+import type { DomainEvent } from "@/modules/events/domain/event-contracts";
 
 import { BudgetTotal } from "./budget-total";
 import { SpaceSummary } from "./space-summary";
@@ -51,6 +54,102 @@ describe("BudgetTotal (DECOR-22)", () => {
     expect(screen.getByRole("alert")).toHaveTextContent("No pudimos obtener el presupuesto.");
     fireEvent.click(screen.getByRole("button", { name: "Reintentar" }));
     expect(refresh).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("BudgetTotal en tiempo real (DECOR-21)", () => {
+  beforeEach(() => refresh.mockReset());
+
+  it("actualiza el total en pantalla al recibir budget.recalculated por Broadcast", () => {
+    let emitEvent: (event: DomainEvent) => void = () => {};
+    const mockSubscriber = vi.fn().mockImplementation((_pkgId, onEvent) => {
+      emitEvent = onEvent;
+      return Promise.resolve(vi.fn());
+    });
+
+    render(
+      <BudgetTotal
+        budget={{ packageVersion: 1, status: "confirmed", totalCop: 350000 }}
+        packageId="pkg-live-1"
+        packageVersion={1}
+        subscriber={mockSubscriber}
+      />,
+    );
+
+    expect(screen.getByText("$ 350.000")).toBeInTheDocument();
+
+    act(() => {
+      emitEvent({
+        eventId: "recalc-evt-1",
+        occurredAt: "2026-10-11T12:00:00.000Z",
+        packageId: "pkg-live-1",
+        payload: {
+          budgetId: "pkg-live-1",
+          causationEventId: "cause-1",
+          totalCop: 720000,
+        },
+        schemaVersion: 1,
+        type: "budget.recalculated",
+        userId: "user-1",
+      });
+    });
+
+    expect(screen.getByText("$ 720.000")).toBeInTheDocument();
+  });
+
+  it("conserva el último total confirmado si la sincronización falla y muestra alerta accesible", async () => {
+    const mockBudgetClient = {
+      getBudget: vi.fn().mockResolvedValue(err({ kind: "server", message: "Error" })),
+    };
+    const mockSubscriber = vi.fn().mockResolvedValue(vi.fn());
+
+    render(
+      <BudgetTotal
+        budget={{ packageVersion: 2, status: "confirmed", totalCop: 500000 }}
+        budgetClient={mockBudgetClient}
+        packageId="pkg-live-1"
+        packageVersion={3} // Provoca hueco y resync que falla
+        subscriber={mockSubscriber}
+      />,
+    );
+
+    // El último confirmado permanece en pantalla
+    expect(screen.getByText("$ 500.000")).toBeInTheDocument();
+    // Y se muestra el aviso de error de sincronización
+    expect(await screen.findByRole("alert")).toHaveTextContent("No pudimos sincronizar el presupuesto más reciente.");
+  });
+
+  it("permite reintentar la sincronización tras un fallo", async () => {
+    const mockBudgetClient = {
+      getBudget: vi
+        .fn()
+        .mockResolvedValueOnce(err({ kind: "server", message: "Error" }))
+        .mockResolvedValueOnce(
+          ok({
+            currency: "COP" as const,
+            packageVersion: 3,
+            totalCop: 890000,
+            updatedAt: "2026-10-11T12:00:00.000Z",
+          }),
+        ),
+    };
+    const mockSubscriber = vi.fn().mockResolvedValue(vi.fn());
+
+    render(
+      <BudgetTotal
+        budget={{ packageVersion: 2, status: "confirmed", totalCop: 500000 }}
+        budgetClient={mockBudgetClient}
+        packageId="pkg-live-1"
+        packageVersion={3}
+        subscriber={mockSubscriber}
+      />,
+    );
+
+    const retryBtn = await screen.findByRole("button", { name: "Reintentar" });
+    fireEvent.click(retryBtn);
+
+    expect(await screen.findByText("$ 890.000")).toBeInTheDocument();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 });
 

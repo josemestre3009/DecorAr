@@ -125,7 +125,11 @@ export default async function PackagePage({ params }: PackagePageProps) {
         <>
           <div className="configurator-summary">
             <SpaceSummary detail={configurator.detail} />
-            <BudgetTotal budget={configurator.budget} packageVersion={configurator.detail.version} />
+            <BudgetTotal
+              budget={configurator.budget}
+              packageId={packageId}
+              packageVersion={configurator.detail.version}
+            />
           </div>
           <PackageContents
             nodes={configurator.detail.nodes}

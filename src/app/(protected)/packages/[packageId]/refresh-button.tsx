@@ -5,10 +5,11 @@ import { useTransition } from "react";
 
 type RefreshButtonProps = {
   readonly label: string;
+  readonly onAction?: () => void;
 };
 
 /** Vuelve a pedir la página al servidor (Server Component) sin recargar el navegador. */
-export function RefreshButton({ label }: RefreshButtonProps) {
+export function RefreshButton({ label, onAction }: RefreshButtonProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -17,7 +18,10 @@ export function RefreshButton({ label }: RefreshButtonProps) {
       aria-busy={isPending}
       className="secondary-button"
       disabled={isPending}
-      onClick={() => startTransition(() => router.refresh())}
+      onClick={() => {
+        onAction?.();
+        startTransition(() => router.refresh());
+      }}
       type="button"
     >
       {isPending ? "Actualizando…" : label}
