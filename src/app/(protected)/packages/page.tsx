@@ -103,7 +103,7 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
         ) : null}
 
         {history?.status === "ready" && history.packages.length > 0 ? (
-          <ul className="package-history-list">
+          <ul className="package-history-list" role="list">
             {history.packages.map((pkg) => (
               <li className="package-history-card" key={pkg.id}>
                 <div>

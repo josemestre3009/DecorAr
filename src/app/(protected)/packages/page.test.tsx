@@ -44,6 +44,8 @@ describe("PackagesPage", () => {
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("heading", { name: "Mis paquetes" })).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    expect(screen.getByRole("list")).toHaveAttribute("role", "list");
     expect(screen.getByText("Salón social")).toBeInTheDocument();
     expect(screen.getByText("35.5 m²")).toBeInTheDocument();
     expect(screen.getAllByText(/Actualizado el/)).toHaveLength(2);

@@ -224,12 +224,30 @@ export async function createPackageController(
   );
 }
 
+/**
+ * Dependencias mínimas de `GET /api/packages` (DECOR-41): sólo el cliente de
+ * sesión, así que el listado nunca exige `SUPABASE_SERVICE_ROLE_KEY`. El
+ * lector corre bajo RLS con ese mismo cliente y los encabezados de refresh/
+ * anti-cache que entrega `@supabase/ssr` se devuelven en `defaultHeaders`.
+ * La Server Component de `/packages` también la usa para `listOwnedPackages`.
+ */
 export async function createPackageListQueryDependencies(
   options: SessionClientOptions = {},
 ) {
-  const sessionClient = await createClient(options);
+  const defaultHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(defaultHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const sessionGateway = createSessionGateway(sessionClient);
 
   return {
+    currentUser: () => sessionGateway.currentUser(),
+    defaultHeaders,
     listOwnedPackages: new ListOwnedPackagesUseCase(
       new SupabasePackageReader(sessionClient),
     ),
