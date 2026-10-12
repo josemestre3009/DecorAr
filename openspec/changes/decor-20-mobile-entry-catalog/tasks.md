@@ -30,7 +30,7 @@
 - [x] 4.3 `npm run build`: exit 0, escaneo de secretos superado en 14 artefactos; `/packages` y `/packages/[packageId]` dinámicas
 - [x] 4.4 `npm run test:e2e` sin credenciales: 16 pasan y 7 se omiten (3 de DECOR-38 y 4 de DECOR-20 que requieren sesión)
 - [x] 4.5 `npm run test:e2e` con credenciales: 22 pasan y 1 se omite (el registro de DECOR-38, que consume la cuota de correo). Se usó una cuenta efímera creada con la admin API y `email_confirm: true`, eliminada al terminar
-- [ ] 4.6 `openspec validate decor-20-mobile-entry-catalog --type change --strict` (el CLI no está instalado en esta máquina; formato revisado a mano)
+- [x] 4.6 `openspec validate decor-20-mobile-entry-catalog --type change --strict` (CLI instalado: superado tras corregir la numeración de la sección 6)
 
 ### Desviaciones registradas durante la verificación E2E
 
@@ -48,6 +48,6 @@
 
 ## 6. Coordinación pendiente
 
-- [ ] 5.1 Confirmar con DECOR-27 los valores de `spaceType` (`casa`, `aireLibre`, `salonSocial`)
-- [ ] 5.2 Informar a Jose del formato de error y de la ausencia de sesión en `GET /api/modules`
-- [ ] 5.3 Archivar el cambio tras la fusión
+- [ ] 6.1 Confirmar con DECOR-27 los valores de `spaceType` (`casa`, `aireLibre`, `salonSocial`)
+- [ ] 6.2 Informar a Jose del formato de error y de la ausencia de sesión en `GET /api/modules`
+- [ ] 6.3 Archivar el cambio tras la fusión

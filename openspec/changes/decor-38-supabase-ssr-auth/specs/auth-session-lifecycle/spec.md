@@ -4,7 +4,7 @@
 
 Permite que una persona se registre, inicie y cierre sesión con correo y contraseña, mantenga esa sesión al recargar la aplicación y no acceda al catálogo, al configurador ni a la experiencia AR sin una sesión válida.
 
-## Requirements
+## ADDED Requirements
 
 ### Requirement: Sesión persistente en cookies
 La aplicación SHALL mantener la sesión de autenticación en cookies de cliente mediante `@supabase/ssr`, tanto en el navegador como en el servidor, de modo que sobreviva a una recarga de página.

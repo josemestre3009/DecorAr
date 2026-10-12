@@ -36,5 +36,5 @@
 
 - [x] 7.1 Verificar que `scripts/scan-architecture.test.ts` sigue sin violaciones con los archivos nuevos
 - [x] 7.2 Ejecutar `npm run lint`, `npm run typecheck` y las pruebas afectadas
-- [ ] 7.3 Ejecutar `openspec validate decor-31-async-recovery-observability --type change --strict` (CLI no instalado en el entorno de implementación, igual que DECOR-30, DECOR-32 y DECOR-33)
+- [x] 7.3 Ejecutar `openspec validate decor-31-async-recovery-observability --type change --strict` (CLI instalado: superado)
 - [x] 7.4 Documentar la guía de fallo/recuperación en `docs/DecorAR.md` y actualizar los README de `events` y `budget`

@@ -17,4 +17,4 @@
 
 - [x] 3.1 Actualizar la documentación del módulo de eventos y de paquetes
 - [x] 3.2 Ejecutar npm run lint, npm run typecheck y las pruebas afectadas
-- [ ] 3.3 Ejecutar openspec validate decor-32-event-outbox --type change --strict (CLI no instalado en el entorno de implementación)
+- [x] 3.3 Ejecutar openspec validate decor-32-event-outbox --type change --strict (CLI instalado: superado)

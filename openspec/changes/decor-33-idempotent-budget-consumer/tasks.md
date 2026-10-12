@@ -30,4 +30,4 @@
 
 - [x] 6.1 Documentar el consumidor y la convención `processed_events`/`budgets` en `docs/DecorAR.md` y el README de `budget`
 - [x] 6.2 Ejecutar `npm run lint`, `npm run typecheck` y las pruebas afectadas
-- [ ] 6.3 Ejecutar `openspec validate decor-33-idempotent-budget-consumer --type change --strict` (CLI no instalado en el entorno de implementación, igual que DECOR-30 y DECOR-32)
+- [x] 6.3 Ejecutar `openspec validate decor-33-idempotent-budget-consumer --type change --strict` (CLI instalado: superado)

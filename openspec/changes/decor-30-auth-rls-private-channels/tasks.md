@@ -27,4 +27,4 @@
 
 - [x] 5.1 Documentar la matriz y los límites en `docs/DecorAR.md` y en el README de paquetes
 - [x] 5.2 Ejecutar `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`
-- [ ] 5.3 Ejecutar `openspec validate decor-30-auth-rls-private-channels --type change --strict` (el CLI no está instalado en el entorno)
+- [x] 5.3 Ejecutar `openspec validate decor-30-auth-rls-private-channels --type change --strict` (CLI instalado: superado)
