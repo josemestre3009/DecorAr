@@ -43,9 +43,10 @@ export function SpaceForm({ client }: SpaceFormProps) {
     setPending(true);
 
     let result: Awaited<ReturnType<PackagesClient["createPackage"]>>;
+    const packages = client ?? getPackagesClient();
 
     try {
-      result = await (client ?? getPackagesClient()).createPackage(validation.value);
+      result = await packages.createPackage(validation.value);
     } catch {
       setPending(false);
       setFormError("No pudimos crear el paquete. Inténtalo de nuevo.");
@@ -54,7 +55,10 @@ export function SpaceForm({ client }: SpaceFormProps) {
 
     if (result.ok) {
       // El botón sigue deshabilitado mientras se navega para evitar un doble envío.
-      router.push(`/packages/${encodeURIComponent(result.value.id)}`);
+      // Con la API real, el paso opcional de zonas va antes del catálogo
+      // (DECOR-43); la simulación no guarda zonas y sigue directo.
+      const packagePath = `/packages/${encodeURIComponent(result.value.id)}`;
+      router.push(packages.mode === "live" ? `${packagePath}/groups/setup` : packagePath);
       return;
     }
 

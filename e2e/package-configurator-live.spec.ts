@@ -28,6 +28,7 @@ const disabledReason =
 
 const noSession = { auth: { autoRefreshToken: false, persistSession: false } };
 const PACKAGE_URL = /\/packages\/[0-9a-f-]{36}$/;
+const GROUP_SETUP_URL = /\/packages\/[0-9a-f-]{36}\/groups\/setup$/;
 
 test.use({ video: "on", viewport: { height: 780, width: 360 } });
 
@@ -68,10 +69,23 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await expect(page).toHaveURL(/\/packages$/);
   }
 
-  async function createPackage(page: Page, spaceLabel: string, capacity: string) {
+  /**
+   * Crea el paquete y pasa por la organización de zonas (DECOR-43): crea las
+   * zonas indicadas o, sin zonas, elige "Omitir por ahora".
+   */
+  async function createPackage(page: Page, spaceLabel: string, capacity: string, zones: readonly string[] = []) {
     await page.getByLabel(spaceLabel).check();
     await page.getByLabel("Capacidad del espacio (m²)").fill(capacity);
     await page.getByRole("button", { name: "Crear paquete" }).click();
+    await expect(page).toHaveURL(GROUP_SETUP_URL);
+
+    for (const zone of zones) {
+      await page.getByLabel("Nombre de la zona").fill(zone);
+      await page.getByRole("button", { name: "Crear zona" }).click();
+      await expect(page.getByRole("button", { name: `Renombrar ${zone}` })).toBeVisible();
+    }
+
+    await page.getByRole("link", { name: zones.length > 0 ? "Continuar al catálogo" : "Omitir por ahora" }).click();
     await expect(page).toHaveURL(PACKAGE_URL);
   }
 
@@ -104,7 +118,7 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
 
   test("otra capacidad cambia el resultado y el Composite se despliega con arco + mesa", async ({ page }) => {
     await signIn(page);
-    await createPackage(page, "Salón social", "50");
+    await createPackage(page, "Salón social", "50", ["Zona de bienvenida"]);
 
     await addFromCatalog(page, "Pista de baile");
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×1");
@@ -112,7 +126,11 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
     await expect(facts(page)).toHaveText(["Salón social", "50 m²", "32 m²", "18 m²"]);
 
-    await page.getByRole("button", { name: "Agregar Zona de bienvenida" }).click();
+    // DECOR-43: la zona se arma desde el catálogo eligiéndola como destino.
+    await page.getByLabel("Agregar en").selectOption({ label: "Zona de bienvenida" });
+    await addFromCatalog(page, "Arco floral");
+    await expect(facts(page)).toHaveText(["Salón social", "50 m²", "34 m²", "16 m²"]);
+    await addFromCatalog(page, "Mesa redonda");
     const zona = contents(page).getByRole("button", { name: /Zona de bienvenida/ });
     await expect(zona).toHaveAttribute("aria-expanded", "false");
     await expect(facts(page)).toHaveText(["Salón social", "50 m²", "38 m²", "12 m²"]);
@@ -152,6 +170,7 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await page.getByRole("button", { name: "Duplicar paquete" }).click();
     await expect(page).not.toHaveURL(originalUrl);
     await expect(page).toHaveURL(PACKAGE_URL);
+    await expect(page.getByText("Copia creada.")).toBeVisible();
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
 
     await contents(page).getByRole("button", { name: "Quitar una unidad de Pista de baile" }).click();

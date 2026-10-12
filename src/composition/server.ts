@@ -45,7 +45,9 @@ import { GetPackageDetailUseCase } from "@/modules/packages/application/use-case
 import { ListOwnedPackagesUseCase } from "@/modules/packages/application/use-cases/list-owned-packages.use-case";
 import { CreatePackageGroupUseCase } from "@/modules/packages/application/use-cases/create-package-group.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
+import { DeletePackageGroupUseCase } from "@/modules/packages/application/use-cases/delete-package-group.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
+import { RenamePackageGroupUseCase } from "@/modules/packages/application/use-cases/rename-package-group.use-case";
 
 import { createAuthUseCases } from "@/shared/application/auth";
 import { getRecoverySecret } from "@/lib/env";
@@ -206,6 +208,17 @@ export async function createPackageController(
     uuidGenerator,
     packageChangeConsumer,
   );
+  // Gestión de zonas (DECOR-43): cambios estructurales sin eventos de módulo ni recálculo.
+  const renamePackageGroupUseCase = new RenamePackageGroupUseCase(
+    packageReader,
+    packageGroupRepository,
+    packageGroupRepository,
+  );
+  const deletePackageGroupUseCase = new DeletePackageGroupUseCase(
+    packageReader,
+    packageGroupRepository,
+    packageGroupRepository,
+  );
 
   return new PackageController(
     sessionGateway,
@@ -218,8 +231,10 @@ export async function createPackageController(
       clonePackageUseCase,
       createPackageGroupUseCase,
       defaultHeaders: pendingHeaders,
+      deletePackageGroupUseCase,
       drainOutbox,
       listOwnedPackagesUseCase,
+      renamePackageGroupUseCase,
     },
   );
 }

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalog-module.dto";
 import { err, ok } from "@/shared/domain/result";
 
+import type { GroupOption } from "../_lib/configurator-view";
 import type { PackagesClient } from "../_lib/packages-client";
 import { PackageCatalog } from "./package-catalog";
 
@@ -319,5 +320,106 @@ describe("PackageCatalog: acceso a la vista 3D (DECOR-23)", () => {
       "href",
       `/packages/p-1/modules/${fixture[0]?.id}`,
     );
+  });
+});
+
+describe("PackageCatalog: destino en zonas (DECOR-43)", () => {
+  const zones: GroupOption[] = [
+    {
+      depth: 1,
+      directGroupCount: 1,
+      directLeafCount: 0,
+      groupId: "sala",
+      label: "Sala",
+      name: "Sala",
+      parentGroupId: null,
+      parentLabel: null,
+    },
+    {
+      depth: 2,
+      directGroupCount: 0,
+      directLeafCount: 0,
+      groupId: "mesa",
+      label: "Sala › Mesa principal",
+      name: "Mesa principal",
+      parentGroupId: "sala",
+      parentLabel: "Sala",
+    },
+  ];
+
+  beforeEach(() => {
+    refresh.mockReset();
+  });
+
+  it("sin zonas no muestra el selector y agrega al nivel principal", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} groupOptions={[]} packageId="p-1" />);
+
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id));
+    expect(screen.queryByLabelText("Agregar en")).not.toBeInTheDocument();
+  });
+
+  it("ofrece el nivel principal y cada zona con su ruta, y agrega dentro de la elegida", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 3 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} groupOptions={zones} packageId="p-1" />);
+
+    const select = await screen.findByLabelText("Agregar en");
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual([
+      "Nivel principal",
+      "Sala",
+      "Sala › Mesa principal",
+    ]);
+
+    fireEvent.change(select, { target: { value: "mesa" } });
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id, 1, "mesa"));
+    expect(await screen.findByText("Arco floral se agregó a la zona Sala › Mesa principal.")).toBeInTheDocument();
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("dentro de una zona la cantidad queda en una unidad por vez", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} groupOptions={zones} packageId="p-1" remainingM2={100} />);
+
+    fireEvent.change(await screen.findByLabelText("Agregar en"), { target: { value: "sala" } });
+
+    const card = within((await screen.findAllByRole("article"))[1]);
+    expect(card.getByRole("button", { name: "Aumentar cantidad de Arco floral" })).toHaveAttribute("aria-disabled", "true");
+    expect(card.getByText("Máximo 1 por vez dentro de una zona.")).toBeInTheDocument();
+  });
+
+  it("si la zona elegida desaparece tras un refresco, vuelve al nivel principal", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 3 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    const { rerender } = render(
+      <PackageCatalog client={client(addItem)} fetcher={fetcher} groupOptions={zones} packageId="p-1" />,
+    );
+    fireEvent.change(await screen.findByLabelText("Agregar en"), { target: { value: "mesa" } });
+
+    rerender(<PackageCatalog client={client(addItem)} fetcher={fetcher} groupOptions={[zones[0]]} packageId="p-1" />);
+
+    expect(screen.getByLabelText("Agregar en")).toHaveValue("");
+    fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id));
+  });
+
+  it("en modo simulado no ofrece zonas", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(
+      <PackageCatalog
+        client={{ ...client(), mode: "simulated" }}
+        fetcher={fetcher}
+        groupOptions={zones}
+        packageId="p-1"
+      />,
+    );
+
+    await screen.findAllByRole("article");
+    expect(screen.queryByLabelText("Agregar en")).not.toBeInTheDocument();
   });
 });

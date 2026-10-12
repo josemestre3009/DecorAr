@@ -120,6 +120,57 @@ export function rowSubtotal(row: ContentRow): { readonly areaM2: number; readonl
   };
 }
 
+/** Separador de la ruta legible de una zona: "Sala › Mesa principal". */
+export const GROUP_PATH_SEPARATOR = " › ";
+
+/** Una zona (grupo) del paquete, aplanada en preorden con su ruta completa. */
+export type GroupOption = {
+  readonly groupId: string;
+  readonly name: string;
+  /** Ruta legible desde la raíz, incluido el propio grupo. */
+  readonly label: string;
+  /** 1 en la raíz del paquete. */
+  readonly depth: number;
+  readonly parentGroupId: string | null;
+  /** Ruta legible del padre, o `null` si el grupo está en el nivel principal. */
+  readonly parentLabel: string | null;
+  /** Hojas y subgrupos directos: lo que sube de nivel si se elimina la zona. */
+  readonly directLeafCount: number;
+  readonly directGroupCount: number;
+};
+
+/**
+ * Extrae, de forma recursiva y en el orden del detalle del servidor, todas las
+ * zonas del paquete con su ruta jerárquica. El catálogo las ofrece como
+ * destino y la configuración de zonas las lista para renombrar o eliminar.
+ */
+export function toGroupOptions(
+  nodes: readonly PackageDetailNode[],
+  parent: { readonly groupId: string; readonly label: string; readonly depth: number } | null = null,
+): GroupOption[] {
+  const options: GroupOption[] = [];
+
+  for (const node of nodes) {
+    if (node.kind !== "group") continue;
+
+    const label = parent ? `${parent.label}${GROUP_PATH_SEPARATOR}${node.name}` : node.name;
+    const depth = parent ? parent.depth + 1 : 1;
+    options.push({
+      depth,
+      directGroupCount: node.children.filter((child) => child.kind === "group").length,
+      directLeafCount: node.children.filter((child) => child.kind === "leaf").length,
+      groupId: node.groupId,
+      label,
+      name: node.name,
+      parentGroupId: parent?.groupId ?? null,
+      parentLabel: parent?.label ?? null,
+    });
+    options.push(...toGroupOptions(node.children, { depth, groupId: node.groupId, label }));
+  }
+
+  return options;
+}
+
 export function spaceTypeLabel(spaceType: string): string {
   return SPACE_TYPES.find((option) => option.value === spaceType)?.label ?? spaceType;
 }

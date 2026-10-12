@@ -8,16 +8,16 @@ import type { PackageDetailView } from "@/modules/packages/application/dtos/pack
 import { createPackageQueryDependencies } from "@/composition/server";
 import { requireSessionUser } from "@/composition/session-guard";
 
-import { countUnitsByModule, type ConfiguratorBudget } from "../_lib/configurator-view";
+import { countUnitsByModule, toGroupOptions, type ConfiguratorBudget } from "../_lib/configurator-view";
 import { resolvePackagesMode } from "../_lib/packages-client";
 import { BudgetTotal } from "./budget-total";
-import { DuplicatePackageButton } from "./duplicate-package-button";
+import { DUPLICATED_PARAM, DuplicatePackageButton } from "./duplicate-package-button";
+import { DuplicatedNotice } from "./duplicated-notice";
 import { PackageCatalog } from "./package-catalog";
 import { PackageContents } from "./package-contents";
 import { PageHeading } from "./page-heading";
 import { RefreshButton } from "./refresh-button";
 import { SpaceSummary } from "./space-summary";
-import { WelcomeZoneButton } from "./welcome-zone-button";
 
 export const metadata: Metadata = {
   title: "Tu paquete · DecorAR",
@@ -25,6 +25,7 @@ export const metadata: Metadata = {
 
 type PackagePageProps = {
   readonly params: Promise<{ readonly packageId: string }>;
+  readonly searchParams?: Promise<Readonly<Record<string, string | string[] | undefined>>>;
 };
 
 type Configurator =
@@ -73,12 +74,14 @@ export async function loadConfigurator(packageId: string): Promise<Configurator>
   };
 }
 
-export default async function PackagePage({ params }: PackagePageProps) {
+export default async function PackagePage({ params, searchParams }: PackagePageProps) {
   // Verificación efectiva por página: el layout no corre en la navegación del
   // cliente (ver src/composition/session-guard.ts).
   await requireSessionUser();
 
   const { packageId } = await params;
+  // Llegada desde "Duplicar paquete": la copia muestra una confirmación (DECOR-43).
+  const justDuplicated = (await searchParams)?.[DUPLICATED_PARAM] === "1";
   // El configurador necesita el paquete real; en modo simulado (DECOR-20) el
   // paquete sólo existe en el navegador y la página sigue como antes.
   const isLive = resolvePackagesMode(process.env.NEXT_PUBLIC_DECOR_PACKAGES_API) === "live";
@@ -87,6 +90,8 @@ export default async function PackagePage({ params }: PackagePageProps) {
   // eco local tras agregar o quitar (DECOR-22).
   const serverCounts =
     configurator?.status === "ready" ? countUnitsByModule(configurator.detail.nodes) : undefined;
+  // Zonas del paquete como destino del catálogo (DECOR-43); solo existen en modo live.
+  const groupOptions = configurator?.status === "ready" ? toGroupOptions(configurator.detail.nodes) : [];
 
   return (
     <main className="catalog-page">
@@ -95,7 +100,14 @@ export default async function PackagePage({ params }: PackagePageProps) {
           <Link className="auth-link" href="/packages">
             ← Cambiar espacio
           </Link>
-          <DuplicatePackageButton packageId={packageId} />
+          <div className="catalog-actions">
+            {isLive ? (
+              <Link className="secondary-link" href={`/packages/${encodeURIComponent(packageId)}/groups/setup`}>
+                Administrar zonas
+              </Link>
+            ) : null}
+            <DuplicatePackageButton packageId={packageId} />
+          </div>
         </div>
         <PageHeading>Tu paquete</PageHeading>
         <p className="page-lead">
@@ -104,6 +116,8 @@ export default async function PackagePage({ params }: PackagePageProps) {
             : "Elige los módulos que quieres en tu decoración."}
         </p>
       </header>
+
+      {justDuplicated ? <DuplicatedNotice packageId={packageId} /> : null}
 
       {configurator === null ? (
         <p className="simulation-note">
@@ -139,9 +153,8 @@ export default async function PackagePage({ params }: PackagePageProps) {
         </>
       ) : null}
 
-      <WelcomeZoneButton packageId={packageId} />
-
       <PackageCatalog
+        groupOptions={groupOptions}
         packageId={packageId}
         packageVersion={configurator?.status === "ready" ? configurator.detail.version : undefined}
         remainingM2={configurator?.status === "ready" ? configurator.detail.remainingM2 : undefined}

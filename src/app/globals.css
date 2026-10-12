@@ -843,8 +843,145 @@ a {
   padding-left: 0.75rem;
 }
 
-.welcome-zone {
-  margin-bottom: 1.5rem;
+/* --- DECOR-43: organización de zonas ------------------------------------- */
+
+.catalog-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+}
+
+.catalog-destination {
+  margin-bottom: 1.25rem;
+  max-width: 28rem;
+}
+
+.duplicated-notice {
+  align-items: center;
+  background: color-mix(in srgb, var(--color-decor-copper-light) 60%, var(--color-decor-surface));
+  border: 1px solid color-mix(in srgb, var(--color-decor-copper) 30%, transparent);
+  border-radius: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 1rem;
+  justify-content: space-between;
+  margin-bottom: 1.25rem;
+  padding: 0.9rem 1rem;
+}
+
+.duplicated-notice p {
+  flex: 1 1 16rem;
+  margin: 0;
+}
+
+.group-form {
+  display: grid;
+  gap: 1rem;
+  max-width: 32rem;
+}
+
+.group-submit {
+  justify-self: start;
+}
+
+.group-manager [aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.group-list {
+  display: grid;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* La sangría muestra el nivel de la zona sin anidar listas. */
+.group-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-decor-ink) 8%, transparent);
+  padding: 0.75rem 0 0.75rem calc(var(--group-depth, 0) * 1rem);
+}
+
+.group-row:last-child {
+  border-bottom: 0;
+}
+
+.group-summary {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  justify-content: space-between;
+}
+
+.group-name {
+  align-items: baseline;
+  display: flex;
+  flex: 1 1 12rem;
+  flex-wrap: wrap;
+  gap: 0.25rem 0.6rem;
+  margin: 0;
+  min-width: 0;
+}
+
+.group-path {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.8rem;
+  overflow-wrap: anywhere;
+}
+
+.group-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.group-action {
+  font-size: 0.9rem;
+  min-height: 2.75rem;
+  padding-inline: 1rem;
+}
+
+.group-rename,
+.group-confirm {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.group-confirm {
+  background: color-mix(in srgb, var(--color-decor-copper-light) 45%, transparent);
+  border-radius: 0.75rem;
+  margin-top: 0.6rem;
+  padding: 0.75rem;
+}
+
+.group-confirm p {
+  margin: 0;
+}
+
+.group-next {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  margin-top: 0.5rem;
+}
+
+.group-continue {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  text-decoration: none;
+}
+
+@media (max-width: 30rem) {
+  .group-row {
+    padding-left: calc(var(--group-depth, 0) * 0.6rem);
+  }
+
+  .group-next .auth-submit {
+    width: 100%;
+  }
 }
 
 /* --- DECOR-23: vista 3D y realidad aumentada ------------------------------ */

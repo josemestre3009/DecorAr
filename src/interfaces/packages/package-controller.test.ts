@@ -9,7 +9,9 @@ import type { AddModuleToGroupUseCase } from "../../modules/packages/application
 import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
 import { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
+import type { DeletePackageGroupUseCase } from "../../modules/packages/application/use-cases/delete-package-group.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
+import type { RenamePackageGroupUseCase } from "../../modules/packages/application/use-cases/rename-package-group.use-case";
 import { PackageController } from "./package-controller";
 
 
@@ -804,6 +806,160 @@ describe("PackageController", () => {
       const thrown = await mocks.controller.handleCreateGroup(groupRequest({ name: "X" }), "pkg-1");
       expect(thrown.status).toBe(500);
       expect((await thrown.json()).error.code).toBe("internal_error");
+      consoleSpy.mockRestore();
+    });
+  });
+
+  describe("renombrar y eliminar grupos (DECOR-43)", () => {
+    const createManageMocks = () => {
+      const base = createMocks();
+      const renamePackageGroupUseCase = {
+        execute: vi.fn().mockResolvedValue(ok({ groupId: "grp-1", name: "Sala", structureVersion: 3 })),
+      };
+      const deletePackageGroupUseCase = {
+        execute: vi.fn().mockResolvedValue(
+          ok({ groupId: "grp-1", parentGroupId: null, promotedGroups: 1, promotedItems: 2, structureVersion: 4 }),
+        ),
+      };
+      const controller = new PackageController(
+        base.sessionGateway,
+        base.authorizePackageAccess as unknown as AuthorizePackageAccessUseCase,
+        base.createPackageUseCase as unknown as CreatePackageUseCase,
+        base.addModuleToPackageUseCase as unknown as AddModuleToPackageUseCase,
+        base.removeModuleFromPackageUseCase as unknown as RemoveModuleFromPackageUseCase,
+        {
+          deletePackageGroupUseCase: deletePackageGroupUseCase as unknown as DeletePackageGroupUseCase,
+          drainOutbox: base.drainOutbox,
+          renamePackageGroupUseCase: renamePackageGroupUseCase as unknown as RenamePackageGroupUseCase,
+        },
+      );
+      return { ...base, controller, deletePackageGroupUseCase, renamePackageGroupUseCase };
+    };
+
+    const patchRequest = (body: unknown, headers: Record<string, string> = {}) =>
+      new Request("http://localhost/api/packages/pkg-1/groups/grp-1", {
+        body: typeof body === "string" ? body : JSON.stringify(body),
+        headers,
+        method: "PATCH",
+      });
+
+    const deleteRequest = (headers: Record<string, string> = {}) =>
+      new Request("http://localhost/api/packages/pkg-1/groups/grp-1", { headers, method: "DELETE" });
+
+    it("PATCH renombra: 200 con el grupo, eco de x-correlation-id y sin drenar la outbox", async () => {
+      const mocks = createManageMocks();
+
+      const res = await mocks.controller.handleRenameGroup(
+        patchRequest({ name: " Sala " }, { "x-correlation-id": "corr-rename" }),
+        "pkg-1",
+        "grp-1",
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual({ groupId: "grp-1", name: "Sala", structureVersion: 3 });
+      expect(res.headers.get("x-correlation-id")).toBe("corr-rename");
+      expect(mocks.renamePackageGroupUseCase.execute).toHaveBeenCalledWith({
+        groupId: "grp-1",
+        name: " Sala ",
+        packageId: "pkg-1",
+        userId: "user-1",
+      });
+      expect(mocks.drainOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it("PATCH rechaza cuerpos inválidos con 400 sin llamar al caso de uso", async () => {
+      const cases: [unknown, string][] = [
+        ["{no-json", "package.invalid_body"],
+        ["null", "package.invalid_body"],
+        [{}, "package.invalid_group_name"],
+        [{ name: 7 }, "package.invalid_group_name"],
+      ];
+
+      for (const [body, code] of cases) {
+        const mocks = createManageMocks();
+        const res = await mocks.controller.handleRenameGroup(patchRequest(body), "pkg-1", "grp-1");
+
+        expect(res.status).toBe(400);
+        expect((await res.json()).error.code).toBe(code);
+        expect(mocks.renamePackageGroupUseCase.execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it("DELETE elimina: 204 sin cuerpo, eco de x-correlation-id y sin drenar la outbox", async () => {
+      const mocks = createManageMocks();
+
+      const res = await mocks.controller.handleDeleteGroup(
+        deleteRequest({ "x-correlation-id": "corr-delete" }),
+        "pkg-1",
+        "grp-1",
+      );
+
+      expect(res.status).toBe(204);
+      expect(await res.text()).toBe("");
+      expect(res.headers.get("x-correlation-id")).toBe("corr-delete");
+      expect(mocks.deletePackageGroupUseCase.execute).toHaveBeenCalledWith({
+        groupId: "grp-1",
+        packageId: "pkg-1",
+        userId: "user-1",
+      });
+      expect(mocks.drainOutbox.execute).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ["package.group_not_found", 404],
+      ["package.not_found", 404],
+      ["package.version_conflict", 409],
+      ["package.group_integrity", 422],
+      ["package.invalid_group", 400],
+      ["package.invalid_group_name", 400],
+      ["package.persistence_error", 500],
+    ])("mapea %s a %i en PATCH y DELETE", async (code, status) => {
+      const mocks = createManageMocks();
+      mocks.renamePackageGroupUseCase.execute.mockResolvedValue(err(new DomainError(code, "falló")));
+      mocks.deletePackageGroupUseCase.execute.mockResolvedValue(err(new DomainError(code, "falló")));
+
+      const renamed = await mocks.controller.handleRenameGroup(patchRequest({ name: "X" }), "pkg-1", "grp-1");
+      const deleted = await mocks.controller.handleDeleteGroup(deleteRequest(), "pkg-1", "grp-1");
+
+      expect(renamed.status).toBe(status);
+      expect(deleted.status).toBe(status);
+      expect((await deleted.json()).error.code).toBe(code);
+    });
+
+    it("usuario ajeno (404) y anónimo (401) no llegan a los casos de uso", async () => {
+      for (const [error, status] of [
+        [new DomainError("package.not_found", "No encontramos este paquete."), 404],
+        [new DomainError("auth.unauthenticated", "Inicia sesión para continuar."), 401],
+      ] as const) {
+        const mocks = createManageMocks();
+        mocks.authorizePackageAccess.execute.mockResolvedValue(err(error));
+
+        const renamed = await mocks.controller.handleRenameGroup(patchRequest({ name: "X" }), "pkg-1", "grp-1");
+        const deleted = await mocks.controller.handleDeleteGroup(deleteRequest(), "pkg-1", "grp-1");
+
+        expect(renamed.status).toBe(status);
+        expect(deleted.status).toBe(status);
+        expect(mocks.renamePackageGroupUseCase.execute).not.toHaveBeenCalled();
+        expect(mocks.deletePackageGroupUseCase.execute).not.toHaveBeenCalled();
+      }
+    });
+
+    it("sin casos de uso configurados o ante una excepción devuelve 500 controlado", async () => {
+      const withoutUseCases = createMocks();
+      expect((await withoutUseCases.controller.handleRenameGroup(patchRequest({ name: "X" }), "pkg-1", "grp-1")).status).toBe(500);
+      expect((await withoutUseCases.controller.handleDeleteGroup(deleteRequest(), "pkg-1", "grp-1")).status).toBe(500);
+
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const mocks = createManageMocks();
+      mocks.renamePackageGroupUseCase.execute.mockRejectedValue(new Error("boom"));
+      mocks.deletePackageGroupUseCase.execute.mockRejectedValue(new Error("boom"));
+
+      const renamed = await mocks.controller.handleRenameGroup(patchRequest({ name: "X" }), "pkg-1", "grp-1");
+      const deleted = await mocks.controller.handleDeleteGroup(deleteRequest(), "pkg-1", "grp-1");
+
+      expect(renamed.status).toBe(500);
+      expect(deleted.status).toBe(500);
+      expect((await deleted.json()).error.code).toBe("internal_error");
       consoleSpy.mockRestore();
     });
   });

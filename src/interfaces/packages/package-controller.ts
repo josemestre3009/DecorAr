@@ -8,8 +8,10 @@ import type { AddModuleToPackageUseCase } from "../../modules/packages/applicati
 import type { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
+import type { DeletePackageGroupUseCase } from "../../modules/packages/application/use-cases/delete-package-group.use-case";
 import type { ListOwnedPackagesUseCase } from "../../modules/packages/application/use-cases/list-owned-packages.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
+import type { RenamePackageGroupUseCase } from "../../modules/packages/application/use-cases/rename-package-group.use-case";
 import type { SessionGateway } from "../../shared/application/ports";
 import type { SessionUser } from "../../shared/domain/session";
 import { checkPackageAccess } from "./package-access";
@@ -18,18 +20,24 @@ export type PackageControllerOptions = {
   readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
   readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
   readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
+  readonly renamePackageGroupUseCase?: Pick<RenamePackageGroupUseCase, "execute">;
+  readonly deletePackageGroupUseCase?: Pick<DeletePackageGroupUseCase, "execute">;
   readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   readonly listOwnedPackagesUseCase?: Pick<ListOwnedPackagesUseCase, "execute">;
   readonly defaultHeaders?: Record<string, string>;
   readonly headers?: Record<string, string>;
 };
 
-/** Estado HTTP de los errores al agregar elementos o grupos (incluye el Composite, DECOR-25). */
+/**
+ * Estado HTTP de los errores al agregar elementos o grupos (incluye el
+ * Composite, DECOR-25) y al renombrar o eliminar grupos (DECOR-43).
+ */
 function groupErrorStatus(code: string): number {
   if (
     code === "package.capacity_exceeded" ||
     code === "package.group_depth_exceeded" ||
-    code === "package.group_cycle"
+    code === "package.group_cycle" ||
+    code === "package.group_integrity"
   ) {
     return 422;
   }
@@ -57,6 +65,8 @@ function isPackageControllerOptions(
     "clonePackageUseCase" in arg ||
     "createPackageGroupUseCase" in arg ||
     "addModuleToGroupUseCase" in arg ||
+    "renamePackageGroupUseCase" in arg ||
+    "deletePackageGroupUseCase" in arg ||
     "drainOutbox" in arg ||
     "listOwnedPackagesUseCase" in arg ||
     "defaultHeaders" in arg ||
@@ -142,6 +152,8 @@ export class PackageController {
   private readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
   private readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
   private readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
+  private readonly renamePackageGroupUseCase?: Pick<RenamePackageGroupUseCase, "execute">;
+  private readonly deletePackageGroupUseCase?: Pick<DeletePackageGroupUseCase, "execute">;
   private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   private readonly listOwnedPackagesUseCase?: Pick<ListOwnedPackagesUseCase, "execute">;
   private readonly defaultHeaders: Record<string, string>;
@@ -163,6 +175,8 @@ export class PackageController {
       this.clonePackageUseCase = optionsOrCloneOrDrain.clonePackageUseCase;
       this.createPackageGroupUseCase = optionsOrCloneOrDrain.createPackageGroupUseCase;
       this.addModuleToGroupUseCase = optionsOrCloneOrDrain.addModuleToGroupUseCase;
+      this.renamePackageGroupUseCase = optionsOrCloneOrDrain.renamePackageGroupUseCase;
+      this.deletePackageGroupUseCase = optionsOrCloneOrDrain.deletePackageGroupUseCase;
       this.drainOutbox = optionsOrCloneOrDrain.drainOutbox;
       this.listOwnedPackagesUseCase = optionsOrCloneOrDrain.listOwnedPackagesUseCase;
       this.defaultHeaders =
@@ -630,6 +644,124 @@ export class PackageController {
     } catch (cause) {
       const errorCorrelationId = randomUUID();
       console.error(`[PackageController.createGroup] Error inesperado (${errorCorrelationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
+    }
+  }
+
+  /**
+   * PATCH /api/packages/{packageId}/groups/{groupId} (DECOR-43): renombra un
+   * grupo. 200 con `{groupId, name, structureVersion}`. No emite eventos, así
+   * que no hay outbox que drenar.
+   */
+  async handleRenameGroup(request: Request, packageId: string, groupId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const access = await checkPackageAccess(this.authorizePackageAccess, packageId, responseHeaders);
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.renamePackageGroupUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de grupos no disponible." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json(
+          { error: { code: "package.invalid_body", message: "Cuerpo de solicitud JSON inválido." } },
+          { headers: responseHeaders, status: 400 },
+        );
+      }
+
+      if (typeof body !== "object" || body === null) {
+        return Response.json(
+          { error: { code: "package.invalid_body", message: "Se requiere un objeto JSON." } },
+          { headers: responseHeaders, status: 400 },
+        );
+      }
+
+      const { name } = body as Record<string, unknown>;
+      if (typeof name !== "string") {
+        return Response.json(
+          { error: { code: "package.invalid_group_name", message: "El nombre del grupo es obligatorio" } },
+          { headers: responseHeaders, status: 400 },
+        );
+      }
+
+      const result = await this.renamePackageGroupUseCase.execute({
+        groupId,
+        name,
+        packageId,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: responseHeaders, status: groupErrorStatus(code) },
+        );
+      }
+
+      return Response.json(result.value, { headers: responseHeaders, status: 200 });
+    } catch (cause) {
+      console.error(`[PackageController.renameGroup] Error inesperado (${correlationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
+    }
+  }
+
+  /**
+   * DELETE /api/packages/{packageId}/groups/{groupId} (DECOR-43): elimina el
+   * grupo y promueve su contenido al padre en una transacción. 204 sin
+   * cuerpo, como el DELETE de elementos. No emite eventos de módulo.
+   */
+  async handleDeleteGroup(request: Request, packageId: string, groupId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const access = await checkPackageAccess(this.authorizePackageAccess, packageId, responseHeaders);
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.deletePackageGroupUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de grupos no disponible." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      const result = await this.deletePackageGroupUseCase.execute({
+        groupId,
+        packageId,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: responseHeaders, status: groupErrorStatus(code) },
+        );
+      }
+
+      return new Response(null, { headers: responseHeaders, status: 204 });
+    } catch (cause) {
+      console.error(`[PackageController.deleteGroup] Error inesperado (${correlationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
         { headers: responseHeaders, status: 500 },

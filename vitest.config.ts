@@ -17,6 +17,7 @@ const PGLITE_TESTS = [
   "supabase/migrations/authorize-packages-and-private-channels.test.ts",
   "supabase/migrations/create-idempotent-budget-consumer.test.ts",
   "supabase/migrations/create-package-groups.test.ts",
+  "supabase/migrations/manage-package-groups.test.ts",
 ];
 
 export default defineConfig({

@@ -19,7 +19,7 @@ import {
  * DECOR-27; DECOR-20 solo lo consume:
  *
  * - `POST /api/packages {spaceType, capacityM2}` → 201 `{id, spaceType, capacityM2}`
- * - `POST /api/packages/{id}/items {moduleId}` → 201 `{itemId, packageVersion}`
+ * - `POST /api/packages/{id}/items {moduleId, quantity?, parentGroupId?}` → 201 `{itemId, packageVersion}`
  * - errores `{error:{code,message}}` con 400/404/422
  *
  * Mientras DECOR-27 no exista se usa la implementación simulada. Cuando exista,
@@ -54,7 +54,16 @@ export type PackagesClientMode = "live" | "simulated";
 export interface PackagesClient {
   readonly mode: PackagesClientMode;
   createPackage(definition: SpaceDefinition): Promise<Result<CreatedPackage, ApiFailure>>;
-  addItem(packageId: string, moduleId: string, quantity?: number): Promise<Result<AddedItem, ApiFailure>>;
+  /**
+   * Agrega `quantity` unidades en la raíz del paquete o, con `parentGroupId`,
+   * dentro de esa zona (Composite, DECOR-25/43).
+   */
+  addItem(
+    packageId: string,
+    moduleId: string,
+    quantity?: number,
+    parentGroupId?: string | null,
+  ): Promise<Result<AddedItem, ApiFailure>>;
   clonePackage(packageId: string): Promise<Result<ClonedPackage, ApiFailure>>;
   /** `DELETE /api/packages/{id}/items/{itemId}` → 204 sin cuerpo (DECOR-27). */
   removeItem(packageId: string, itemId: string): Promise<Result<void, ApiFailure>>;
@@ -149,11 +158,15 @@ export function createHttpPackagesClient(fetcher: typeof fetch = fetch): Package
         { capacityM2: definition.capacityM2, spaceType: definition.spaceType },
         isCreatedPackage,
       ),
-    addItem: (packageId, moduleId, quantity = 1) =>
+    addItem: (packageId, moduleId, quantity = 1, parentGroupId = null) =>
       postJson(
         fetcher,
         `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items`,
-        quantity === 1 ? { moduleId } : { moduleId, quantity },
+        {
+          moduleId,
+          ...(quantity === 1 ? {} : { quantity }),
+          ...(parentGroupId ? { parentGroupId } : {}),
+        },
         isAddedItem,
       ),
     clonePackage: (packageId) =>
@@ -265,8 +278,18 @@ export function createSimulatedPackagesClient(
 
       return ok(created);
     },
-    async addItem(packageId, moduleId, quantity = 1) {
+    async addItem(packageId, moduleId, quantity = 1, parentGroupId = null) {
       await wait();
+
+      // La simulación no guarda zonas (DECOR-43): no promete una ubicación que no existe.
+      if (parentGroupId) {
+        return failure(
+          "invalid",
+          400,
+          "package.groups_live_only",
+          "Las zonas solo están disponibles con la API real.",
+        );
+      }
 
       const packages = load();
       const current = packages[packageId];

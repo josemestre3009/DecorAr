@@ -2,7 +2,13 @@ import { describe, expect, it } from "vitest";
 
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
 
-import { countUnitsByModule, rowSubtotal, spaceTypeLabel, toContentRows } from "./configurator-view";
+import {
+  countUnitsByModule,
+  rowSubtotal,
+  spaceTypeLabel,
+  toContentRows,
+  toGroupOptions,
+} from "./configurator-view";
 
 const leaf = (itemId: string, moduleId: string, name: string, areaM2: number, priceCop: number): PackageDetailNode => ({
   areaM2,
@@ -113,5 +119,42 @@ describe("spaceTypeLabel", () => {
     expect(spaceTypeLabel("aireLibre")).toBe("Aire libre (parque o playa)");
     expect(spaceTypeLabel("salonSocial")).toBe("Salón social");
     expect(spaceTypeLabel("desconocido")).toBe("desconocido");
+  });
+});
+
+describe("toGroupOptions (DECOR-43)", () => {
+  const group = (groupId: string, name: string, children: PackageDetailNode[]): PackageDetailNode => ({
+    areaM2: 0,
+    children,
+    groupId,
+    kind: "group",
+    name,
+    priceCop: 0,
+  });
+
+  it("extrae todas las zonas en preorden con rutas legibles, niveles y padres", () => {
+    const options = toGroupOptions([
+      leaf("a", "pista", "Pista de baile", 16, 600000),
+      group("sala", "Sala", [
+        leaf("b", "mesa", "Mesa redonda", 4, 250000),
+        group("mesa", "Mesa principal", [group("centro", "Centro", [leaf("c", "arco", "Arco", 2, 200000)])]),
+        group("rincon", "Rincón", []),
+      ]),
+      group("entrada", "Entrada", []),
+    ]);
+
+    expect(options.map((o) => [o.groupId, o.label, o.depth, o.parentGroupId])).toEqual([
+      ["sala", "Sala", 1, null],
+      ["mesa", "Sala › Mesa principal", 2, "sala"],
+      ["centro", "Sala › Mesa principal › Centro", 3, "mesa"],
+      ["rincon", "Sala › Rincón", 2, "sala"],
+      ["entrada", "Entrada", 1, null],
+    ]);
+    expect(options[0]).toMatchObject({ directGroupCount: 2, directLeafCount: 1, parentLabel: null });
+    expect(options[2]).toMatchObject({ directGroupCount: 0, directLeafCount: 1, parentLabel: "Sala › Mesa principal" });
+  });
+
+  it("un paquete sin zonas no tiene opciones", () => {
+    expect(toGroupOptions([leaf("a", "pista", "Pista de baile", 16, 600000)])).toEqual([]);
   });
 });

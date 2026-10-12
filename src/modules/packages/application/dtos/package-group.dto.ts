@@ -26,3 +26,30 @@ export interface AddModuleToGroupDto {
   /** Propagated to the outbox row and the recovery logs (DECOR-31); never part of the event contract. */
   readonly correlationId?: string;
 }
+
+export interface RenamePackageGroupDto {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly groupId: string;
+  readonly name: string;
+}
+
+export interface RenamedPackageGroupDto {
+  readonly groupId: string;
+  readonly name: string;
+  readonly structureVersion: number;
+}
+
+export interface DeletePackageGroupDto {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly groupId: string;
+}
+
+export interface DeletedPackageGroupDto {
+  readonly groupId: string;
+  readonly parentGroupId: string | null;
+  readonly promotedGroups: number;
+  readonly promotedItems: number;
+  readonly structureVersion: number;
+}

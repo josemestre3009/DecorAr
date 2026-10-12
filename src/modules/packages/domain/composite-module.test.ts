@@ -233,3 +233,78 @@ describe("Builder y PaqueteDecoracion usan el contrato común del Composite", ()
     if (!pkg.ok) expect(pkg.error.code).toBe("package.group_depth_exceeded");
   });
 });
+
+describe("Gestión de grupos (DECOR-43): renombrar y disolver", () => {
+  it("renombrar() recorta el nombre y no toca hijos, precio ni niveles", () => {
+    const { nivel1, nivel2 } = tresNiveles();
+
+    expect(nivel1.renombrar("  Sala principal  ").ok).toBe(true);
+
+    expect(nivel1.nombre).toBe("Sala principal");
+    expect(nivel1.hijos).toEqual([nivel2]);
+    expect(nivel1.calcularPrecio()).toBe(CATALOGO_CANONICO.mesaRedonda.precio);
+    expect(nivel1.profundidad()).toBe(3);
+  });
+
+  it("renombrar() rechaza un nombre vacío o de más de 80 caracteres y conserva el anterior", () => {
+    const sala = grupo("sala", "Sala");
+
+    for (const nombre of ["   ", "x".repeat(81)]) {
+      const result = sala.renombrar(nombre);
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe("package.invalid_group_name");
+    }
+    expect(sala.nombre).toBe("Sala");
+    expect(sala.renombrar("x".repeat(80)).ok).toBe(true);
+  });
+
+  it("disolverGrupo() de un grupo raíz sube hojas y subgrupos a la raíz, en su lugar", () => {
+    const { nivel1, nivel2, nivel3 } = tresNiveles();
+    const suelta = hoja(CATALOGO_CANONICO.arcoFloral);
+    expect(nivel1.agregar(hoja()).ok).toBe(true);
+    const pkg = PaqueteDecoracion.create({ capacidadM2: 50, componentes: [suelta, nivel1], tipoEspacio: "casa" });
+    if (!pkg.ok) throw pkg.error;
+    const precioAntes = pkg.value.presupuestoTotal;
+
+    expect(pkg.value.disolverGrupo("nivel-1").ok).toBe(true);
+
+    expect(pkg.value.buscarGrupo("nivel-1")).toBeNull();
+    expect(pkg.value.componentes.map((c) => c.id)).toEqual([
+      suelta.id,
+      "nivel-2",
+      CATALOGO_CANONICO.mesaRedonda.id,
+    ]);
+    expect(nivel2.padre).toBeNull();
+    expect(nivel2.nivel()).toBe(1);
+    expect(nivel3.nivel()).toBe(2);
+    expect(pkg.value.presupuestoTotal).toBe(precioAntes);
+    expect(pkg.value.modulos).toHaveLength(3);
+  });
+
+  it("disolverGrupo() de un subgrupo pasa su contenido al grupo padre", () => {
+    const { nivel1, nivel2, nivel3 } = tresNiveles();
+    expect(nivel2.agregar(hoja(CATALOGO_CANONICO.arcoFloral)).ok).toBe(true);
+    const pkg = PaqueteDecoracion.create({ capacidadM2: 50, componentes: [nivel1], tipoEspacio: "casa" });
+    if (!pkg.ok) throw pkg.error;
+
+    expect(pkg.value.disolverGrupo("nivel-2").ok).toBe(true);
+
+    expect(nivel1.hijos.map((h) => h.id)).toEqual(["nivel-3", CATALOGO_CANONICO.arcoFloral.id]);
+    expect(nivel3.padre).toBe(nivel1);
+    expect(nivel3.nivel()).toBe(2);
+    expect(pkg.value.modulos).toHaveLength(2);
+  });
+
+  it("disolverGrupo() de un grupo inexistente no cambia nada", () => {
+    const { nivel1 } = tresNiveles();
+    const pkg = PaqueteDecoracion.create({ capacidadM2: 50, componentes: [nivel1], tipoEspacio: "casa" });
+    if (!pkg.ok) throw pkg.error;
+
+    const result = pkg.value.disolverGrupo("no-existe");
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("package.group_not_found");
+    expect(pkg.value.componentes).toEqual([nivel1]);
+    expect(nivel1.profundidad()).toBe(3);
+  });
+});

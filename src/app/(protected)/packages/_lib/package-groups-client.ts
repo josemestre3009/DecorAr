@@ -13,6 +13,8 @@ import { PACKAGES_ENDPOINT, resolvePackagesMode, type PackagesClientMode } from 
  *
  * - `POST /api/packages/{id}/groups {name, parentGroupId?, children?: [{moduleId}]}`
  *   → 201 `{groupId, name, parentGroupId, depth, itemIds, packageVersion}`
+ * - `PATCH /api/packages/{id}/groups/{groupId} {name}` → 200 `{groupId, name, structureVersion}` (DECOR-43)
+ * - `DELETE /api/packages/{id}/groups/{groupId}` → 204; el contenido sube al padre (DECOR-43)
  * - errores `{error:{code,message}}` con 400/401/404/409/422
  *
  * Es un archivo aparte de `packages-client.ts` para no cambiar el puerto que ya
@@ -34,9 +36,17 @@ export type CreatedGroup = {
   readonly packageVersion: number;
 };
 
+export type RenamedGroup = {
+  readonly groupId: string;
+  readonly name: string;
+  readonly structureVersion: number;
+};
+
 export interface PackageGroupsClient {
   readonly mode: PackagesClientMode;
   createGroup(packageId: string, request: GroupRequest): Promise<Result<CreatedGroup, ApiFailure>>;
+  renameGroup(packageId: string, groupId: string, name: string): Promise<Result<RenamedGroup, ApiFailure>>;
+  deleteGroup(packageId: string, groupId: string): Promise<Result<void, ApiFailure>>;
 }
 
 function isCreatedGroup(value: unknown): value is CreatedGroup {
@@ -53,6 +63,19 @@ function isCreatedGroup(value: unknown): value is CreatedGroup {
     body.itemIds.every((itemId) => typeof itemId === "string")
   );
 }
+
+function isRenamedGroup(value: unknown): value is RenamedGroup {
+  if (typeof value !== "object" || value === null) return false;
+
+  const body = value as Record<string, unknown>;
+
+  return (
+    typeof body.groupId === "string" && typeof body.name === "string" && typeof body.structureVersion === "number"
+  );
+}
+
+const groupUrl = (packageId: string, groupId: string) =>
+  `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/groups/${encodeURIComponent(groupId)}`;
 
 export function createHttpPackageGroupsClient(fetcher: typeof fetch = fetch): PackageGroupsClient {
   return {
@@ -88,6 +111,51 @@ export function createHttpPackageGroupsClient(fetcher: typeof fetch = fetch): Pa
 
       return isCreatedGroup(body) ? ok(body) : err(unexpectedResponseFailure(response.status));
     },
+    async renameGroup(packageId, groupId, name) {
+      let response: Response;
+
+      try {
+        response = await fetcher(groupUrl(packageId, groupId), {
+          body: JSON.stringify({ name }),
+          headers: { Accept: "application/json", "Content-Type": "application/json" },
+          method: "PATCH",
+        });
+      } catch {
+        return err(networkFailure());
+      }
+
+      if (response.status !== 200) {
+        return err(response.ok ? unexpectedResponseFailure(response.status) : await readApiError(response));
+      }
+
+      let body: unknown;
+
+      try {
+        body = await response.json();
+      } catch {
+        return err(unexpectedResponseFailure(response.status));
+      }
+
+      return isRenamedGroup(body) ? ok(body) : err(unexpectedResponseFailure(response.status));
+    },
+    async deleteGroup(packageId, groupId) {
+      let response: Response;
+
+      try {
+        response = await fetcher(groupUrl(packageId, groupId), {
+          headers: { Accept: "application/json" },
+          method: "DELETE",
+        });
+      } catch {
+        return err(networkFailure());
+      }
+
+      if (response.status === 204) {
+        return ok(undefined);
+      }
+
+      return err(response.ok ? unexpectedResponseFailure(response.status) : await readApiError(response));
+    },
   };
 }
 
@@ -99,10 +167,26 @@ function newId(): string {
   return `sim-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/**
+ * Los grupos solo existen con la API real (DECOR-43): la simulación no
+ * mantiene un árbol en el navegador, así que renombrar o eliminar no se finge.
+ */
+const LIVE_ONLY: ApiFailure = {
+  code: "package.groups_live_only",
+  kind: "invalid",
+  message: "Las zonas solo están disponibles con la API real.",
+};
+
 /** Igual que la simulación de paquetes: responde sin red mientras la API no esté activa. */
 export function createSimulatedPackageGroupsClient(delayMs = 300): PackageGroupsClient {
   return {
     mode: "simulated",
+    async renameGroup() {
+      return err(LIVE_ONLY);
+    },
+    async deleteGroup() {
+      return err(LIVE_ONLY);
+    },
     async createGroup(_packageId, request) {
       await new Promise((resolve) => setTimeout(resolve, delayMs));
 

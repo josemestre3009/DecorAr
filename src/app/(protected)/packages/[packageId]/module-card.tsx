@@ -20,19 +20,22 @@ type ModuleCardProps = {
   readonly addState: AddState;
   readonly onAdd: (module: CatalogModuleDto, quantity: number) => Promise<boolean>;
   readonly remainingM2?: number;
+  /** Tope de unidades por acción; agregar dentro de una zona admite una (DECOR-43). */
+  readonly maxPerAction?: number;
 };
 
-export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: ModuleCardProps) {
+export function ModuleCard({ module, packageId, addState, onAdd, remainingM2, maxPerAction }: ModuleCardProps) {
   const [posterFailed, setPosterFailed] = useState(false);
   const [quantity, setQuantity] = useState(1);
   const errorId = `module-${module.id}-error`;
   const showPoster = module.posterUrl !== null && !posterFailed;
   const adding = addState.status === "adding";
-  const maxQuantity = remainingM2 === undefined
+  const maxByCapacity = remainingM2 === undefined
     ? MAX_BATCH_QUANTITY
     : module.areaM2 > 0
       ? Math.min(MAX_BATCH_QUANTITY, Math.max(0, Math.floor(remainingM2 / module.areaM2)))
       : 0;
+  const maxQuantity = maxPerAction === undefined ? maxByCapacity : Math.min(maxByCapacity, maxPerAction);
   const [previousMaxQuantity, setPreviousMaxQuantity] = useState(maxQuantity);
   if (maxQuantity !== previousMaxQuantity) {
     setPreviousMaxQuantity(maxQuantity);
@@ -106,7 +109,11 @@ export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: 
         </div>
         {remainingM2 !== undefined ? (
           <p className="field-hint" id={capacityHintId}>
-            {noSpace ? "No queda espacio para otra unidad." : `Máximo ${maxQuantity} según el espacio disponible.`}
+            {noSpace
+              ? "No queda espacio para otra unidad."
+              : maxQuantity < maxByCapacity
+                ? `Máximo ${maxQuantity} por vez dentro de una zona.`
+                : `Máximo ${maxQuantity} según el espacio disponible.`}
           </p>
         ) : null}
 

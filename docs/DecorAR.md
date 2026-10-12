@@ -29,7 +29,7 @@ La validación de capacidad realizada por Builder es independiente de la detecci
 
 - Capacidad del espacio: el usuario ingresa manualmente los metros cuadrados disponibles al crear el paquete. El valor debe ser positivo y finito. El paquete conserva este valor como referencia para que cambios posteriores no alteren silenciosamente una configuración existente.
 - Preferencias clonables: una configuración conserva `estilo`, `colores` y `notas`. Prototype realiza una copia profunda de estos datos y de las colecciones mutables.
-- Composite: se permiten hasta tres niveles de grupos y se rechazan ciclos. La demostración mínima usa el grupo "Zona de bienvenida", compuesto por un arco floral y una mesa redonda existentes en el catálogo.
+- Composite: se permiten hasta tres niveles de grupos y se rechazan ciclos. La demostración mínima usa el grupo "Zona de bienvenida", compuesto por un arco floral y una mesa redonda existentes en el catálogo. Desde DECOR-43 el usuario organiza sus propias zonas (crear, renombrar, eliminar) en un paso opcional antes del catálogo; eliminar una zona nunca borra contenido, que pasa al nivel superior.
 - Autenticación: Supabase Auth con correo electrónico y contraseña. Las pruebas de RLS utilizan al menos dos usuarios para demostrar aislamiento.
 - Compatibilidad iOS: los tres módulos iniciales deben disponer de USDZ. Cada activo publica GLB, USDZ y poster en Cloudinary.
 - Recuperación de eventos: se realizan como máximo tres reintentos, después de 1, 2 y 4 segundos. Tras agotarlos, el evento permanece pendiente para reconciliación desde PostgreSQL.
@@ -132,8 +132,19 @@ Límites conocidos de esta etapa:
 - `GetPackageDetailUseCase`: reconstruye el árbol Composite con los precios del catálogo y calcula el área usada y restante.
 - `GetBudgetUseCase`: el total confirmado. Si responde `budget.not_found` se muestra "aún no calculado"; la interfaz nunca suma un total.
 
-La página muestra el tipo de espacio, la capacidad, el área usada y restante, y el contenido con las hojas agrupadas por módulo ("×N"), subtotales informativos y grupos que se despliegan con `aria-expanded`. Agregar (`POST /items`), quitar (`DELETE /items/{itemId}`) y crear la Zona de bienvenida terminan con `router.refresh()`, que vuelve a leer todo del servidor; un 422 no cambia nada en pantalla. Duplicar navega al clon (DECOR-24). El presupuesto se actualiza en tiempo real mediante `useLiveBudget` (DECOR-21) vía Broadcast privado y resync HTTP. En modo simulado la página sigue como antes, con un aviso. La E2E opt-in `e2e/package-configurator-live.spec.ts` (`DECOR_LIVE_SMOKE=1`) recorre el flujo contra la API real y graba video.
+La página muestra el tipo de espacio, la capacidad, el área usada y restante, y el contenido con las hojas agrupadas por módulo ("×N"), subtotales informativos y grupos que se despliegan con `aria-expanded`. Agregar (`POST /items`) y quitar (`DELETE /items/{itemId}`) terminan con `router.refresh()`, que vuelve a leer todo del servidor; un 422 no cambia nada en pantalla. Duplicar navega al clon (DECOR-24) con `?duplicated=1`, que muestra la confirmación "Copia creada" y se limpia de la URL sin navegar (DECOR-43). El presupuesto se actualiza en tiempo real mediante `useLiveBudget` (DECOR-21) vía Broadcast privado y resync HTTP. En modo simulado la página sigue como antes, con un aviso. La E2E opt-in `e2e/package-configurator-live.spec.ts` (`DECOR_LIVE_SMOKE=1`) recorre el flujo contra la API real y graba video.
 - `NEXT_PUBLIC_DECOR_PACKAGES_API` se fija al compilar: en Docker se pasa como argumento de construcción y hay que reconstruir la imagen para cambiarla.
+
+**Zonas (DECOR-43).** Con `live`, crear el paquete navega a `/packages/{id}/groups/setup`, un paso opcional antes del catálogo:
+
+- Crear zonas vacías con nombre y ubicación (nivel principal o dentro de otra zona; las de nivel 3 no se ofrecen como padre).
+- Renombrar (texto recortado de 1 a 80 caracteres) y eliminar con confirmación en la misma fila, que explica a dónde pasa el contenido.
+- "Continuar al catálogo" u "Omitir por ahora" llevan a `/packages/{id}`; el configurador ofrece "Administrar zonas" para volver.
+- El catálogo ofrece "Agregar en": nivel principal o cualquier zona con su ruta ("Sala › Mesa"), y envía `parentGroupId`. Dentro de una zona se agrega una unidad por acción, como exige `POST /items`.
+- Las zonas se leen del detalle del servidor (`toGroupOptions`) y cada operación termina con `router.refresh()`; el navegador nunca modifica el árbol de forma optimista ni repite reglas de niveles, propiedad o integridad.
+- En modo simulado no hay zonas: se omite el paso y la simulación no guarda un árbol en `sessionStorage`.
+
+La E2E opt-in `e2e/package-group-management-live.spec.ts` recorre espacio → zonas → renombrar → eliminar promoviendo contenido → catálogo → duplicación → independencia del original.
 
 ### 2.2.4 Autorización por propiedad, RLS y canales privados
 
@@ -658,6 +669,8 @@ classDiagram
 **Consecuencias:** Simplifica recorridos y cálculos recursivos; facilita crear paquetes anidados. La implementación rechaza ciclos y limita los grupos a tres niveles.
 
 **Implementación (DECOR-25):** `ComponenteDecorativo` (`calcularPrecio`, `calcularAreaM2`, `obtenerModulos`, `profundidad`) lo implementan `ElementoDecorativo` y `ModuloCompuesto` en `src/modules/packages/domain`. "Tres niveles" significa grupo → subgrupo → sub-subgrupo; las hojas pueden estar en cualquiera de ellos. `PaqueteDecoracion` y `PaqueteDecoracionBuilderImpl` validan capacidad sobre el contrato común (`agregarZonaBienvenida`, `agregarComponente`). Los grupos se persisten en `public.package_groups` mediante las RPC atómicas `create_package_group` y `add_package_item_to_group` (`POST /api/packages/{packageId}/groups` y `POST /items` con `parentGroupId`; sin `parentGroupId` o con `null` el elemento va a la raíz, y un `parentGroupId` vacío o en blanco responde 400 `package.invalid_group`). Cada hoja emite `package.module.added` en la misma transacción; al crear un grupo con hojas se recalcula el presupuesto una sola vez, con el último evento, y un grupo sin hojas no emite eventos ni recalcula. La base calcula la profundidad por trigger e impide re-asignar el padre de un grupo, de modo que no puede formarse un ciclo. `clone_package` copia los grupos conservando la estructura.
+
+**Renombrar y eliminar (DECOR-43):** `PATCH /api/packages/{packageId}/groups/{groupId}` con `{name}` responde 200 `{groupId, name, structureVersion}`; `DELETE` responde 204. Ambos validan sesión (401), propiedad (404 `package.not_found`), grupo (404 `package.group_not_found`), nombre (400 `package.invalid_group_name`) y versión (409 `package.version_conflict`), y devuelven `x-correlation-id`. En el dominio, `ModuloCompuesto.renombrar` reutiliza la regla del nombre de `crear` y `PaqueteDecoracion.disolverGrupo` sube hojas y subgrupos al padre. Las RPC `rename_package_group` y `delete_package_group` bloquean el paquete, validan propiedad y versión y, al eliminar, reasignan primero las hojas y luego el subárbol (cada descendiente sube un nivel) antes de borrar el grupo, todo en una transacción; solo ellas pueden re-asignar el padre, mediante el ajuste local `decorar.group_reparent`, y verifican el árbol completo antes de confirmar (422 `package.group_integrity` y rollback si algo no cuadra). Como no cambia el conjunto de módulos, no emiten eventos ni recalculan el presupuesto: suben `packages.structure_version` y no `packages.version`, porque el presupuesto en vivo (DECOR-21) espera un recálculo cada vez que `packages.version` se adelanta al presupuesto.
 
 ### 4.4. Bridge: desacoplar decoración y render AR
 

@@ -164,6 +164,35 @@ export class PaqueteDecoracion {
     return ok(undefined);
   }
 
+  /**
+   * Elimina un grupo sin perder su contenido: sus hojas y subgrupos pasan al
+   * padre del grupo (o a la raíz si era raíz), en el mismo orden. Como el
+   * contenido solo sube de nivel, no cambian capacidad ni módulos.
+   */
+  public disolverGrupo(grupoId: string): Result<void, DomainError> {
+    const grupo = this.buscarGrupo(grupoId);
+    if (!grupo) {
+      return err(new DomainError("package.group_not_found", "No encontramos ese grupo en el paquete."));
+    }
+
+    const padre = grupo.padre;
+    if (padre instanceof ModuloCompuesto) {
+      padre.remover(grupo.id);
+      for (const hijo of grupo.soltarHijos()) {
+        const promovido = padre.agregar(hijo);
+        if (!promovido.ok) {
+          return err(promovido.error);
+        }
+      }
+      return ok(undefined);
+    }
+
+    const index = this._componentes.indexOf(grupo);
+    const hijos = grupo.soltarHijos();
+    this._componentes.splice(index, 1, ...hijos);
+    return ok(undefined);
+  }
+
   /** Quita una hoja o un grupo por id, en la raíz o dentro de cualquier grupo. */
   public removerModulo(moduloId: string): Result<void, DomainError> {
     const index = this._componentes.findIndex((c) => c.id === moduloId);

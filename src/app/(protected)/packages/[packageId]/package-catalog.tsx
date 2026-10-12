@@ -6,6 +6,7 @@ import { useEffect, useState } from "react";
 import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalog-module.dto";
 
 import { fetchCatalogModules } from "../_lib/catalog-client";
+import type { GroupOption } from "../_lib/configurator-view";
 import { getPackagesClient, type PackagesClient } from "../_lib/packages-client";
 import { ModuleCard, type AddState } from "./module-card";
 
@@ -23,11 +24,23 @@ type PackageCatalogProps = {
   /** Unidades confirmadas por el servidor por `moduleId`; reconcilia el eco local tras un refresco (DECOR-22). */
   readonly serverCounts?: Readonly<Record<string, number>>;
   readonly remainingM2?: number;
+  /** Zonas del paquete (DECOR-43); con alguna, el catálogo ofrece elegir el destino. */
+  readonly groupOptions?: readonly GroupOption[];
 };
 
 const IDLE: AddState = { status: "idle" };
+/** Valor del selector para la raíz del paquete. */
+const ROOT_DESTINATION = "";
 
-export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts }: PackageCatalogProps) {
+export function PackageCatalog({
+  packageId,
+  packageVersion,
+  client,
+  fetcher,
+  remainingM2,
+  serverCounts,
+  groupOptions = [],
+}: PackageCatalogProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
   const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
@@ -41,6 +54,11 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     readonly version?: number;
   }>({ counts: {}, usedM2: 0, version: packageVersion });
   const [announcement, setAnnouncement] = useState("");
+  const [destinationId, setDestinationId] = useState(ROOT_DESTINATION);
+  // Las zonas solo existen con la API real; si la elegida ya no está (se
+  // eliminó en otra pestaña), el destino vuelve al nivel principal.
+  const zones = packages.mode === "live" ? groupOptions : [];
+  const destination = zones.find((zone) => zone.groupId === destinationId) ?? null;
 
   useEffect(() => {
     const controller = new AbortController();
@@ -77,9 +95,11 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
       quantity === 1 ? `Agregando ${module.name}…` : `Agregando ${quantity} unidades de ${module.name}…`,
     );
 
-    const result = quantity === 1
-      ? await packages.addItem(packageId, module.id)
-      : await packages.addItem(packageId, module.id, quantity);
+    const result = destination
+      ? await packages.addItem(packageId, module.id, quantity, destination.groupId)
+      : quantity === 1
+        ? await packages.addItem(packageId, module.id)
+        : await packages.addItem(packageId, module.id, quantity);
 
     if (result.ok) {
       setLocalChanges((changes) => {
@@ -95,10 +115,11 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
         delete next[module.id];
         return next;
       });
+      const where = destination ? `la zona ${destination.label}` : "tu paquete";
       setAnnouncement(
         quantity === 1
-          ? `${module.name} se agregó a tu paquete.`
-          : `${quantity} unidades de ${module.name} se agregaron a tu paquete.`,
+          ? `${module.name} se agregó a ${where}.`
+          : `${quantity} unidades de ${module.name} se agregaron a ${where}.`,
       );
       // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
       if (packages.mode === "live") {
@@ -147,6 +168,33 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
         </p>
       ) : null}
 
+      {zones.length > 0 ? (
+        <div className="auth-field catalog-destination">
+          <label className="auth-label" htmlFor="catalog-destination">
+            Agregar en
+          </label>
+          <select
+            aria-describedby="catalog-destination-hint"
+            className="auth-input"
+            id="catalog-destination"
+            onChange={(event) => setDestinationId(event.target.value)}
+            value={destination?.groupId ?? ROOT_DESTINATION}
+          >
+            <option value={ROOT_DESTINATION}>Nivel principal</option>
+            {zones.map((zone) => (
+              <option key={zone.groupId} value={zone.groupId}>
+                {zone.label}
+              </option>
+            ))}
+          </select>
+          <p className="field-hint" id="catalog-destination-hint">
+            {destination
+              ? "En una zona se agrega una unidad por vez."
+              : "Elige una zona para ubicar ahí lo que agregues."}
+          </p>
+        </div>
+      ) : null}
+
       {/* Una sola región viva para anunciar el resultado de "Agregar". */}
       <p aria-live="polite" className="visually-hidden" role="status">
         {announcement}
@@ -185,6 +233,7 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
             <li key={module.id}>
               <ModuleCard
                 addState={cardAddState(module.id)}
+                maxPerAction={destination ? 1 : undefined}
                 module={module}
                 onAdd={add}
                 packageId={packageId}

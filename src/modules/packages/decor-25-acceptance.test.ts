@@ -14,13 +14,17 @@ import type { CatalogModuleReader } from "./application/ports/catalog-module-rea
 import type { PackageChangeConsumer } from "./application/ports/package-change-consumer.port";
 import type {
   CreatedGroupRecord,
+  DeletedGroupRecord,
   PackageGroupReader,
   PackageGroupRepository,
   PackageStructure,
+  RenamedGroupRecord,
 } from "./application/ports/package-group-repository.port";
 import type { PackageReader } from "./application/ports/package-reader.port";
 import { AddModuleToGroupUseCase } from "./application/use-cases/add-module-to-group.use-case";
 import { CreatePackageGroupUseCase } from "./application/use-cases/create-package-group.use-case";
+import { DeletePackageGroupUseCase } from "./application/use-cases/delete-package-group.use-case";
+import { RenamePackageGroupUseCase } from "./application/use-cases/rename-package-group.use-case";
 import type { AddModuleToPackageUseCase } from "./application/use-cases/add-module-to-package.use-case";
 import type { CreatePackageUseCase } from "./application/use-cases/create-package.use-case";
 import type { RemoveModuleFromPackageUseCase } from "./application/use-cases/remove-module-from-package.use-case";
@@ -154,9 +158,31 @@ const groupStore: PackageGroupReader & PackageGroupRepository = {
       return err(rpcError(cause));
     }
   },
+  async renameGroup(command) {
+    try {
+      const result = await db.query<{ result: RenamedGroupRecord }>(
+        `SELECT public.rename_package_group($1, $2, $3, $4, $5) AS result`,
+        [command.packageId, command.userId, command.groupId, command.name, command.expectedVersion],
+      );
+      return ok(result.rows[0].result);
+    } catch (cause) {
+      return err(rpcError(cause));
+    }
+  },
+  async deleteGroup(command) {
+    try {
+      const result = await db.query<{ result: DeletedGroupRecord }>(
+        `SELECT public.delete_package_group($1, $2, $3, $4) AS result`,
+        [command.packageId, command.userId, command.groupId, command.expectedVersion],
+      );
+      return ok(result.rows[0].result);
+    } catch (cause) {
+      return err(rpcError(cause));
+    }
+  },
 };
 
-const clock = { now: () => new Date("2026-10-12T10:00:00.000Z") };
+const clock ={ now: () => new Date("2026-10-12T10:00:00.000Z") };
 const ids = { generate: () => randomUUID() };
 
 function useCases(consumer?: PackageChangeConsumer) {
@@ -501,6 +527,110 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
 
       expect(result.ok).toBe(true);
       expect(fetcher.mock.calls[0][0]).toBe("/api/packages/pkg-1/groups");
+    });
+  });
+
+  describe("6. DECOR-43: renombrar y eliminar zonas con los casos de uso reales", () => {
+    const groupUseCases = useCases();
+    const rename = () => new RenamePackageGroupUseCase(packageReader, groupStore, groupStore);
+    const remove = () => new DeletePackageGroupUseCase(packageReader, groupStore, groupStore);
+
+    async function tree(packageId: string) {
+      const structure = await groupStore.getStructure(packageId);
+      if (!structure.ok) throw structure.error;
+      return structure.value;
+    }
+
+    /** Sala (arco) > Mesa (mesa) > Centro (mesa). */
+    async function salaMesaCentro(packageId: string) {
+      const sala = await groupUseCases.createGroup.execute({ moduleIds: [MODULE_ARCO], name: "Sala", packageId, userId: USER_A });
+      if (!sala.ok) throw sala.error;
+      const mesa = await groupUseCases.createGroup.execute({
+        moduleIds: [MODULE_MESA],
+        name: "Mesa",
+        packageId,
+        parentGroupId: sala.value.groupId,
+        userId: USER_A,
+      });
+      if (!mesa.ok) throw mesa.error;
+      const centro = await groupUseCases.createGroup.execute({
+        moduleIds: [MODULE_MESA],
+        name: "Centro",
+        packageId,
+        parentGroupId: mesa.value.groupId,
+        userId: USER_A,
+      });
+      if (!centro.ok) throw centro.error;
+      return { centro: centro.value.groupId, mesa: mesa.value.groupId, sala: sala.value.groupId };
+    }
+
+    it("renombrar cambia solo el nombre: hojas, jerarquía, versión y eventos quedan igual", async () => {
+      const packageId = await newPackage(USER_A, 50);
+      const { mesa, sala } = await salaMesaCentro(packageId);
+      const before = await rows(packageId);
+
+      const result = await rename().execute({ groupId: sala, name: " Sala principal ", packageId, userId: USER_A });
+
+      expect(result).toMatchObject({ ok: true, value: { groupId: sala, name: "Sala principal" } });
+      expect(await rows(packageId)).toEqual(before);
+      const structure = await tree(packageId);
+      expect(structure.groups.find((g) => g.groupId === sala)?.name).toBe("Sala principal");
+      expect(structure.groups.find((g) => g.groupId === mesa)?.parentGroupId).toBe(sala);
+    });
+
+    it("un nombre inválido no llega a la base y conserva el anterior", async () => {
+      const packageId = await newPackage(USER_A, 50);
+      const { sala } = await salaMesaCentro(packageId);
+
+      const result = await rename().execute({ groupId: sala, name: "x".repeat(81), packageId, userId: USER_A });
+
+      expect(!result.ok && result.error.code).toBe("package.invalid_group_name");
+      expect((await tree(packageId)).groups.find((g) => g.groupId === sala)?.name).toBe("Sala");
+    });
+
+    it("eliminar la raíz promueve todo al nivel principal sin perder hojas ni emitir eventos", async () => {
+      const packageId = await newPackage(USER_A, 50);
+      const { centro, mesa, sala } = await salaMesaCentro(packageId);
+      const before = await rows(packageId);
+
+      const result = await remove().execute({ groupId: sala, packageId, userId: USER_A });
+
+      expect(result).toMatchObject({ ok: true, value: { parentGroupId: null, promotedGroups: 1, promotedItems: 1 } });
+      expect(await rows(packageId)).toEqual({ ...before, groups: 2 });
+      const structure = await tree(packageId);
+      expect(structure.groups.find((g) => g.groupId === mesa)?.parentGroupId).toBeNull();
+      expect(structure.groups.find((g) => g.groupId === centro)?.parentGroupId).toBe(mesa);
+      expect(Object.values(structure.itemGroupIds).sort()).toEqual([centro, mesa, null].sort());
+
+      // El árbol promovido sigue admitiendo un tercer nivel bajo Centro.
+      const nieto = await groupUseCases.createGroup.execute({ name: "Nieto", packageId, parentGroupId: centro, userId: USER_A });
+      expect(nieto.ok).toBe(true);
+    });
+
+    it("eliminar un subgrupo pasa su contenido al grupo padre", async () => {
+      const packageId = await newPackage(USER_A, 50);
+      const { centro, mesa, sala } = await salaMesaCentro(packageId);
+
+      const result = await remove().execute({ groupId: mesa, packageId, userId: USER_A });
+
+      expect(result).toMatchObject({ ok: true, value: { parentGroupId: sala } });
+      const structure = await tree(packageId);
+      expect(structure.groups.find((g) => g.groupId === centro)?.parentGroupId).toBe(sala);
+      expect(Object.values(structure.itemGroupIds).filter((g) => g === sala)).toHaveLength(2);
+    });
+
+    it("un usuario ajeno no renombra ni elimina grupos de otro paquete", async () => {
+      const packageId = await newPackage(USER_A, 50);
+      const { sala } = await salaMesaCentro(packageId);
+      const before = await rows(packageId);
+
+      const renamed = await rename().execute({ groupId: sala, name: "Mía", packageId, userId: USER_B });
+      const deleted = await remove().execute({ groupId: sala, packageId, userId: USER_B });
+
+      expect(!renamed.ok && renamed.error.code).toBe("package.not_found");
+      expect(!deleted.ok && deleted.error.code).toBe("package.not_found");
+      expect(await rows(packageId)).toEqual(before);
+      expect((await tree(packageId)).groups.find((g) => g.groupId === sala)?.name).toBe("Sala");
     });
   });
 });

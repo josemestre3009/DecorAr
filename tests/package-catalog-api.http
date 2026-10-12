@@ -12,6 +12,7 @@
 @moduleIdPista = aaaaaaaa-0001-4000-8000-000000000001
 @moduleIdMesa = aaaaaaaa-0002-4000-8000-000000000002
 @moduleIdArco = aaaaaaaa-0003-4000-8000-000000000003
+@groupId = bbbbbbbb-2222-4222-8222-222222222222
 
 ### ------------------------------------------------------------------------------
 ### 1. CATÁLOGO DE MÓDULOS (DECOR-28)
@@ -83,6 +84,35 @@ Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
     { "moduleId": "{{moduleIdMesa}}" }
   ]
 }
+
+### 4.2 Agregar un elemento dentro de una zona existente (201 Created, DECOR-43)
+POST {{baseUrl}}/api/packages/{{packageId}}/items
+Content-Type: application/json
+Accept: application/json
+x-correlation-id: {{correlationId}}-add-to-group
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "moduleId": "{{moduleIdMesa}}",
+  "parentGroupId": "{{groupId}}"
+}
+
+### 4.3 Renombrar una zona (200 OK, DECOR-43; nombre vacío o > 80 → 400 package.invalid_group_name)
+PATCH {{baseUrl}}/api/packages/{{packageId}}/groups/{{groupId}}
+Content-Type: application/json
+Accept: application/json
+x-correlation-id: {{correlationId}}-rename-group
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
+
+{
+  "name": "Sala principal"
+}
+
+### 4.4 Eliminar una zona sin perder contenido: hojas y subgrupos pasan al padre (204 No Content, DECOR-43)
+DELETE {{baseUrl}}/api/packages/{{packageId}}/groups/{{groupId}}
+Accept: application/json
+x-correlation-id: {{correlationId}}-delete-group
+Cookie: sb-access-token=MOCK_AUTH_COOKIE_USER_A
 
 ### ------------------------------------------------------------------------------
 ### 5. MANEJO DE ERRORES Y CASOS NEGATIVOS (Actividad.md 8.17 / 8.18)

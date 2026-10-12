@@ -59,8 +59,28 @@ describe("DuplicatePackageButton", () => {
 
     await waitFor(() => {
       expect(clonePackage).toHaveBeenCalledWith("pkg-123");
-      expect(push).toHaveBeenCalledWith("/packages/pkg-cloned-456");
+      expect(push).toHaveBeenCalledWith("/packages/pkg-cloned-456?duplicated=1");
     });
+  });
+
+  it("anuncia la duplicación y no clona dos veces con clics repetidos (DECOR-43)", async () => {
+    let resolveClone: (value: Awaited<ReturnType<PackagesClient["clonePackage"]>>) => void = () => {};
+    const clonePackage = vi.fn(
+      () => new Promise<Awaited<ReturnType<PackagesClient["clonePackage"]>>>((resolve) => (resolveClone = resolve)),
+    );
+    render(<DuplicatePackageButton client={createMockClient(clonePackage)} packageId="pkg-123" />);
+
+    const button = screen.getByRole("button", { name: "Duplicar paquete" });
+    fireEvent.click(button);
+    fireEvent.click(button);
+    fireEvent.click(button);
+
+    expect(screen.getByRole("status")).toHaveTextContent("Duplicando paquete con sus zonas y elementos…");
+    expect(clonePackage).toHaveBeenCalledTimes(1);
+
+    resolveClone(ok({ capacityM2: 50, id: "pkg-copy", spaceType: "salonSocial" }));
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/packages/pkg-copy?duplicated=1"));
+    expect(clonePackage).toHaveBeenCalledTimes(1);
   });
 
   it("redirige a /login si la sesión expiró (401)", async () => {

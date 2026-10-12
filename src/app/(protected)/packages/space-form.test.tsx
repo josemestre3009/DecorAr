@@ -12,8 +12,11 @@ const router = { push };
 
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
-function fakeClient(createPackage: PackagesClient["createPackage"]): PackagesClient {
-  return { addItem: vi.fn(), clonePackage: vi.fn(), createPackage, mode: "simulated", removeItem: vi.fn() };
+function fakeClient(
+  createPackage: PackagesClient["createPackage"],
+  mode: PackagesClient["mode"] = "simulated",
+): PackagesClient {
+  return { addItem: vi.fn(), clonePackage: vi.fn(), createPackage, mode, removeItem: vi.fn() };
 }
 
 function fill(capacity: string, spaceLabel = "Salón social") {
@@ -84,7 +87,7 @@ describe("SpaceForm", () => {
     expect(await screen.findByRole("alert")).toHaveTextContent("Elige el tipo de espacio.");
   });
 
-  it("crea el paquete y navega a su catálogo", async () => {
+  it("en modo simulado crea el paquete y navega directo a su catálogo", async () => {
     const createPackage = vi
       .fn<PackagesClient["createPackage"]>()
       .mockResolvedValue(ok({ capacityM2: 30.5, id: "p-1", spaceType: "salonSocial" }));
@@ -95,6 +98,18 @@ describe("SpaceForm", () => {
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/packages/p-1"));
     expect(createPackage).toHaveBeenCalledWith({ capacityM2: 30.5, spaceType: "salonSocial" });
+  });
+
+  it("con la API real, navega primero a organizar zonas (DECOR-43)", async () => {
+    const createPackage = vi
+      .fn<PackagesClient["createPackage"]>()
+      .mockResolvedValue(ok({ capacityM2: 30, id: "p-1", spaceType: "salonSocial" }));
+    render(<SpaceForm client={fakeClient(createPackage, "live")} />);
+
+    fill("30");
+    submit();
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/packages/p-1/groups/setup"));
   });
 
   it("deshabilita el botón mientras se crea el paquete", async () => {

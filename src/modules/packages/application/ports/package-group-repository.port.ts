@@ -34,6 +34,36 @@ export interface CreatedGroupRecord {
   readonly packageVersion: number;
 }
 
+export interface RenamePackageGroupCommand {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly groupId: string;
+  readonly name: string;
+  readonly expectedVersion: number;
+}
+
+export interface RenamedGroupRecord {
+  readonly groupId: string;
+  readonly name: string;
+  readonly structureVersion: number;
+}
+
+export interface DeletePackageGroupCommand {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly groupId: string;
+  readonly expectedVersion: number;
+}
+
+export interface DeletedGroupRecord {
+  readonly groupId: string;
+  /** Destino del contenido promovido: el padre del grupo, o `null` (raíz). */
+  readonly parentGroupId: string | null;
+  readonly promotedGroups: number;
+  readonly promotedItems: number;
+  readonly structureVersion: number;
+}
+
 export interface PackageGroupReader {
   getStructure(packageId: string): Promise<Result<PackageStructure, DomainError>>;
 }
@@ -50,4 +80,11 @@ export interface PackageGroupRepository {
     expectedVersion: number,
     correlationId?: string,
   ): Promise<Result<number, DomainError>>;
+  /** Cambia solo el nombre; sube la versión estructural, no la del paquete. */
+  renameGroup(command: RenamePackageGroupCommand): Promise<Result<RenamedGroupRecord, DomainError>>;
+  /**
+   * Borra el grupo y promueve sus hojas y subgrupos al padre en una sola
+   * transacción. No emite eventos de módulo ni recalcula el presupuesto.
+   */
+  deleteGroup(command: DeletePackageGroupCommand): Promise<Result<DeletedGroupRecord, DomainError>>;
 }

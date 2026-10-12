@@ -187,4 +187,80 @@ describe("SupabasePackageGroupRepository", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("package.persistence_error");
   });
+
+  describe("gestión de grupos (DECOR-43)", () => {
+    const target = { expectedVersion: 5, groupId: "grp-1", packageId: "pkg-1", userId: "user-1" };
+
+    it("renameGroup invoca rename_package_group y mapea la respuesta", async () => {
+      const rpc = vi.fn().mockResolvedValue({
+        data: { groupId: "grp-1", name: "Sala", structureVersion: 3 },
+        error: null,
+      });
+
+      const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).renameGroup({
+        ...target,
+        name: "Sala",
+      });
+
+      expect(rpc).toHaveBeenCalledWith("rename_package_group", {
+        p_expected_version: 5,
+        p_group_id: "grp-1",
+        p_name: "Sala",
+        p_package_id: "pkg-1",
+        p_user_id: "user-1",
+      });
+      expect(result).toEqual({ ok: true, value: { groupId: "grp-1", name: "Sala", structureVersion: 3 } });
+    });
+
+    it("deleteGroup invoca delete_package_group y mapea la respuesta", async () => {
+      const rpc = vi.fn().mockResolvedValue({
+        data: { groupId: "grp-1", parentGroupId: "grp-0", promotedGroups: 1, promotedItems: 2, structureVersion: 4 },
+        error: null,
+      });
+
+      const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).deleteGroup(target);
+
+      expect(rpc).toHaveBeenCalledWith("delete_package_group", {
+        p_expected_version: 5,
+        p_group_id: "grp-1",
+        p_package_id: "pkg-1",
+        p_user_id: "user-1",
+      });
+      expect(result).toEqual({
+        ok: true,
+        value: { groupId: "grp-1", parentGroupId: "grp-0", promotedGroups: 1, promotedItems: 2, structureVersion: 4 },
+      });
+    });
+
+    it.each([
+      [{ message: "package.group_not_found" }, "package.group_not_found"],
+      [{ message: "package.group_integrity" }, "package.group_integrity"],
+      [{ message: "package.version_conflict" }, "package.version_conflict"],
+      [{ code: "23503", message: "fk violation" }, "package.group_integrity"],
+      [{ code: "XX000", message: "boom" }, "package.persistence_error"],
+    ])("deleteGroup traduce el error %j a %s", async (error, code) => {
+      const rpc = vi.fn().mockResolvedValue({ data: null, error });
+
+      const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).deleteGroup(target);
+
+      expect(!result.ok && result.error.code).toBe(code);
+    });
+
+    it("renameGroup traduce el nombre inválido y una respuesta vacía", async () => {
+      const invalid = vi.fn().mockResolvedValue({ data: null, error: { message: "package.invalid_group_name" } });
+      const empty = vi.fn().mockResolvedValue({ data: null, error: null });
+
+      const invalidResult = await new SupabasePackageGroupRepository(clientWithRpc(invalid)).renameGroup({
+        ...target,
+        name: "",
+      });
+      const emptyResult = await new SupabasePackageGroupRepository(clientWithRpc(empty)).renameGroup({
+        ...target,
+        name: "Sala",
+      });
+
+      expect(!invalidResult.ok && invalidResult.error.code).toBe("package.invalid_group_name");
+      expect(!emptyResult.ok && emptyResult.error.code).toBe("package.persistence_error");
+    });
+  });
 });

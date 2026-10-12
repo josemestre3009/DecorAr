@@ -6,16 +6,21 @@ import { err, ok, type Result } from "../../shared/domain/result";
 import type {
   CreatedGroupRecord,
   CreatePackageGroupCommand,
+  DeletedGroupRecord,
+  DeletePackageGroupCommand,
   PackageGroupReader,
   PackageGroupRepository,
   PackageStructure,
+  RenamedGroupRecord,
+  RenamePackageGroupCommand,
 } from "../../modules/packages/application/ports/package-group-repository.port";
 import type { PackageModuleAddedEvent } from "../../modules/events/domain/event-contracts";
 
 /**
  * Codes raised with RAISE EXCEPTION by create_package_group,
- * add_package_item_to_group and the commit_package_change they reuse, with
- * the message shown to the user (the SQL only raises the code).
+ * add_package_item_to_group, rename_package_group, delete_package_group and
+ * the commit_package_change they reuse, with the message shown to the user
+ * (the SQL only raises the code).
  */
 const KNOWN_CODES: ReadonlyMap<string, string> = new Map([
   ["package.not_found", "No encontramos este paquete."],
@@ -24,6 +29,7 @@ const KNOWN_CODES: ReadonlyMap<string, string> = new Map([
   ["package.group_not_found", "No encontramos ese grupo en el paquete."],
   ["package.group_depth_exceeded", "Los grupos admiten como máximo 3 niveles."],
   ["package.group_immutable", "No se puede mover un grupo a otra posición."],
+  ["package.group_integrity", "No pudimos reorganizar las zonas sin perder contenido. No se cambió nada."],
   ["package.version_conflict", "El paquete cambió mientras guardabas. Vuelve a intentarlo."],
   ["package.item_not_found", "No encontramos este elemento en el paquete."],
   ["event.duplicate", "Esta operación ya se registró."],
@@ -43,6 +49,16 @@ type RpcCreatedGroup = {
   depth: number;
   itemIds: string[];
   packageVersion: number;
+};
+
+type RpcRenamedGroup = { groupId: string; name: string; structureVersion: number };
+
+type RpcDeletedGroup = {
+  groupId: string;
+  parentGroupId: string | null;
+  promotedGroups: number;
+  promotedItems: number;
+  structureVersion: number;
 };
 
 const persistenceError = (cause: unknown, fallback: string): DomainError =>
@@ -174,6 +190,66 @@ export class SupabasePackageGroupRepository implements PackageGroupReader, Packa
       return ok(data);
     } catch (cause) {
       return err(persistenceError(cause, "Error inesperado al agregar el elemento al grupo"));
+    }
+  }
+
+  async renameGroup(command: RenamePackageGroupCommand): Promise<Result<RenamedGroupRecord, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("rename_package_group", {
+        p_expected_version: command.expectedVersion,
+        p_group_id: command.groupId,
+        p_name: command.name,
+        p_package_id: command.packageId,
+        p_user_id: command.userId,
+      });
+
+      if (error) {
+        return err(toDomainError(error));
+      }
+
+      if (!data) {
+        return err(persistenceError(null, "RPC rename_package_group returned no data"));
+      }
+
+      const row = data as RpcRenamedGroup;
+      return ok({ groupId: row.groupId, name: row.name, structureVersion: Number(row.structureVersion) });
+    } catch (cause) {
+      return err(persistenceError(cause, "Error inesperado al renombrar el grupo"));
+    }
+  }
+
+  async deleteGroup(command: DeletePackageGroupCommand): Promise<Result<DeletedGroupRecord, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("delete_package_group", {
+        p_expected_version: command.expectedVersion,
+        p_group_id: command.groupId,
+        p_package_id: command.packageId,
+        p_user_id: command.userId,
+      });
+
+      if (error) {
+        // Una FK rota al promover el contenido es un fallo de integridad del
+        // árbol, no un módulo inexistente del catálogo.
+        if (error.code === FOREIGN_KEY_VIOLATION && !KNOWN_CODES.has(error.message)) {
+          return err(toDomainError({ message: "package.group_integrity" }));
+        }
+        return err(toDomainError(error));
+      }
+
+      if (!data) {
+        return err(persistenceError(null, "RPC delete_package_group returned no data"));
+      }
+
+      const row = data as RpcDeletedGroup;
+      return ok({
+        groupId: row.groupId,
+        parentGroupId: row.parentGroupId ?? null,
+        promotedGroups: Number(row.promotedGroups),
+        promotedItems: Number(row.promotedItems),
+        structureVersion: Number(row.structureVersion),
+      });
+    } catch (cause) {
+      return err(persistenceError(cause, "Error inesperado al eliminar el grupo"));
     }
   }
 }

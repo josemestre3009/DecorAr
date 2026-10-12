@@ -55,6 +55,8 @@ function setup(options: {
           packageVersion: 4 + command.events.length,
         }),
     ),
+    deleteGroup: vi.fn(),
+    renameGroup: vi.fn(),
   };
   const consumer: PackageChangeConsumer = { consume: vi.fn().mockResolvedValue(ok(undefined)) };
 

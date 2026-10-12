@@ -9,6 +9,21 @@ import type { ModuloDecoracion } from "./decoration-module";
 
 export const MAX_LONGITUD_NOMBRE_GRUPO = 80;
 
+/** Regla única del nombre de un grupo: texto recortado de 1 a 80 caracteres. */
+export function validarNombreGrupo(nombre: unknown): Result<string, DomainError> {
+  const nombreLimpio = typeof nombre === "string" ? nombre.trim() : "";
+  if (nombreLimpio.length === 0 || nombreLimpio.length > MAX_LONGITUD_NOMBRE_GRUPO) {
+    return err(
+      new DomainError(
+        "package.invalid_group_name",
+        `El nombre del grupo debe tener entre 1 y ${MAX_LONGITUD_NOMBRE_GRUPO} caracteres`,
+      ),
+    );
+  }
+
+  return ok(nombreLimpio);
+}
+
 /**
  * Compuesto del Composite: un grupo decorativo (p. ej. "Zona de bienvenida")
  * que contiene hojas y otros grupos. No tiene precio ni área propios: suma
@@ -20,7 +35,7 @@ export class ModuloCompuesto implements ComponenteDecorativoPadre {
 
   private constructor(
     private readonly _id: string,
-    private readonly _nombre: string,
+    private _nombre: string,
   ) {}
 
   static crear(id: string, nombre: string): Result<ModuloCompuesto, DomainError> {
@@ -28,17 +43,12 @@ export class ModuloCompuesto implements ComponenteDecorativoPadre {
       return err(new DomainError("package.invalid_group", "Identificador de grupo inválido"));
     }
 
-    const nombreLimpio = typeof nombre === "string" ? nombre.trim() : "";
-    if (nombreLimpio.length === 0 || nombreLimpio.length > MAX_LONGITUD_NOMBRE_GRUPO) {
-      return err(
-        new DomainError(
-          "package.invalid_group_name",
-          `El nombre del grupo debe tener entre 1 y ${MAX_LONGITUD_NOMBRE_GRUPO} caracteres`,
-        ),
-      );
+    const nombreLimpio = validarNombreGrupo(nombre);
+    if (!nombreLimpio.ok) {
+      return err(nombreLimpio.error);
     }
 
-    return ok(new ModuloCompuesto(id.trim(), nombreLimpio));
+    return ok(new ModuloCompuesto(id.trim(), nombreLimpio.value));
   }
 
   get id(): string {
@@ -94,6 +104,26 @@ export class ModuloCompuesto implements ComponenteDecorativoPadre {
     this._hijos.push(hijo);
     hijo.asignarPadre(this);
     return ok(undefined);
+  }
+
+  /** Cambia el nombre con la misma regla de `crear`; uno inválido no modifica nada. */
+  renombrar(nombre: string): Result<void, DomainError> {
+    const nombreLimpio = validarNombreGrupo(nombre);
+    if (!nombreLimpio.ok) {
+      return err(nombreLimpio.error);
+    }
+
+    this._nombre = nombreLimpio.value;
+    return ok(undefined);
+  }
+
+  /** Suelta todos los hijos directos (quedan sin padre) y los devuelve en orden. */
+  soltarHijos(): ComponenteDecorativo[] {
+    const hijos = this._hijos.splice(0, this._hijos.length);
+    for (const hijo of hijos) {
+      hijo.asignarPadre(null);
+    }
+    return hijos;
   }
 
   /** Quita, en cualquier nivel de este grupo, el componente con ese id. */

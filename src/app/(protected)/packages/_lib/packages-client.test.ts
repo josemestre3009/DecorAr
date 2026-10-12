@@ -63,6 +63,18 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
     expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ moduleId: "m1", quantity: 2 });
   });
 
+  it("envía parentGroupId para agregar dentro de una zona (DECOR-43)", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ itemId: "i1", packageVersion: 4 }, { status: 201 }));
+
+    await createHttpPackagesClient(fetcher).addItem("p1", "m1", 1, "grp-1");
+    await createHttpPackagesClient(fetcher).addItem("p1", "m1", 1, null);
+
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ moduleId: "m1", parentGroupId: "grp-1" });
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ moduleId: "m1" });
+  });
+
   it("clona un paquete con POST /api/packages/{id}/clone", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(
@@ -285,6 +297,16 @@ describe("createSimulatedPackagesClient", () => {
       kind: "not_found",
       status: 404,
     });
+  });
+
+  it("la simulación no agrega dentro de zonas: no guarda grupos (DECOR-43)", async () => {
+    const client = createSimulatedPackagesClient(memoryStorage(), 0);
+    const created = await client.createPackage({ capacityM2: 30, spaceType: "casa" });
+    if (!created.ok) throw new Error("no se creó el paquete");
+
+    const result = await client.addItem(created.value.id, "mesa", 1, "grp-1");
+
+    expect(!result.ok && result.error).toMatchObject({ code: "package.groups_live_only", kind: "invalid" });
   });
 
   it("responde 404 para un paquete desconocido", async () => {

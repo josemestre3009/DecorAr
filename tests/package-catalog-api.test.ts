@@ -350,6 +350,13 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
           return err(new DomainError("package.persistence_error", "Error al añadir ítem a grupo"));
         }
       },
+      // DECOR-43: el puerto ahora también renombra y elimina grupos; esta suite no los ejercita.
+      async renameGroup() {
+        return err(new DomainError("package.persistence_error", "No usado en esta suite"));
+      },
+      async deleteGroup() {
+        return err(new DomainError("package.persistence_error", "No usado en esta suite"));
+      },
     };
 
     const changeConsumer: PackageChangeConsumer = {

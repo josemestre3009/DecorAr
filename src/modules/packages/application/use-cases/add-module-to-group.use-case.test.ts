@@ -42,6 +42,8 @@ function setup(
   const groupRepository: PackageGroupRepository = {
     addItemToGroup: vi.fn().mockReturnValue(commit),
     createGroup: vi.fn(),
+    deleteGroup: vi.fn(),
+    renameGroup: vi.fn(),
   };
   const consumer: PackageChangeConsumer = { consume: vi.fn().mockResolvedValue(ok(undefined)) };
   const useCase = new AddModuleToGroupUseCase(
