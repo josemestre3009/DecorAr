@@ -7,6 +7,7 @@ import type { AddModuleToPackageUseCase } from "../../modules/packages/applicati
 import type { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
+import type { ListOwnedPackagesUseCase } from "../../modules/packages/application/use-cases/list-owned-packages.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
 import type { SessionGateway } from "../../shared/application/ports";
 import { checkPackageAccess } from "./package-access";
@@ -16,6 +17,7 @@ export type PackageControllerOptions = {
   readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
   readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
   readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
+  readonly listOwnedPackagesUseCase?: Pick<ListOwnedPackagesUseCase, "execute">;
   readonly defaultHeaders?: Record<string, string>;
   readonly headers?: Record<string, string>;
 };
@@ -54,6 +56,7 @@ function isPackageControllerOptions(
     "createPackageGroupUseCase" in arg ||
     "addModuleToGroupUseCase" in arg ||
     "drainOutbox" in arg ||
+    "listOwnedPackagesUseCase" in arg ||
     "defaultHeaders" in arg ||
     "headers" in arg
   );
@@ -77,6 +80,7 @@ export class PackageController {
   private readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
   private readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
   private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
+  private readonly listOwnedPackagesUseCase?: Pick<ListOwnedPackagesUseCase, "execute">;
   private readonly defaultHeaders: Record<string, string>;
 
   constructor(
@@ -97,6 +101,7 @@ export class PackageController {
       this.createPackageGroupUseCase = optionsOrCloneOrDrain.createPackageGroupUseCase;
       this.addModuleToGroupUseCase = optionsOrCloneOrDrain.addModuleToGroupUseCase;
       this.drainOutbox = optionsOrCloneOrDrain.drainOutbox;
+      this.listOwnedPackagesUseCase = optionsOrCloneOrDrain.listOwnedPackagesUseCase;
       this.defaultHeaders =
         optionsOrCloneOrDrain.headers ??
         optionsOrCloneOrDrain.defaultHeaders ??
@@ -119,6 +124,46 @@ export class PackageController {
       this.defaultHeaders = (drainOrHeaders as Record<string, string>) ?? {};
     } else {
       this.defaultHeaders = headersOrEmpty;
+    }
+  }
+
+
+  async handleListPackages(request: Request): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const user = await this.sessionGateway.currentUser();
+      if (!user) {
+        return Response.json(
+          { error: { code: "auth.unauthenticated", message: "Inicia sesión para continuar." } },
+          { headers: responseHeaders, status: 401 },
+        );
+      }
+
+      if (!this.listOwnedPackagesUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      const result = await this.listOwnedPackagesUseCase.execute(user.id);
+      if (!result.ok) {
+        console.error(`[PackageController.list] Error de persistencia (${correlationId}):`, result.error.code);
+        return Response.json(
+          { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      return Response.json({ packages: result.value }, { headers: responseHeaders });
+    } catch (cause) {
+      console.error(`[PackageController.list] Error inesperado (${correlationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
     }
   }
 
