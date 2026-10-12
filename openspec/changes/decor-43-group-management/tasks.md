@@ -29,4 +29,5 @@
 - [x] 5.2 E2E opt-in `e2e/package-group-management-live.spec.ts` y ajuste de `e2e/package-configurator-live.spec.ts`.
 - [x] 5.3 Documentar en `docs/DecorAR.md` y `tests/package-catalog-api.http`.
 - [x] 5.4 Ejecutar `npm run lint`, `npm run typecheck`, `npm test` y `npm run build`.
-- [ ] 5.5 Aplicar la migración en el Supabase alojado (requiere acceso de Jose/Luis) y ejecutar las E2E live.
+- [x] 5.5 Ejecutar `openspec validate decor-43-group-management --type change --strict`: válido (`npx -y @fission-ai/openspec@1.14.1`, sin instalar el CLI).
+- [ ] 5.6 Aplicar la migración en el Supabase alojado (requiere acceso de Jose/Luis) y ejecutar las E2E live.
