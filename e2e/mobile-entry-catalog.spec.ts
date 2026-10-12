@@ -85,7 +85,7 @@ test.describe("portada", () => {
     await page.setViewportSize({ height: 720, width: 360 });
     await page.goto("/");
 
-    const cta = page.getByRole("link", { name: "Crear mi paquete" });
+    const cta = page.getByRole("link", { name: "Empezar a Decorar" });
     await expect(cta).toBeVisible();
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
@@ -98,11 +98,9 @@ test.describe("portada", () => {
     await page.goto("/");
 
     await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "DecorAR, inicio" }));
+    await expectVisibleFocus(page.getByRole("link", { name: "Empezar a Decorar" }));
     await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "Crear mi paquete" }));
-    await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "Conocer DecorAR" }));
+    await expectVisibleFocus(page.getByRole("link", { name: "Inicia Sesión" }));
   });
 
   test("la página de un paquete exige sesión", async ({ page }) => {
