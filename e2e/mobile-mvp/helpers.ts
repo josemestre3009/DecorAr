@@ -31,9 +31,11 @@ export async function signIn(page: Page, email: string, password: string) {
 /** Desde /packages: define el espacio con capacidad manual y llega al configurador. */
 export async function createPackage(page: Page, spaceLabel: string, capacity: string) {
   await page.goto("/packages");
-  await page.getByLabel(spaceLabel).check();
-  await page.getByLabel("Capacidad del espacio (m²)").fill(capacity);
-  await page.getByRole("button", { name: "Crear paquete" }).click();
+  // El historial de DECOR-41 también nombra "Casa" en sus enlaces: se busca en el formulario.
+  const form = page.getByRole("form", { name: "Crear paquete" });
+  await form.getByRole("radio", { name: spaceLabel }).check();
+  await form.getByLabel("Capacidad del espacio (m²)").fill(capacity);
+  await form.getByRole("button", { name: "Crear paquete" }).click();
   await expect(page).toHaveURL(PACKAGE_URL);
 }
 
