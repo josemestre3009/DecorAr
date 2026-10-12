@@ -39,6 +39,23 @@ describe("SupabaseEventOutbox", () => {
     expect(rpc.mock.calls[0][1]).toMatchObject({ p_correlation_id: "corr-abc" });
   });
 
+  it("commits an added-event batch through one RPC", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: 4, error: null });
+    const events = [
+      packageModuleAddedExample,
+      { ...packageModuleAddedExample, eventId: "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" },
+    ];
+
+    const result = await new SupabaseEventOutbox(clientWith(rpc)).commitBatch(events, 2, "corr-batch");
+
+    expect(rpc).toHaveBeenCalledWith("commit_package_changes", {
+      p_correlation_id: "corr-batch",
+      p_events: events,
+      p_expected_version: 2,
+    });
+    expect(result).toEqual({ ok: true, value: 4 });
+  });
+
   it.each([
     "package.not_found",
     "package.item_not_found",

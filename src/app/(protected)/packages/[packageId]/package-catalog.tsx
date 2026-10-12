@@ -16,16 +16,18 @@ type CatalogState =
 
 type PackageCatalogProps = {
   readonly packageId: string;
+  readonly packageVersion?: number;
   /** Inyectables para las pruebas. */
   readonly client?: PackagesClient;
   readonly fetcher?: typeof fetch;
   /** Unidades confirmadas por el servidor por `moduleId`; reconcilia el eco local tras un refresco (DECOR-22). */
   readonly serverCounts?: Readonly<Record<string, number>>;
+  readonly remainingM2?: number;
 };
 
 const IDLE: AddState = { status: "idle" };
 
-export function PackageCatalog({ packageId, client, fetcher, serverCounts }: PackageCatalogProps) {
+export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts }: PackageCatalogProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
   const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
@@ -33,7 +35,11 @@ export function PackageCatalog({ packageId, client, fetcher, serverCounts }: Pac
   const [addStates, setAddStates] = useState<Record<string, AddState>>({});
   // Cuántas veces se agregó cada módulo; se guarda aparte porque el estado
   // "adding" reemplaza al anterior mientras la petición está en curso.
-  const [addedCounts, setAddedCounts] = useState<Record<string, number>>({});
+  const [localChanges, setLocalChanges] = useState<{
+    readonly counts: Record<string, number>;
+    readonly usedM2: number;
+    readonly version?: number;
+  }>({ counts: {}, usedM2: 0, version: packageVersion });
   const [announcement, setAnnouncement] = useState("");
 
   useEffect(() => {
@@ -65,30 +71,45 @@ export function PackageCatalog({ packageId, client, fetcher, serverCounts }: Pac
     setAttempt((value) => value + 1);
   }
 
-  async function add(module: CatalogModuleDto) {
+  async function add(module: CatalogModuleDto, quantity: number): Promise<boolean> {
     setAddStates((states) => ({ ...states, [module.id]: { status: "adding" } }));
-    setAnnouncement(`Agregando ${module.name}…`);
+    setAnnouncement(
+      quantity === 1 ? `Agregando ${module.name}…` : `Agregando ${quantity} unidades de ${module.name}…`,
+    );
 
-    const result = await packages.addItem(packageId, module.id);
+    const result = quantity === 1
+      ? await packages.addItem(packageId, module.id)
+      : await packages.addItem(packageId, module.id, quantity);
 
     if (result.ok) {
-      setAddedCounts((counts) => ({ ...counts, [module.id]: (counts[module.id] ?? 0) + 1 }));
+      setLocalChanges((changes) => {
+        const current = changes.version === packageVersion ? changes : { counts: {}, usedM2: 0 };
+        return {
+          counts: { ...current.counts, [module.id]: (current.counts[module.id] ?? 0) + quantity },
+          usedM2: current.usedM2 + module.areaM2 * quantity,
+          version: packageVersion,
+        };
+      });
       setAddStates((states) => {
         const next = { ...states };
         delete next[module.id];
         return next;
       });
-      setAnnouncement(`${module.name} se agregó a tu paquete.`);
+      setAnnouncement(
+        quantity === 1
+          ? `${module.name} se agregó a tu paquete.`
+          : `${quantity} unidades de ${module.name} se agregaron a tu paquete.`,
+      );
       // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
       if (packages.mode === "live") {
         router.refresh();
       }
-      return;
+      return true;
     }
 
     if (result.error.kind === "unauthorized") {
       router.push("/login");
-      return;
+      return false;
     }
 
     setAddStates((states) => ({
@@ -96,6 +117,7 @@ export function PackageCatalog({ packageId, client, fetcher, serverCounts }: Pac
       [module.id]: { message: result.error.message, status: "error" },
     }));
     setAnnouncement("");
+    return false;
   }
 
   // "Agregado N veces" sale de las unidades confirmadas por el servidor cuando
@@ -107,7 +129,8 @@ export function PackageCatalog({ packageId, client, fetcher, serverCounts }: Pac
       return pending;
     }
 
-    const count = serverCounts ? (serverCounts[moduleId] ?? 0) : (addedCounts[moduleId] ?? 0);
+    const localCount = localChanges.version === packageVersion ? (localChanges.counts[moduleId] ?? 0) : 0;
+    const count = (serverCounts?.[moduleId] ?? 0) + localCount;
     return count > 0 ? { count, status: "added" } : IDLE;
   }
 
@@ -165,6 +188,9 @@ export function PackageCatalog({ packageId, client, fetcher, serverCounts }: Pac
                 module={module}
                 onAdd={add}
                 packageId={packageId}
+                remainingM2={remainingM2 === undefined
+                  ? undefined
+                  : Math.max(0, remainingM2 - (localChanges.version === packageVersion ? localChanges.usedM2 : 0))}
               />
             </li>
           ))}

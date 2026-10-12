@@ -3,6 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { DrainOutboxUseCase } from "../../modules/events/application/drain-outbox.use-case";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
 import type { AddModuleToGroupUseCase } from "../../modules/packages/application/use-cases/add-module-to-group.use-case";
+import { MAX_BATCH_QUANTITY } from "../../modules/packages/application/dtos/package.dto";
 import type { AddModuleToPackageUseCase } from "../../modules/packages/application/use-cases/add-module-to-package.use-case";
 import type { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
@@ -221,11 +222,18 @@ export class PackageController {
         );
       }
 
-      const { moduleId, parentGroupId } = body as Record<string, unknown>;
+      const { moduleId, parentGroupId, quantity = 1 } = body as Record<string, unknown>;
       if (typeof moduleId !== "string" || moduleId.trim().length === 0) {
         return Response.json(
           { error: { code: "package.invalid_module", message: "El módulo no es válido" } },
           { headers: this.defaultHeaders, status: 400 },
+        );
+      }
+
+      if (!Number.isSafeInteger(quantity) || (quantity as number) < 1 || (quantity as number) > MAX_BATCH_QUANTITY) {
+        return Response.json(
+          { error: { code: "package.invalid_quantity", message: `La cantidad debe ser un entero entre 1 y ${MAX_BATCH_QUANTITY}` } },
+          { headers: responseHeaders, status: 400 },
         );
       }
 
@@ -244,6 +252,12 @@ export class PackageController {
 
       // Con parentGroupId la hoja entra en un grupo existente (Composite, DECOR-25).
       const groupId = typeof parentGroupId === "string" ? parentGroupId.trim() : "";
+      if (groupId.length > 0 && quantity !== 1) {
+        return Response.json(
+          { error: { code: "package.invalid_quantity", message: "Los grupos admiten una unidad por acción" } },
+          { headers: responseHeaders, status: 400 },
+        );
+      }
       if (groupId.length > 0 && !this.addModuleToGroupUseCase) {
         return Response.json(
           { error: { code: "internal_error", message: "Caso de uso de grupos no disponible." } },
@@ -264,6 +278,7 @@ export class PackageController {
               correlationId,
               moduleId: moduleId.trim(),
               packageId,
+              quantity: quantity as number,
               userId: access.user.id,
             });
 
