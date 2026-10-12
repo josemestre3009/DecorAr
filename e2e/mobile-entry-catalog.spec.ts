@@ -85,7 +85,7 @@ test.describe("portada", () => {
     await page.setViewportSize({ height: 720, width: 360 });
     await page.goto("/");
 
-    const cta = page.getByRole("link", { name: "Crear mi paquete" });
+    const cta = page.getByRole("link", { name: "Empezar a Decorar" });
     await expect(cta).toBeVisible();
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
@@ -98,11 +98,9 @@ test.describe("portada", () => {
     await page.goto("/");
 
     await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "DecorAR, inicio" }));
+    await expectVisibleFocus(page.getByRole("link", { name: "Empezar a Decorar" }));
     await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "Crear mi paquete" }));
-    await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "Conocer DecorAR" }));
+    await expectVisibleFocus(page.getByRole("link", { name: "Inicia Sesión" }));
   });
 
   test("la página de un paquete exige sesión", async ({ page }) => {
@@ -151,10 +149,14 @@ test.describe("definición del espacio y catálogo", () => {
     await expect(cards.first()).toContainText("4 m²");
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
-    await page.getByRole("button", { name: "Agregar Mesa redonda" }).click();
+    const increaseMesa = page.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
+    await increaseMesa.click();
+    await increaseMesa.click();
+    await expect(cards.first()).toContainText("×3");
+    await page.getByRole("button", { name: "Agregar 3 unidades de Mesa redonda" }).click();
 
-    await expect(page.getByText("Mesa redonda se agregó a tu paquete.")).toBeAttached();
-    await expect(cards.first()).toContainText("Agregado a tu paquete");
+    await expect(page.getByText("3 unidades de Mesa redonda se agregaron a tu paquete.")).toBeAttached();
+    await expect(cards.first()).toContainText("Agregado 3 veces");
 
     expect(postgrestCalls).toEqual([]);
   });
@@ -245,18 +247,23 @@ test.describe("definición del espacio y catálogo", () => {
     await expect(page.getByRole("article")).toHaveCount(3);
 
     await page.keyboard.press("Tab");
-    const addMesa = page.getByRole("button", { name: "Agregar Mesa redonda" });
-    await expectVisibleFocus(addMesa);
+    const decreaseMesa = page.getByRole("button", { name: "Reducir cantidad de Mesa redonda" });
+    await expectVisibleFocus(decreaseMesa);
 
-    // El enlace de vuelta queda antes del título y se alcanza hacia atrás.
-    await page.keyboard.press("Shift+Tab");
-    await expectVisibleFocus(page.getByRole("link", { name: "← Cambiar espacio" }));
     await page.keyboard.press("Tab");
-    await expect(addMesa).toBeFocused();
+    const increaseMesa = page.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
+    await expectVisibleFocus(increaseMesa);
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("button", { name: "Agregar 2 unidades de Mesa redonda" })).toBeVisible();
+
+    await page.keyboard.press("Tab");
+    const addMesa = page.getByRole("button", { name: "Agregar 2 unidades de Mesa redonda" });
+    await expectVisibleFocus(addMesa);
 
     await page.keyboard.press("Enter");
 
-    await expect(page.getByText("Mesa redonda se agregó a tu paquete.")).toBeAttached();
-    await expectVisibleFocus(addMesa);
+    await expect(page.getByText("2 unidades de Mesa redonda se agregaron a tu paquete.")).toBeAttached();
+    // Tras el éxito la cantidad vuelve a 1 y el nombre accesible del botón cambia.
+    await expectVisibleFocus(page.getByRole("button", { name: "Agregar Mesa redonda" }));
   });
 });

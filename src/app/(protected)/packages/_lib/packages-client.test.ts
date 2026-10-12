@@ -49,6 +49,20 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
     expect(JSON.parse(String(init?.body))).toEqual({ moduleId: "m1" });
   });
 
+  it("envía quantity al agregar varias unidades", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
+      Response.json({ itemId: "i1", itemIds: ["i1", "i2"], packageVersion: 3 }, { status: 201 }),
+    );
+
+    const result = await createHttpPackagesClient(fetcher).addItem("p1", "m1", 2);
+
+    expect(result).toEqual({
+      ok: true,
+      value: { itemId: "i1", itemIds: ["i1", "i2"], packageVersion: 3 },
+    });
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ moduleId: "m1", quantity: 2 });
+  });
+
   it("clona un paquete con POST /api/packages/{id}/clone", async () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(
       Response.json(

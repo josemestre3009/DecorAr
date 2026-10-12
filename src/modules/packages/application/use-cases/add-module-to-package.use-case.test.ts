@@ -84,6 +84,113 @@ describe("AddModuleToPackageUseCase", () => {
     );
   });
 
+  it("valida y confirma varias unidades en un único lote", async () => {
+    idCounter = 1;
+    const packageReader: PackageReader = {
+      getItemModuleId: vi.fn(),
+      getPackage: vi.fn().mockResolvedValue(ok({
+        capacityM2: 30,
+        id: "pkg-1",
+        items: [],
+        spaceType: "casa",
+        userId: "user-1",
+        version: 4,
+      })),
+    };
+    const catalogReader: CatalogModuleReader = {
+      getModuleById: vi.fn().mockResolvedValue(ok({
+        areaM2: 2,
+        id: "mod-1",
+        name: "Silla",
+        priceCop: 100000,
+      })),
+    };
+    const commitBatch = vi.fn().mockResolvedValue(ok(7));
+    const outbox: PackageChangeOutbox = { commit: vi.fn(), commitBatch };
+    const consume = vi.fn().mockResolvedValue(ok(undefined));
+    const useCase = new AddModuleToPackageUseCase(
+      packageReader,
+      catalogReader,
+      outbox,
+      mockClock,
+      mockIdGenerator,
+      { consume },
+    );
+
+    const result = await useCase.execute({
+      correlationId: "corr-batch",
+      moduleId: "mod-1",
+      packageId: "pkg-1",
+      quantity: 3,
+      userId: "user-1",
+    });
+
+    expect(result).toEqual(ok({ itemId: "id-1", itemIds: ["id-1", "id-3", "id-5"], packageVersion: 7 }));
+    expect(commitBatch).toHaveBeenCalledWith(
+      expect.arrayContaining([
+        expect.objectContaining({ payload: { itemId: "id-1", moduleId: "mod-1" } }),
+        expect.objectContaining({ payload: { itemId: "id-5", moduleId: "mod-1" } }),
+      ]),
+      4,
+      "corr-batch",
+    );
+    expect(outbox.commit).not.toHaveBeenCalled();
+    expect(consume).toHaveBeenCalledTimes(1);
+    expect(consume).toHaveBeenCalledWith(expect.objectContaining({ payload: { itemId: "id-5", moduleId: "mod-1" } }));
+  });
+
+  it("rechaza una cantidad no entera o no positiva antes de leer o escribir", async () => {
+    const packageReader: PackageReader = { getItemModuleId: vi.fn(), getPackage: vi.fn() };
+    const catalogReader: CatalogModuleReader = { getModuleById: vi.fn() };
+    const outbox: PackageChangeOutbox = { commit: vi.fn(), commitBatch: vi.fn() };
+    const useCase = new AddModuleToPackageUseCase(
+      packageReader,
+      catalogReader,
+      outbox,
+      mockClock,
+      mockIdGenerator,
+    );
+
+    for (const quantity of [0, -1, 1.5, 101]) {
+      const result = await useCase.execute({ moduleId: "mod-1", packageId: "pkg-1", quantity, userId: "user-1" });
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect(result.error.code).toBe("package.invalid_quantity");
+    }
+    expect(packageReader.getPackage).not.toHaveBeenCalled();
+    expect(outbox.commit).not.toHaveBeenCalled();
+  });
+
+  it("rechaza el lote completo cuando la cantidad supera la capacidad", async () => {
+    const packageReader: PackageReader = {
+      getItemModuleId: vi.fn(),
+      getPackage: vi.fn().mockResolvedValue(ok({
+        capacityM2: 5,
+        id: "pkg-1",
+        items: [],
+        spaceType: "casa",
+        userId: "user-1",
+        version: 1,
+      })),
+    };
+    const catalogReader: CatalogModuleReader = {
+      getModuleById: vi.fn().mockResolvedValue(ok({ areaM2: 2, id: "mod-1", name: "Silla", priceCop: 1 })),
+    };
+    const outbox: PackageChangeOutbox = { commit: vi.fn(), commitBatch: vi.fn() };
+    const useCase = new AddModuleToPackageUseCase(
+      packageReader,
+      catalogReader,
+      outbox,
+      mockClock,
+      mockIdGenerator,
+    );
+
+    const result = await useCase.execute({ moduleId: "mod-1", packageId: "pkg-1", quantity: 3, userId: "user-1" });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("package.capacity_exceeded");
+    expect(outbox.commitBatch).not.toHaveBeenCalled();
+  });
+
   it("pasa correlationId al outbox cuando se recibe en el dto (DECOR-31)", async () => {
     idCounter = 1;
     const mockPackageReader: PackageReader = {

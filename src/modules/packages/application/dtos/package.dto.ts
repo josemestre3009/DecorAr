@@ -1,5 +1,7 @@
 import type { TipoEspacio } from "../../domain/space-type";
 
+export const MAX_BATCH_QUANTITY = 100;
+
 export interface CreatePackageDto {
   readonly userId: string;
   readonly spaceType: string;
@@ -16,12 +18,14 @@ export interface AddModuleToPackageDto {
   readonly packageId: string;
   readonly userId: string;
   readonly moduleId: string;
+  readonly quantity?: number;
   /** Propagated to the outbox row and the recovery logs (DECOR-31); never part of the event contract. */
   readonly correlationId?: string;
 }
 
 export interface AddedItemDto {
   readonly itemId: string;
+  readonly itemIds?: readonly string[];
   readonly packageVersion: number;
 }
 

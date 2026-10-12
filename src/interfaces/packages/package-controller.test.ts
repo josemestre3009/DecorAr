@@ -119,6 +119,63 @@ describe("PackageController", () => {
     return { ...base, addModuleToGroupUseCase, controller, createPackageGroupUseCase };
   };
 
+  describe("handleListPackages", () => {
+    const createListController = () => {
+      const base = createMocks();
+      const listOwnedPackagesUseCase = { execute: vi.fn().mockResolvedValue(ok([])) };
+      const controller = new PackageController(
+        base.sessionGateway,
+        base.authorizePackageAccess as unknown as AuthorizePackageAccessUseCase,
+        base.createPackageUseCase as unknown as CreatePackageUseCase,
+        base.addModuleToPackageUseCase as unknown as AddModuleToPackageUseCase,
+        base.removeModuleFromPackageUseCase as unknown as RemoveModuleFromPackageUseCase,
+        { listOwnedPackagesUseCase },
+      );
+      return { ...base, controller, listOwnedPackagesUseCase };
+    };
+
+    it("devuelve 401 sin sesión y no consulta paquetes", async () => {
+      const mocks = createListController();
+      mocks.sessionGateway.currentUser.mockResolvedValue(null);
+
+      const response = await mocks.controller.handleListPackages(new Request("http://localhost/api/packages"));
+
+      expect(response.status).toBe(401);
+      expect(mocks.listOwnedPackagesUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("devuelve sólo el listado del usuario con correlation id", async () => {
+      const mocks = createListController();
+      const packages = [
+        { capacityM2: 20, id: "pkg-1", spaceType: "casa", updatedAt: "2026-10-12T15:00:00Z" },
+      ];
+      mocks.listOwnedPackagesUseCase.execute.mockResolvedValue(ok(packages));
+
+      const response = await mocks.controller.handleListPackages(
+        new Request("http://localhost/api/packages", { headers: { "x-correlation-id": "corr-41" } }),
+      );
+
+      expect(response.status).toBe(200);
+      expect(response.headers.get("x-correlation-id")).toBe("corr-41");
+      expect(await response.json()).toEqual({ packages });
+      expect(mocks.listOwnedPackagesUseCase.execute).toHaveBeenCalledWith("user-1");
+    });
+
+    it("oculta el detalle de errores de persistencia", async () => {
+      const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+      const mocks = createListController();
+      mocks.listOwnedPackagesUseCase.execute.mockResolvedValue(
+        err(new DomainError("package.persistence_error", "secret database detail")),
+      );
+
+      const response = await mocks.controller.handleListPackages(new Request("http://localhost/api/packages"));
+
+      expect(response.status).toBe(500);
+      expect(await response.json()).toMatchObject({ error: { code: "internal_error" } });
+      consoleSpy.mockRestore();
+    });
+  });
+
   describe("handleCreatePackage", () => {
     it("devuelve 401 si no hay usuario autenticado", async () => {
       const mocks = createMocks();
@@ -193,6 +250,27 @@ describe("PackageController", () => {
   });
 
   describe("handleAddItem", () => {
+    it("envía quantity al caso de uso y rechaza cantidades inválidas", async () => {
+      const mocks = createMocks();
+      const valid = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1", quantity: 4 }),
+        method: "POST",
+      });
+
+      expect((await mocks.controller.handleAddItem(valid, "pkg-1")).status).toBe(201);
+      expect(mocks.addModuleToPackageUseCase.execute).toHaveBeenCalledWith(expect.objectContaining({ quantity: 4 }));
+
+      for (const quantity of [0, -1, 1.5, 101, "2"]) {
+        const invalid = new Request("http://localhost/api/packages/pkg-1/items", {
+          body: JSON.stringify({ moduleId: "mod-1", quantity }),
+          method: "POST",
+        });
+        const response = await mocks.controller.handleAddItem(invalid, "pkg-1");
+        expect(response.status).toBe(400);
+        expect((await response.json()).error.code).toBe("package.invalid_quantity");
+      }
+    });
+
     it("devuelve 401 si checkPackageAccess falla por falta de sesión", async () => {
       const mocks = createMocks();
       mocks.authorizePackageAccess.execute.mockResolvedValue(

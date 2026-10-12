@@ -102,6 +102,7 @@ describe("DECOR-30 executable authorization policies", () => {
     const privileges = await db.query<{
       private_usage: boolean;
       rpc_execute: boolean;
+      batch_rpc_execute: boolean;
       catalog_read: boolean;
       catalog_write: boolean;
       catalog_activate: boolean;
@@ -109,6 +110,7 @@ describe("DECOR-30 executable authorization policies", () => {
       SELECT
         has_schema_privilege('authenticated', 'private', 'USAGE') AS private_usage,
         has_function_privilege('authenticated', 'public.commit_package_change(jsonb,integer,text)', 'EXECUTE') AS rpc_execute,
+        has_function_privilege('authenticated', 'public.commit_package_changes(jsonb,integer,text)', 'EXECUTE') AS batch_rpc_execute,
         has_table_privilege('authenticated', 'public.catalog_modules', 'SELECT') AS catalog_read,
         has_table_privilege('authenticated', 'public.catalog_modules', 'INSERT') AS catalog_write,
         has_function_privilege(
@@ -119,6 +121,7 @@ describe("DECOR-30 executable authorization policies", () => {
     `);
 
     expect(privileges.rows).toEqual([{
+      batch_rpc_execute: false,
       private_usage: false,
       rpc_execute: false,
       catalog_read: true,

@@ -28,6 +28,12 @@ const submit = () => fireEvent.click(screen.getByRole("button", { name: "Crear p
 describe("SpaceForm", () => {
   beforeEach(() => push.mockReset());
 
+  it("expone el nombre accesible del formulario de creación", () => {
+    render(<SpaceForm client={fakeClient(vi.fn())} />);
+
+    expect(screen.getByRole("form", { name: "Crear paquete" })).toBeInTheDocument();
+  });
+
   it("ofrece casa, aire libre y salón social", () => {
     render(<SpaceForm client={fakeClient(vi.fn())} />);
 

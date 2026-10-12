@@ -95,6 +95,27 @@ export class SupabaseEventOutbox implements PackageChangeOutbox, OutboxStore {
     }
   }
 
+  async commitBatch(
+    events: readonly PackageChangeEvent[],
+    expectedVersion: number,
+    correlationId?: string,
+  ): Promise<Result<number, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("commit_package_changes", {
+        p_correlation_id: correlationId ?? null,
+        p_events: events,
+        p_expected_version: expectedVersion,
+      });
+
+      if (error) return err(toDomainError(error));
+      if (typeof data !== "number") return err(persistenceError(new Error("Invalid package version")));
+
+      return ok(data);
+    } catch (cause) {
+      return err(persistenceError(cause));
+    }
+  }
+
   async claimInitial(limit: number): Promise<Result<readonly ClaimedOutboxEvent[], DomainError>> {
     try {
       const { data, error } = await this.client.rpc("claim_initial_domain_events", {

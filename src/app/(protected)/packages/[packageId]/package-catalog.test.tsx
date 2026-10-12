@@ -126,6 +126,93 @@ describe("PackageCatalog", () => {
     expect(refresh).toHaveBeenCalledTimes(2);
   });
 
+  it("selecciona varias unidades sin superar la capacidad y las agrega en una llamada", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(
+      ok({ itemId: "i-1", itemIds: ["i-1", "i-2", "i-3"], packageVersion: 4 }),
+    );
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(
+      <PackageCatalog
+        client={client(addItem)}
+        fetcher={fetcher}
+        packageId="p-1"
+        remainingM2={6}
+      />,
+    );
+
+    const increase = await screen.findByRole("button", { name: "Aumentar cantidad de Arco floral" });
+    fireEvent.click(increase);
+    fireEvent.click(increase);
+
+    expect(screen.getByText("×3")).toBeInTheDocument();
+    expect(increase).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(increase);
+    expect(screen.getByText("×3")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Agregar 3 unidades de Arco floral" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id, 3));
+    expect(screen.getByText("3 unidades de Arco floral se agregaron a tu paquete.")).toBeInTheDocument();
+    expect(screen.getByText("Agregado 3 veces")).toBeInTheDocument();
+    // Tras el éxito la cantidad vuelve a 1 y el nombre accesible del botón cambia.
+    expect(screen.getByRole("button", { name: "Agregar Arco floral" })).toBeInTheDocument();
+    expect(screen.queryByText("×3")).not.toBeInTheDocument();
+  });
+
+  it("ajusta la cantidad cuando el espacio se reduce al agregar otro módulo", async () => {
+    const addItem = vi
+      .fn<PackagesClient["addItem"]>()
+      .mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={6} />);
+
+    const increase = await screen.findByRole("button", { name: "Aumentar cantidad de Arco floral" });
+    fireEvent.click(increase);
+    fireEvent.click(increase);
+    expect(screen.getByText("×3")).toBeInTheDocument();
+
+    // Mesa redonda ocupa 4 m² y deja 2 m²: Arco floral (2 m²) baja a máximo 1.
+    fireEvent.click(screen.getByRole("button", { name: "Agregar Mesa redonda" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[0].id));
+    await waitFor(() => expect(screen.queryByText("×3")).not.toBeInTheDocument());
+    fireEvent.click(screen.getByRole("button", { name: "Agregar Arco floral" }));
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id));
+  });
+
+  it("no convierte la cantidad a 0 cuando el espacio se agota y bloquea el botón", async () => {
+    const addItem = vi
+      .fn<PackagesClient["addItem"]>()
+      .mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={5} />);
+
+    const increase = await screen.findByRole("button", { name: "Aumentar cantidad de Arco floral" });
+    fireEvent.click(increase);
+    expect(screen.getByText("×2")).toBeInTheDocument();
+
+    // Mesa redonda ocupa 4 m²: quedan 1 m², insuficientes para otra unidad de Arco floral.
+    fireEvent.click(screen.getByRole("button", { name: "Agregar Mesa redonda" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[0].id));
+    const arco = await screen.findByRole("button", { name: "Agregar Arco floral" });
+    expect(arco).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(arco);
+    expect(addItem).toHaveBeenCalledTimes(1);
+  });
+
+  it("explica y bloquea la acción cuando no cabe una unidad", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>();
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json([fixture[0]]));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={3} />);
+
+    expect(await screen.findByText("No queda espacio para otra unidad.")).toBeInTheDocument();
+    const button = screen.getByRole("button", { name: "Agregar Mesa redonda" });
+    expect(button).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(button);
+    expect(addItem).not.toHaveBeenCalled();
+  });
+
   it("en modo simulado no refresca la página al agregar", async () => {
     const addItem = vi
       .fn<PackagesClient["addItem"]>()

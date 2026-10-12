@@ -42,6 +42,7 @@ import { AddModuleToGroupUseCase } from "@/modules/packages/application/use-case
 import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
 import { ClonePackageUseCase } from "@/modules/packages/application/use-cases/clone-package.use-case";
 import { GetPackageDetailUseCase } from "@/modules/packages/application/use-cases/get-package-detail.use-case";
+import { ListOwnedPackagesUseCase } from "@/modules/packages/application/use-cases/list-owned-packages.use-case";
 import { CreatePackageGroupUseCase } from "@/modules/packages/application/use-cases/create-package-group.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
@@ -153,6 +154,9 @@ export async function createPackageController(
   const adminClient = createAdminClient();
   const packageRepository = new SupabasePackageRepository(adminClient);
   const packageReader = new SupabasePackageReader(adminClient);
+  const listOwnedPackagesUseCase = new ListOwnedPackagesUseCase(
+    new SupabasePackageReader(sessionClient),
+  );
   const catalogReader = new SupabaseCatalogModuleReader(adminClient);
   const packageGroupRepository = new SupabasePackageGroupRepository(adminClient);
   const { drainOutbox, outbox } = createEventOutboxDependencies();
@@ -215,8 +219,39 @@ export async function createPackageController(
       createPackageGroupUseCase,
       defaultHeaders: pendingHeaders,
       drainOutbox,
+      listOwnedPackagesUseCase,
     },
   );
+}
+
+/**
+ * Dependencias mínimas de `GET /api/packages` (DECOR-41): sólo el cliente de
+ * sesión, así que el listado nunca exige `SUPABASE_SERVICE_ROLE_KEY`. El
+ * lector corre bajo RLS con ese mismo cliente y los encabezados de refresh/
+ * anti-cache que entrega `@supabase/ssr` se devuelven en `defaultHeaders`.
+ * La Server Component de `/packages` también la usa para `listOwnedPackages`.
+ */
+export async function createPackageListQueryDependencies(
+  options: SessionClientOptions = {},
+) {
+  const defaultHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(defaultHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const sessionGateway = createSessionGateway(sessionClient);
+
+  return {
+    currentUser: () => sessionGateway.currentUser(),
+    defaultHeaders,
+    listOwnedPackages: new ListOwnedPackagesUseCase(
+      new SupabasePackageReader(sessionClient),
+    ),
+  };
 }
 
 /**
