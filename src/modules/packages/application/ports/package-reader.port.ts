@@ -17,6 +17,17 @@ export interface PackageDetail {
   readonly items: readonly PackageItemSummary[];
 }
 
+export interface PackageSummary {
+  readonly id: string;
+  readonly spaceType: TipoEspacio | null;
+  readonly capacityM2: number | null;
+  readonly updatedAt: string;
+}
+
+export interface PackageListReader {
+  listByOwner(userId: string): Promise<Result<readonly PackageSummary[], DomainError>>;
+}
+
 export interface PackageReader {
   getPackage(packageId: string, userId: string): Promise<Result<PackageDetail | null, DomainError>>;
   getItemModuleId(packageId: string, itemId: string): Promise<Result<string | null, DomainError>>;

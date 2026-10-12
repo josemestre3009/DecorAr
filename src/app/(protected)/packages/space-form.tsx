@@ -72,7 +72,7 @@ export function SpaceForm({ client }: SpaceFormProps) {
   const capacityError = errors.capacityM2;
 
   return (
-    <form className="auth-form" noValidate onSubmit={handleSubmit}>
+    <form aria-label="Crear paquete" className="auth-form" noValidate onSubmit={handleSubmit}>
       <fieldset
         aria-describedby={spaceTypeError ? "spaceType-error" : undefined}
         aria-invalid={spaceTypeError ? true : undefined}

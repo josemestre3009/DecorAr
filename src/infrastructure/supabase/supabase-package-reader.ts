@@ -6,9 +6,11 @@ import { err, ok, type Result } from "../../shared/domain/result";
 import type {
   PackageDetail,
   PackageItemSummary,
+  PackageListReader,
   PackageReader,
+  PackageSummary,
 } from "../../modules/packages/application/ports/package-reader.port";
-import type { TipoEspacio } from "../../modules/packages/domain/space-type";
+import { isTipoEspacio, type TipoEspacio } from "../../modules/packages/domain/space-type";
 
 interface PackageRow {
   id: string;
@@ -24,11 +26,44 @@ interface PackageItemJoinedRow {
   catalog_modules: { area_m2: number | string } | { area_m2: number | string }[] | null;
 }
 
+interface PackageSummaryRow {
+  id: string;
+  space_type: unknown;
+  capacity_m2: number | string | null;
+  updated_at: string;
+}
+
 /** Postgres `invalid_text_representation`: a malformed uuid reached the query. */
 const INVALID_TEXT_REPRESENTATION = "22P02";
 
-export class SupabasePackageReader implements PackageReader {
+export class SupabasePackageReader implements PackageReader, PackageListReader {
   constructor(private readonly client: SupabaseClient) {}
+
+  async listByOwner(userId: string): Promise<Result<readonly PackageSummary[], DomainError>> {
+    try {
+      const { data, error } = await this.client
+        .from("packages")
+        .select("id, space_type, capacity_m2, updated_at")
+        .eq("user_id", userId)
+        .order("updated_at", { ascending: false });
+
+      if (error) {
+        return err(new DomainError("package.persistence_error", error.message, { cause: error }));
+      }
+
+      return ok(
+        ((data as PackageSummaryRow[] | null) ?? []).map((row) => ({
+          capacityM2: row.capacity_m2 === null ? null : Number(row.capacity_m2),
+          id: row.id,
+          spaceType: isTipoEspacio(row.space_type) ? row.space_type : null,
+          updatedAt: row.updated_at,
+        })),
+      );
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : "Error al consultar paquetes";
+      return err(new DomainError("package.persistence_error", message, { cause }));
+    }
+  }
 
   async getPackage(packageId: string, userId: string): Promise<Result<PackageDetail | null, DomainError>> {
     try {
