@@ -159,6 +159,9 @@ export function ModuleViewer({
             configuracion={view.vista.configuracion}
             loadLibrary={loadLibrary}
           />
+          <Link className="secondary-link webxr-spike-link" href={`${catalogHref}/modules/${encodeURIComponent(moduleId)}/spike`}>
+            Probar escena multiobjeto (experimental)
+          </Link>
         </>
       ) : null}
     </section>
