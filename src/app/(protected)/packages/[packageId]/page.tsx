@@ -141,7 +141,12 @@ export default async function PackagePage({ params }: PackagePageProps) {
 
       <WelcomeZoneButton packageId={packageId} />
 
-      <PackageCatalog packageId={packageId} serverCounts={serverCounts} />
+      <PackageCatalog
+        packageId={packageId}
+        packageVersion={configurator?.status === "ready" ? configurator.detail.version : undefined}
+        remainingM2={configurator?.status === "ready" ? configurator.detail.remainingM2 : undefined}
+        serverCounts={serverCounts}
+      />
     </main>
   );
 }

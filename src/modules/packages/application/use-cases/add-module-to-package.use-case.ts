@@ -4,7 +4,7 @@ import type { Clock, IdGenerator } from "../../../../shared/application/ports";
 import type { PackageModuleAddedEvent } from "../../../events/domain/event-contracts";
 import type { PackageChangeOutbox } from "../../../events/application/outbox";
 import { PaqueteDecoracion } from "../../domain/decoration-package";
-import type { AddedItemDto, AddModuleToPackageDto } from "../dtos/package.dto";
+import { MAX_BATCH_QUANTITY, type AddedItemDto, type AddModuleToPackageDto } from "../dtos/package.dto";
 import type { CatalogModuleReader } from "../ports/catalog-module-reader.port";
 import { notifyPackageChange, type PackageChangeConsumer } from "../ports/package-change-consumer.port";
 import type { PackageReader } from "../ports/package-reader.port";
@@ -30,6 +30,16 @@ export class AddModuleToPackageUseCase {
 
     if (!dto.moduleId || dto.moduleId.trim().length === 0) {
       return err(new DomainError("package.invalid_module", "El módulo no es válido"));
+    }
+
+    const quantity = dto.quantity ?? 1;
+    if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_BATCH_QUANTITY) {
+      return err(
+        new DomainError(
+          "package.invalid_quantity",
+          `La cantidad debe ser un entero entre 1 y ${MAX_BATCH_QUANTITY}`,
+        ),
+      );
     }
 
     const packageResult = await this.packageReader.getPackage(dto.packageId, dto.userId);
@@ -65,44 +75,61 @@ export class AddModuleToPackageUseCase {
       return err(packageEntityResult.error);
     }
 
-    const addValidation = packageEntityResult.value.agregarModulo({
-      id: moduleDetail.id,
-      nombre: moduleDetail.name,
-      ocupaM2: moduleDetail.areaM2,
-      precio: moduleDetail.priceCop,
-    });
-
-    if (!addValidation.ok) {
-      return err(addValidation.error);
+    const usedM2 = packageEntityResult.value.espacioUsadoM2;
+    if (usedM2 + moduleDetail.areaM2 * quantity > packageDetail.capacityM2) {
+      return err(
+        new DomainError(
+          "package.capacity_exceeded",
+          `No se agregó "${moduleDetail.name}": excede la capacidad del espacio (${usedM2 + moduleDetail.areaM2 * quantity}/${packageDetail.capacityM2} m²).`,
+        ),
+      );
     }
 
-    const itemId = this.idGenerator.generate();
-    const eventId = this.idGenerator.generate();
+    for (let index = 0; index < quantity; index += 1) {
+      const addValidation = packageEntityResult.value.agregarModulo({
+        id: `${moduleDetail.id}-${index}`,
+        nombre: moduleDetail.name,
+        ocupaM2: moduleDetail.areaM2,
+        precio: moduleDetail.priceCop,
+      });
 
-    const event: PackageModuleAddedEvent = {
-      eventId,
-      occurredAt: this.clock.now().toISOString(),
-      packageId: dto.packageId,
-      payload: {
-        itemId,
-        moduleId: dto.moduleId,
-      },
-      schemaVersion: 1,
-      type: "package.module.added",
-      userId: dto.userId,
-    };
+      if (!addValidation.ok) {
+        return err(addValidation.error);
+      }
+    }
 
-    const commitResult = dto.correlationId
-      ? await this.outbox.commit(event, packageDetail.version, dto.correlationId)
-      : await this.outbox.commit(event, packageDetail.version);
+    const occurredAt = this.clock.now().toISOString();
+    const events: PackageModuleAddedEvent[] = Array.from({ length: quantity }, () => {
+      const itemId = this.idGenerator.generate();
+      return {
+        eventId: this.idGenerator.generate(),
+        occurredAt,
+        packageId: dto.packageId,
+        payload: { itemId, moduleId: dto.moduleId },
+        schemaVersion: 1,
+        type: "package.module.added",
+        userId: dto.userId,
+      };
+    });
+
+    const commitResult = quantity === 1
+      ? dto.correlationId
+        ? await this.outbox.commit(events[0], packageDetail.version, dto.correlationId)
+        : await this.outbox.commit(events[0], packageDetail.version)
+      : this.outbox.commitBatch
+        ? await this.outbox.commitBatch(events, packageDetail.version, dto.correlationId)
+        : err(new DomainError("outbox.persistence_error", "La escritura por lotes no está disponible"));
     if (!commitResult.ok) {
       return err(commitResult.error);
     }
 
-    await notifyPackageChange(this.changeConsumer, event);
+    await notifyPackageChange(this.changeConsumer, events[events.length - 1]);
+
+    const itemIds = events.map((event) => event.payload.itemId);
 
     return ok({
-      itemId,
+      itemId: itemIds[0],
+      itemIds,
       packageVersion: commitResult.value,
     });
   }

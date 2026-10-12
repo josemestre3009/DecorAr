@@ -1,4 +1,5 @@
 import { err, ok, type Result } from "@/shared/domain/result";
+import { MAX_BATCH_QUANTITY } from "@/modules/packages/application/dtos/package.dto";
 
 import {
   networkFailure,
@@ -33,6 +34,7 @@ export type CreatedPackage = {
 
 export type AddedItem = {
   readonly itemId: string;
+  readonly itemIds?: readonly string[];
   readonly packageVersion: number;
 };
 
@@ -52,7 +54,7 @@ export type PackagesClientMode = "live" | "simulated";
 export interface PackagesClient {
   readonly mode: PackagesClientMode;
   createPackage(definition: SpaceDefinition): Promise<Result<CreatedPackage, ApiFailure>>;
-  addItem(packageId: string, moduleId: string): Promise<Result<AddedItem, ApiFailure>>;
+  addItem(packageId: string, moduleId: string, quantity?: number): Promise<Result<AddedItem, ApiFailure>>;
   clonePackage(packageId: string): Promise<Result<ClonedPackage, ApiFailure>>;
   /** `DELETE /api/packages/{id}/items/{itemId}` → 204 sin cuerpo (DECOR-27). */
   removeItem(packageId: string, itemId: string): Promise<Result<void, ApiFailure>>;
@@ -73,7 +75,9 @@ function isAddedItem(value: unknown): value is AddedItem {
 
   const body = value as Record<string, unknown>;
 
-  return typeof body.itemId === "string" && typeof body.packageVersion === "number";
+  return typeof body.itemId === "string" &&
+    (body.itemIds === undefined || (Array.isArray(body.itemIds) && body.itemIds.every((id) => typeof id === "string"))) &&
+    typeof body.packageVersion === "number";
 }
 
 function isClonedPackage(value: unknown): value is ClonedPackage {
@@ -145,11 +149,11 @@ export function createHttpPackagesClient(fetcher: typeof fetch = fetch): Package
         { capacityM2: definition.capacityM2, spaceType: definition.spaceType },
         isCreatedPackage,
       ),
-    addItem: (packageId, moduleId) =>
+    addItem: (packageId, moduleId, quantity = 1) =>
       postJson(
         fetcher,
         `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items`,
-        { moduleId },
+        quantity === 1 ? { moduleId } : { moduleId, quantity },
         isAddedItem,
       ),
     clonePackage: (packageId) =>
@@ -261,7 +265,7 @@ export function createSimulatedPackagesClient(
 
       return ok(created);
     },
-    async addItem(packageId, moduleId) {
+    async addItem(packageId, moduleId, quantity = 1) {
       await wait();
 
       const packages = load();
@@ -275,16 +279,25 @@ export function createSimulatedPackagesClient(
         return failure("invalid", 400, "package.invalid_module", "El módulo no es válido.");
       }
 
-      const itemId = newId();
+      if (!Number.isSafeInteger(quantity) || quantity < 1 || quantity > MAX_BATCH_QUANTITY) {
+        return failure(
+          "invalid",
+          400,
+          "package.invalid_quantity",
+          `La cantidad debe ser un entero entre 1 y ${MAX_BATCH_QUANTITY}.`,
+        );
+      }
+
+      const itemIds = Array.from({ length: quantity }, () => newId());
       const updated: SimulatedPackage = {
         ...current,
-        items: [...current.items, { itemId, moduleId }],
-        version: current.version + 1,
+        items: [...current.items, ...itemIds.map((itemId) => ({ itemId, moduleId }))],
+        version: current.version + quantity,
       };
 
       save({ ...packages, [packageId]: updated });
 
-      return ok({ itemId, packageVersion: updated.version });
+      return ok({ itemId: itemIds[0], itemIds, packageVersion: updated.version });
     },
     async clonePackage(packageId) {
       await wait();

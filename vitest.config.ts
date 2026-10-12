@@ -13,6 +13,7 @@ const PGLITE_TESTS = [
   "src/modules/packages/decor-24-acceptance.test.ts",
   "src/modules/packages/decor-25-acceptance.test.ts",
   "src/modules/packages/decor-27-acceptance.test.ts",
+  "supabase/migrations/add-package-items-batch.test.ts",
   "supabase/migrations/authorize-packages-and-private-channels.test.ts",
   "supabase/migrations/create-idempotent-budget-consumer.test.ts",
   "supabase/migrations/create-package-groups.test.ts",

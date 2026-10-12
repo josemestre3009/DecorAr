@@ -250,6 +250,27 @@ describe("PackageController", () => {
   });
 
   describe("handleAddItem", () => {
+    it("envía quantity al caso de uso y rechaza cantidades inválidas", async () => {
+      const mocks = createMocks();
+      const valid = new Request("http://localhost/api/packages/pkg-1/items", {
+        body: JSON.stringify({ moduleId: "mod-1", quantity: 4 }),
+        method: "POST",
+      });
+
+      expect((await mocks.controller.handleAddItem(valid, "pkg-1")).status).toBe(201);
+      expect(mocks.addModuleToPackageUseCase.execute).toHaveBeenCalledWith(expect.objectContaining({ quantity: 4 }));
+
+      for (const quantity of [0, -1, 1.5, 101, "2"]) {
+        const invalid = new Request("http://localhost/api/packages/pkg-1/items", {
+          body: JSON.stringify({ moduleId: "mod-1", quantity }),
+          method: "POST",
+        });
+        const response = await mocks.controller.handleAddItem(invalid, "pkg-1");
+        expect(response.status).toBe(400);
+        expect((await response.json()).error.code).toBe("package.invalid_quantity");
+      }
+    });
+
     it("devuelve 401 si checkPackageAccess falla por falta de sesión", async () => {
       const mocks = createMocks();
       mocks.authorizePackageAccess.execute.mockResolvedValue(

@@ -22,6 +22,11 @@ export interface PackageChangeOutbox {
     expectedVersion?: number,
     correlationId?: string,
   ): Promise<Result<number, DomainError>>;
+  commitBatch?(
+    events: readonly PackageModuleAddedEvent[],
+    expectedVersion: number,
+    correlationId?: string,
+  ): Promise<Result<number, DomainError>>;
 }
 
 export type ClaimedOutboxEvent = {
