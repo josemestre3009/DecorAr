@@ -340,12 +340,13 @@ La suite `e2e/mobile-mvp/` recorre el flujo de demo en un **Pixel 5** contra la 
 
 1. **Preparación**: el setup (`mvp.setup.ts`) espera `GET /api/health` = `{"status":"ok"}`. Así no se confunde con otro servidor en el puerto 3000. Después ejecuta el seed, inicia sesión por la interfaz con los usuarios A y B y guarda su `storageState` en `e2e/.auth/` (ignorado por git). Por último comprueba que la imagen está en modo `live`.
 2. **Seed idempotente** (`scripts/seed-e2e.ts`, server-side con `service_role`):
-   - crea o reajusta los usuarios dedicados A y B con el correo confirmado;
+   - crea o reajusta los usuarios dedicados A y B con el correo confirmado. Las cuentas que crea llevan la marca `app_metadata.decor_e2e_seed = true`;
+   - si un correo configurado pertenece a una cuenta **sin** esa marca, se detiene antes de escribir nada: no cambia contraseñas ni borra paquetes. Así un `.env` mal configurado no puede tocar una cuenta real;
    - borra solo los paquetes de A y B (cascada a ítems, grupos, presupuesto y eventos);
    - verifica que `arco`, `mesa` y `pista` están activos con GLB y USDZ HTTPS. No los activa: si faltan, falla y remite a `npm run catalog:publish-assets` (DECOR-36).
 3. **Flujo** (`mvp-flow.spec.ts`, usuario A):
    - espacio Casa de 30 m² y pista desde el catálogo;
-   - segunda pista rechazada con `422 package.capacity_exceeded` y "(32/30 m²)", sin mutar la interfaz;
+   - capacidad excedida con una vista obsoleta: dos pestañas de A abren un paquete propio de 30 m². Una agrega la pista y la otra, que todavía ve 30 m² libres, pide otra. La API responde `422 package.capacity_exceeded` con "(32/30 m²)"; esa pestaña no muestra la pista ni cambia el área, y al recargar ve solo la pista guardada. Con la vista al día, el selector de cantidad (DECOR-42) ya impide pedirla;
    - Zona de bienvenida (Composite);
    - total confirmado igual a `GET /budget`;
    - resincronización al recuperar la conexión;
@@ -365,6 +366,8 @@ Variables (`.env`, ver `.env.example`):
 | `DECOR_E2E_BASE_URL` (opcional) | Otra URL; por defecto `http://127.0.0.1:3000` |
 
 Las cuentas A y B son dedicadas y distintas de `DECOR_E2E_EMAIL`. El logout de `e2e/auth.spec.ts` revoca la sesión de esa cuenta.
+
+Las cuentas A/B creadas antes de la marca no la tienen, así que el seed las rechaza. Hay que borrarlas una vez en Supabase → Authentication → Users (sus paquetes caen en cascada); la siguiente ejecución las crea marcadas.
 
 Ejecución (PowerShell):
 

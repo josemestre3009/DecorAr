@@ -22,12 +22,17 @@ La suite SHALL correr desde el host contra la app levantada con Docker compose. 
 
 ### Requirement: Seed idempotente
 
-El seed SHALL ejecutarse en el servidor con `service_role`. SHALL dejar los usuarios A y B con el correo confirmado y sin paquetes, y SHALL verificar que arco, mesa y pista están activos con GLB y USDZ HTTPS. MUST NOT modificar datos de otros usuarios ni activar módulos.
+El seed SHALL ejecutarse en el servidor con `service_role`. SHALL dejar los usuarios A y B con el correo confirmado y sin paquetes, y SHALL verificar que arco, mesa y pista están activos con GLB y USDZ HTTPS. Las cuentas que crea SHALL llevar `app_metadata.decor_e2e_seed = true`. MUST NOT modificar datos de otros usuarios ni activar módulos.
 
 #### Scenario: Dos ejecuciones seguidas
 
 - **WHEN** el seed se ejecuta dos veces
 - **THEN** ambas terminan con los mismos usuarios A y B y sin paquetes previos
+
+#### Scenario: Cuenta existente sin la marca del seed
+
+- **WHEN** el correo de A o de B pertenece a una cuenta sin `app_metadata.decor_e2e_seed = true`
+- **THEN** el seed falla nombrando el correo antes de cualquier escritura: no cambia contraseñas, no confirma correos y no borra paquetes de A ni de B
 
 #### Scenario: Catálogo incompleto
 
@@ -40,8 +45,9 @@ Con la sesión de A (`storageState`), la suite SHALL crear un paquete con capaci
 
 #### Scenario: Capacidad excedida
 
-- **WHEN** un paquete de 30 m² con una pista recibe otra pista
-- **THEN** la API responde 422 `package.capacity_exceeded`, la interfaz muestra "(32/30 m²)" y el área usada no cambia
+- **WHEN** dos pestañas de A abren el mismo paquete de 30 m², una agrega una pista y la otra, con la vista obsoleta, pide otra pista
+- **THEN** la API responde 422 `package.capacity_exceeded` y la pestaña obsoleta muestra "(32/30 m²)" sin agregar la pista ni cambiar el área usada
+- **AND** al recargar, esa pestaña muestra solo la pista guardada (16/30 m²)
 
 #### Scenario: Presupuesto confirmado
 

@@ -1,6 +1,15 @@
-import { describe, expect, it } from "vitest";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import { describe, expect, it, vi } from "vitest";
 
-import { readSeedConfig, verifyCatalog, type CatalogRow } from "./seed-e2e";
+import {
+  planSeedUser,
+  readSeedConfig,
+  SEED_MARK,
+  seedE2E,
+  verifyCatalog,
+  type CatalogRow,
+  type ExistingUser,
+} from "./seed-e2e";
 
 const env = {
   DECOR_E2E_USER_A_EMAIL: " Decor39-A@decorar.test ",
@@ -62,5 +71,62 @@ describe("verifyCatalog", () => {
     expect(() => verifyCatalog([row("arco"), row("mesa", { usdz_url: null })])).toThrow(
       /mesa@v3: GLB y USDZ deben ser URLs HTTPS; pista: no hay versión activa.*catalog:publish-assets/,
     );
+  });
+});
+
+describe("planSeedUser", () => {
+  const user = { email: "decor39-a@decorar.test", password: "clave-a" };
+
+  it("crea la cuenta cuando no existe", () => {
+    expect(planSeedUser(null, user)).toEqual({ kind: "create" });
+  });
+
+  it("reajusta la cuenta que ya creó el seed", () => {
+    expect(planSeedUser({ app_metadata: { provider: "email", [SEED_MARK]: true }, id: "user-a" }, user)).toEqual({
+      id: "user-a",
+      kind: "update",
+    });
+  });
+
+  it("se detiene ante una cuenta existente sin la marca", () => {
+    expect(() => planSeedUser({ app_metadata: { provider: "email" }, id: "real" }, user)).toThrow(
+      /decor39-a@decorar\.test ya existe y no es una cuenta creada por este seed/,
+    );
+    expect(() => planSeedUser({ app_metadata: { [SEED_MARK]: "true" }, id: "real" }, user)).toThrow(SEED_MARK);
+    expect(() => planSeedUser({ app_metadata: null, id: "real" }, user)).toThrow(SEED_MARK);
+  });
+});
+
+describe("seedE2E", () => {
+  function fakeAdmin(users: Array<ExistingUser & { email: string }>) {
+    const writes = {
+      createUser: vi.fn(),
+      from: vi.fn(),
+      updateUserById: vi.fn(),
+    };
+    const admin = {
+      auth: {
+        admin: {
+          createUser: writes.createUser,
+          listUsers: vi.fn(async () => ({ data: { users }, error: null })),
+          updateUserById: writes.updateUserById,
+        },
+      },
+      from: writes.from,
+    } as unknown as SupabaseClient;
+    return { admin, writes };
+  }
+
+  it("no escribe nada si B pertenece a una cuenta sin la marca, aunque A sea del seed", async () => {
+    const { admin, writes } = fakeAdmin([
+      { app_metadata: { [SEED_MARK]: true }, email: "decor39-a@decorar.test", id: "user-a" },
+      { app_metadata: { provider: "email" }, email: "decor39-b@decorar.test", id: "real-b" },
+    ]);
+
+    await expect(seedE2E(readSeedConfig(env), admin)).rejects.toThrow(/decor39-b@decorar\.test ya existe/);
+
+    expect(writes.updateUserById).not.toHaveBeenCalled();
+    expect(writes.createUser).not.toHaveBeenCalled();
+    expect(writes.from).not.toHaveBeenCalled();
   });
 });

@@ -53,20 +53,50 @@ test.describe.serial("DECOR-39 flujo móvil del MVP", () => {
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
   });
 
-  test("capacidad excedida: la API responde 422 y la interfaz lo informa sin mutar", async ({ page }) => {
-    await page.goto(packagePath);
+  test("capacidad excedida: con una vista obsoleta la API responde 422 y la interfaz no muta", async ({
+    page,
+    browser,
+  }) => {
+    // Con la vista al día, el selector de DECOR-42 ya no deja pedir una pista
+    // que no cabe; el 422 solo se alcanza desde una vista obsoleta. X e Y son
+    // dos pestañas de A sobre un paquete propio de 30 m².
+    await createPackage(page, "Casa", "30");
+    const capacityPath = new URL(page.url()).pathname;
 
-    const rejected = page.waitForResponse(
-      (response) => response.request().method() === "POST" && /\/items$/.test(new URL(response.url()).pathname),
-    );
-    await addFromCatalog(page, pista.name);
-    const response = await rejected;
+    const staleContext = await browser.newContext({ storageState: STORAGE_A });
+    try {
+      const stale = await staleContext.newPage();
+      await stale.goto(capacityPath);
+      await expect(facts(stale)).toHaveText(["Casa", "30 m²", "0 m²", "30 m²"]);
+      const staleAdd = stale.getByRole("button", { name: `Agregar ${pista.name}` });
+      await expect(staleAdd).not.toHaveAttribute("aria-disabled");
 
-    expect(response.status()).toBe(422);
-    expect(((await response.json()) as { error: { code: string } }).error.code).toBe("package.capacity_exceeded");
-    await expect(appAlert(page)).toContainText("excede la capacidad del espacio (32/30 m²)");
-    await expect(leafRow(contents(page), pista.name)).toContainText("×1");
-    await expect(facts(page)).toHaveText(["Casa", "30 m²", "16 m²", "14 m²"]);
+      // X ocupa 16 de los 30 m²; Y sigue creyendo que hay 30 libres.
+      await addFromCatalog(page, pista.name);
+      await expect(facts(page)).toHaveText(["Casa", "30 m²", "16 m²", "14 m²"]);
+
+      const rejected = stale.waitForResponse(
+        (response) => response.request().method() === "POST" && /\/items$/.test(new URL(response.url()).pathname),
+      );
+      await staleAdd.click();
+      const response = await rejected;
+
+      expect(response.status()).toBe(422);
+      expect(((await response.json()) as { error: { code: string } }).error.code).toBe("package.capacity_exceeded");
+      await expect(appAlert(stale)).toContainText("excede la capacidad del espacio (32/30 m²)");
+
+      // Y no aplica nada por su cuenta: ni contenido, ni área, ni "Agregado".
+      await expect(leafRow(contents(stale), pista.name)).toHaveCount(0);
+      await expect(facts(stale)).toHaveText(["Casa", "30 m²", "0 m²", "30 m²"]);
+      await expect(stale.getByRole("article").filter({ hasText: pista.name })).not.toContainText("Agregado");
+
+      // Al recargar, Y ve lo que guardó el servidor: solo la pista de X.
+      await stale.reload();
+      await expect(leafRow(contents(stale), pista.name)).toContainText("×1");
+      await expect(facts(stale)).toHaveText(["Casa", "30 m²", "16 m²", "14 m²"]);
+    } finally {
+      await staleContext.close();
+    }
   });
 
   test("Composite: la Zona de bienvenida agrupa arco y mesa", async ({ page }) => {

@@ -6,9 +6,15 @@
  *
  * Cada ejecución deja el mismo estado:
  * - usuarios A y B dedicados (correo confirmado, contraseña de .env), creados
- *   si faltan y con la contraseña reajustada si ya existen;
+ *   si faltan con la marca `app_metadata.decor_e2e_seed` y con la contraseña
+ *   reajustada si ya existen;
  * - sin paquetes de A ni de B (los ítems, grupos, presupuestos y eventos caen
  *   en cascada). No toca datos de ningún otro usuario;
+ *
+ * Salvaguarda: si un correo configurado pertenece a una cuenta sin la marca
+ * (una cuenta real o creada a mano), el seed se detiene antes de escribir nada:
+ * ni contraseña, ni confirmación, ni borrado de paquetes. Solo la service role
+ * puede escribir `app_metadata`, así que nadie se puede automarcar.
  * - catálogo verificado: arco, mesa y pista activos con GLB y USDZ HTTPS. Si
  *   faltan, falla con un mensaje claro; activarlos es de DECOR-36
  *   (`npm run catalog:publish-assets`), no de este seed.
@@ -123,30 +129,58 @@ export function verifyCatalog(rows: readonly CatalogRow[]): SeedResult["catalog"
   return found as SeedResult["catalog"];
 }
 
-async function findUserIdByEmail(admin: SupabaseClient, email: string): Promise<string | null> {
+/** Marca en `app_metadata` de las cuentas que creó este seed. */
+export const SEED_MARK = "decor_e2e_seed";
+
+export type ExistingUser = {
+  readonly id: string;
+  readonly app_metadata?: Readonly<Record<string, unknown>> | null;
+};
+
+export type SeedUserPlan = { readonly kind: "create" } | { readonly kind: "update"; readonly id: string };
+
+/**
+ * Decide qué hacer con un usuario A/B sin escribir nada: crearlo si no existe,
+ * reajustarlo si lo creó este seed, o detenerse si es una cuenta ajena.
+ */
+export function planSeedUser(existing: ExistingUser | null, user: SeedUser): SeedUserPlan {
+  if (!existing) return { kind: "create" };
+  if (existing.app_metadata?.[SEED_MARK] === true) return { id: existing.id, kind: "update" };
+
+  throw new Error(
+    `Seed E2E: ${user.email} ya existe y no es una cuenta creada por este seed ` +
+      `(falta app_metadata.${SEED_MARK}). No se cambió su contraseña ni se borraron sus paquetes. ` +
+      "Usa correos dedicados a la E2E en DECOR_E2E_USER_A_EMAIL / DECOR_E2E_USER_B_EMAIL.",
+  );
+}
+
+async function findUserByEmail(admin: SupabaseClient, email: string): Promise<ExistingUser | null> {
   const perPage = 1000;
   for (let page = 1; ; page += 1) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage });
     if (error) throw error;
     const user = data.users.find((candidate) => candidate.email?.toLowerCase() === email);
-    if (user) return user.id;
+    if (user) return user;
     if (data.users.length < perPage) return null;
   }
 }
 
-/** Crea el usuario o, si ya existe, le devuelve la contraseña y el correo confirmado. */
-async function upsertUser(admin: SupabaseClient, user: SeedUser): Promise<string> {
-  const existing = await findUserIdByEmail(admin, user.email);
-  if (existing) {
-    const { error } = await admin.auth.admin.updateUserById(existing, {
+/** Aplica el plan: crea el usuario marcado o le devuelve la contraseña y el correo confirmado. */
+async function applySeedUser(admin: SupabaseClient, user: SeedUser, plan: SeedUserPlan): Promise<string> {
+  const appMetadata = { [SEED_MARK]: true };
+
+  if (plan.kind === "update") {
+    const { error } = await admin.auth.admin.updateUserById(plan.id, {
+      app_metadata: appMetadata,
       email_confirm: true,
       password: user.password,
     });
     if (error) throw error;
-    return existing;
+    return plan.id;
   }
 
   const { data, error } = await admin.auth.admin.createUser({
+    app_metadata: appMetadata,
     email: user.email,
     email_confirm: true,
     password: user.password,
@@ -155,16 +189,22 @@ async function upsertUser(admin: SupabaseClient, user: SeedUser): Promise<string
   return data.user.id;
 }
 
-export async function seedE2E(config: SeedConfig): Promise<SeedResult> {
-  const admin = createClient(config.supabaseUrl, config.serviceRoleKey, {
+export async function seedE2E(
+  config: SeedConfig,
+  admin: SupabaseClient = createClient(config.supabaseUrl, config.serviceRoleKey, {
     auth: { autoRefreshToken: false, persistSession: false },
-  });
+  }),
+): Promise<SeedResult> {
+  // Primero se verifican A y B; si cualquiera es ajena, no se escribe nada.
+  const planA = planSeedUser(await findUserByEmail(admin, config.userA.email), config.userA);
+  const planB = planSeedUser(await findUserByEmail(admin, config.userB.email), config.userB);
 
-  const a = await upsertUser(admin, config.userA);
-  const b = await upsertUser(admin, config.userB);
+  const a = await applySeedUser(admin, config.userA, planA);
+  const b = await applySeedUser(admin, config.userB, planB);
 
   // packages.user_id → auth.users; ítems, grupos, budgets y eventos cuelgan del
-  // paquete con ON DELETE CASCADE. Solo se borran los paquetes de A y B.
+  // paquete con ON DELETE CASCADE. Solo se borran los paquetes de A y B, ya
+  // verificados como cuentas del seed.
   const deleted = await admin.from("packages").delete().in("user_id", [a, b]).select("id");
   if (deleted.error) throw deleted.error;
 
