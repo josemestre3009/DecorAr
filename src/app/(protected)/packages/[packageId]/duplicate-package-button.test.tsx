@@ -17,7 +17,9 @@ function createMockClient(clonePackage: PackagesClient["clonePackage"]): Package
     clonePackage,
     createPackage: vi.fn(),
     mode: "live",
+    moveItem: vi.fn(),
     removeItem: vi.fn(),
+    updateMetadata: vi.fn(),
   };
 }
 
@@ -26,11 +28,11 @@ describe("DuplicatePackageButton", () => {
     push.mockReset();
   });
 
-  it("renderiza el botón 'Duplicar paquete' en estado inicial", () => {
+  it("renderiza el botón 'Duplicar evento' en estado inicial", () => {
     const client = createMockClient(vi.fn());
     render(<DuplicatePackageButton client={client} packageId="pkg-123" />);
 
-    const button = screen.getByRole("button", { name: "Duplicar paquete" });
+    const button = screen.getByRole("button", { name: "Duplicar evento" });
     expect(button).toBeInTheDocument();
     expect(button).not.toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "false");
@@ -50,12 +52,12 @@ describe("DuplicatePackageButton", () => {
 
     render(<DuplicatePackageButton client={client} packageId="pkg-123" />);
 
-    const button = screen.getByRole("button", { name: "Duplicar paquete" });
+    const button = screen.getByRole("button", { name: "Duplicar evento" });
     fireEvent.click(button);
 
     expect(button).toBeDisabled();
     expect(button).toHaveAttribute("aria-busy", "true");
-    expect(button).toHaveTextContent("Duplicando paquete…");
+    expect(button).toHaveTextContent("Duplicando evento…");
 
     await waitFor(() => {
       expect(clonePackage).toHaveBeenCalledWith("pkg-123");
@@ -76,7 +78,7 @@ describe("DuplicatePackageButton", () => {
 
     render(<DuplicatePackageButton client={client} packageId="pkg-123" />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Duplicar paquete" }));
+    fireEvent.click(screen.getByRole("button", { name: "Duplicar evento" }));
 
     await waitFor(() => {
       expect(push).toHaveBeenCalledWith("/login");
@@ -96,12 +98,12 @@ describe("DuplicatePackageButton", () => {
 
     render(<DuplicatePackageButton client={client} packageId="pkg-123" />);
 
-    const button = screen.getByRole("button", { name: "Duplicar paquete" });
+    const button = screen.getByRole("button", { name: "Duplicar evento" });
     fireEvent.click(button);
 
     const alert = await screen.findByRole("alert");
     expect(alert).toHaveTextContent("No pudimos duplicar el paquete en este momento.");
     expect(button).not.toBeDisabled();
-    expect(button).toHaveTextContent("Duplicar paquete");
+    expect(button).toHaveTextContent("Duplicar evento");
   });
 });

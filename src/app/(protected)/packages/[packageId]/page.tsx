@@ -10,17 +10,19 @@ import { requireSessionUser } from "@/composition/session-guard";
 
 import { countUnitsByModule, type ConfiguratorBudget } from "../_lib/configurator-view";
 import { resolvePackagesMode } from "../_lib/packages-client";
+import { buildZoneTree, flattenZones } from "../_lib/zone-tree";
 import { BudgetTotal } from "./budget-total";
 import { DuplicatePackageButton } from "./duplicate-package-button";
+import { EventMetadataEditor } from "./event-metadata-editor";
+import { EventSummary } from "./event-summary";
 import { PackageCatalog } from "./package-catalog";
 import { PackageContents } from "./package-contents";
 import { PageHeading } from "./page-heading";
 import { RefreshButton } from "./refresh-button";
-import { SpaceSummary } from "./space-summary";
-import { WelcomeZoneButton } from "./welcome-zone-button";
+import { SaveTemplateButton } from "./save-template-button";
 
 export const metadata: Metadata = {
-  title: "Tu paquete · DecorAR",
+  title: "Tu evento · DecorAR",
 };
 
 type PackagePageProps = {
@@ -83,31 +85,34 @@ export default async function PackagePage({ params }: PackagePageProps) {
   // paquete sólo existe en el navegador y la página sigue como antes.
   const isLive = resolvePackagesMode(process.env.NEXT_PUBLIC_DECOR_PACKAGES_API) === "live";
   const configurator = isLive ? await loadConfigurator(packageId) : null;
+  const ready = configurator?.status === "ready" ? configurator : null;
   // Conteo confirmado por el servidor: el catálogo lo usa para reconciliar su
   // eco local tras agregar o quitar (DECOR-22).
-  const serverCounts =
-    configurator?.status === "ready" ? countUnitsByModule(configurator.detail.nodes) : undefined;
+  const serverCounts = ready ? countUnitsByModule(ready.detail.nodes) : undefined;
+  const detail = ready?.detail ?? null;
+  // Zonas planas para los selectores de destino del contenido y el catálogo.
+  const zones = detail ? flattenZones(buildZoneTree(detail.nodes)) : [];
 
   return (
     <main className="catalog-page">
       <header className="catalog-header">
         <div className="catalog-nav">
           <Link className="auth-link" href="/packages">
-            ← Cambiar espacio
+            ← Eventos
           </Link>
           <DuplicatePackageButton packageId={packageId} />
         </div>
-        <PageHeading>Tu paquete</PageHeading>
+        <PageHeading>{detail?.name ?? "Tu evento"}</PageHeading>
         <p className="page-lead">
           {isLive
-            ? "Revisa tu espacio, agrega o quita elementos y duplica la configuración."
+            ? "Revisa los datos del evento, agrega o quita elementos y guarda la configuración como plantilla."
             : "Elige los módulos que quieres en tu decoración."}
         </p>
       </header>
 
       {configurator === null ? (
         <p className="simulation-note">
-          El contenido del paquete, el área usada y el presupuesto confirmado se muestran con la API real
+          El contenido del evento, el área usada y el presupuesto confirmado se muestran con la API real
           (modo live).
         </p>
       ) : null}
@@ -115,37 +120,38 @@ export default async function PackagePage({ params }: PackagePageProps) {
       {configurator?.status === "error" ? (
         <section className="configurator-card catalog-error catalog-state">
           <p className="auth-error" role="alert">
-            No pudimos cargar tu paquete.
+            No pudimos cargar tu evento.
           </p>
           <RefreshButton label="Reintentar" />
         </section>
       ) : null}
 
-      {configurator?.status === "ready" ? (
+      {detail && ready ? (
         <>
           <div className="configurator-summary">
-            <SpaceSummary detail={configurator.detail} />
+            <EventSummary detail={detail} />
             <BudgetTotal
-              budget={configurator.budget}
+              budget={ready.budget}
               packageId={packageId}
-              packageVersion={configurator.detail.version}
+              packageVersion={detail.version}
             />
           </div>
+          <EventMetadataEditor detail={detail} packageId={packageId} />
+          <SaveTemplateButton eventName={detail.name} packageId={packageId} />
           <PackageContents
-            nodes={configurator.detail.nodes}
+            nodes={detail.nodes}
             packageId={packageId}
-            version={configurator.detail.version}
+            version={detail.version}
           />
         </>
       ) : null}
 
-      <WelcomeZoneButton packageId={packageId} />
-
       <PackageCatalog
         packageId={packageId}
-        packageVersion={configurator?.status === "ready" ? configurator.detail.version : undefined}
-        remainingM2={configurator?.status === "ready" ? configurator.detail.remainingM2 : undefined}
+        packageVersion={detail?.version}
+        remainingM2={detail?.remainingM2 ?? undefined}
         serverCounts={serverCounts}
+        zones={zones}
       />
     </main>
   );

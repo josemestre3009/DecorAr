@@ -39,7 +39,11 @@ flowchart LR
 | `interfaces-infrastructure-dependency` | Aplicación y dominio | Adaptadores concretos de infraestructura |
 | `app-infrastructure-dependency` | Interfaces y composition root | Adaptadores concretos de infraestructura desde entradas server-side |
 | `client-server-import` | UI y cliente Supabase browser | Adaptadores server/admin, `server-only`, composition root |
-| `client-business-crud` | Auth y Realtime privados | `.from()` sobre catálogo, paquetes, elementos, presupuestos o eventos |
+| `client-business-crud` | Auth y Realtime privados | `.from()` sobre catálogo, paquetes, elementos, presupuestos, eventos o plantillas |
 | `packages-budget-coupling` | Eventos o puertos compartidos | Import directo desde packages hacia budget |
 
 `scripts/scan-architecture.test.ts` valida el árbol real y casos negativos controlados. PostgREST es la Data API interna de Supabase, no un módulo ni despliegue separado.
+
+DECOR-44 mantiene el mismo límite para las plantillas privadas de eventos. Los Route Handlers de `/api/event-templates` (y `PATCH /api/packages/{id}`) adaptan HTTP en `src/app/api`, delegan en `EventTemplateController`/`PackageController` en `src/interfaces`, validan sesión y propiedad con `checkEventTemplateAccess` o `checkPackageAccess`, y persisten mediante RPC `SECURITY INVOKER` de `service_role`. El navegador nunca escribe `event_templates`, `event_template_groups` ni `event_template_items`; RLS solo concede lectura al propietario.
+
+El Composite editable (`editable-decorative-groups`) sigue el mismo límite: los Route Handlers `POST /api/packages/{id}/groups`, `PATCH|DELETE /api/packages/{id}/groups/{groupId}` y `PATCH /api/packages/{id}/items/{itemId}` adaptan HTTP en `src/app/api`, delegan en `PackageController` en `src/interfaces`, validan sesión y propiedad con `checkPackageAccess`, y persisten mediante las RPC `create_package_group`, `update_package_group`, `delete_package_group` y `move_package_item` (`SECURITY INVOKER`, `service_role`). El navegador no escribe `package_groups` ni `package_items`; no se añaden dependencias, tablas ni rutas paralelas.

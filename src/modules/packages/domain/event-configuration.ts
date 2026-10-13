@@ -15,8 +15,10 @@ export interface PreferenciasEvento {
 
 export interface ConfiguracionEventoProps {
   readonly id: string;
-  readonly tipoEspacio: TipoEspacio;
-  readonly capacidadM2: number;
+  /** Opcional desde DECOR-44: un evento puede no conocer todavía su espacio. */
+  readonly tipoEspacio?: TipoEspacio | null;
+  /** Opcional desde DECOR-44: el área disponible puede declararse después. */
+  readonly capacidadM2?: number | null;
   readonly preferencias: PreferenciasEvento;
   readonly modulos?: readonly ModuloDecoracion[];
 }
@@ -28,8 +30,8 @@ export interface ConfiguracionEventoProps {
  */
 export class ConfiguracionEvento implements ConfiguracionClonable {
   private readonly _id: string;
-  private readonly _tipoEspacio: TipoEspacio;
-  private readonly _capacidadM2: number;
+  private readonly _tipoEspacio: TipoEspacio | null;
+  private readonly _capacidadM2: number | null;
   private _preferencias: {
     style: string;
     colors: string[];
@@ -39,8 +41,8 @@ export class ConfiguracionEvento implements ConfiguracionClonable {
 
   private constructor(
     id: string,
-    tipoEspacio: TipoEspacio,
-    capacidadM2: number,
+    tipoEspacio: TipoEspacio | null,
+    capacidadM2: number | null,
     preferencias: { style: string; colors: string[]; notes: string },
     modulos: ModuloDecoracion[] = [],
   ) {
@@ -56,13 +58,16 @@ export class ConfiguracionEvento implements ConfiguracionClonable {
       return err(new DomainError("package.invalid_id", "El identificador de configuración no puede estar vacío"));
     }
 
-    if (!isTipoEspacio(props.tipoEspacio)) {
+    const tipoEspacio = props.tipoEspacio ?? null;
+    const capacidadM2 = props.capacidadM2 ?? null;
+
+    if (tipoEspacio !== null && !isTipoEspacio(tipoEspacio)) {
       return err(
-        new DomainError("package.invalid_space_type", `Tipo de espacio no soportado: ${String(props.tipoEspacio)}`),
+        new DomainError("package.invalid_space_type", `Tipo de espacio no soportado: ${String(tipoEspacio)}`),
       );
     }
 
-    if (!isValidCapacityM2(props.capacidadM2)) {
+    if (capacidadM2 !== null && !isValidCapacityM2(capacidadM2)) {
       return err(
         new DomainError(
           "package.invalid_capacity",
@@ -72,16 +77,6 @@ export class ConfiguracionEvento implements ConfiguracionClonable {
     }
 
     const initialModules = props.modulos ? [...props.modulos] : [];
-    const initialUsed = initialModules.reduce((acc, m) => acc + m.ocupaM2, 0);
-
-    if (initialUsed > props.capacidadM2) {
-      return err(
-        new DomainError(
-          "package.capacity_exceeded",
-          `La suma de módulos (${initialUsed} m²) excede la capacidad del espacio (${props.capacidadM2} m²)`,
-        ),
-      );
-    }
 
     const prefs = {
       style: props.preferencias?.style ?? "clasico",
@@ -89,18 +84,18 @@ export class ConfiguracionEvento implements ConfiguracionClonable {
       notes: props.preferencias?.notes ?? "",
     };
 
-    return ok(new ConfiguracionEvento(props.id, props.tipoEspacio, props.capacidadM2, prefs, initialModules));
+    return ok(new ConfiguracionEvento(props.id, tipoEspacio, capacidadM2, prefs, initialModules));
   }
 
   get id(): string {
     return this._id;
   }
 
-  get tipoEspacio(): TipoEspacio {
+  get tipoEspacio(): TipoEspacio | null {
     return this._tipoEspacio;
   }
 
-  get capacidadM2(): number {
+  get capacidadM2(): number | null {
     return this._capacidadM2;
   }
 
@@ -168,16 +163,7 @@ export class ConfiguracionEvento implements ConfiguracionClonable {
   }
 
   public agregarModulo(modulo: ModuloDecoracion): Result<void, DomainError> {
-    const espacioFinal = this.espacioUsadoM2 + modulo.ocupaM2;
-    if (espacioFinal > this._capacidadM2) {
-      return err(
-        new DomainError(
-          "package.capacity_exceeded",
-          `No se agregó "${modulo.nombre}": excede la capacidad del espacio (${espacioFinal}/${this._capacidadM2} m²).`,
-        ),
-      );
-    }
-
+    // El exceso de área ya no rechaza (DECOR-44): solo lo informa el diagnóstico.
     this._modulos.push(modulo);
     return ok(undefined);
   }

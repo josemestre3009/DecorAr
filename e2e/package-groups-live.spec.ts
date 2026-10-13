@@ -59,7 +59,7 @@ test.describe.serial("DECOR-25 Composite contra la API real (smoke)", () => {
     await signIn(page);
 
     const createdPackage = await page.request.post("/api/packages", {
-      data: { capacityM2: 50, spaceType: "salonSocial" },
+      data: { capacityM2: 50, name: "Evento Composite", spaceType: "salonSocial" },
     });
     expect(createdPackage.status()).toBe(201);
     packageId = ((await createdPackage.json()) as { id: string }).id;

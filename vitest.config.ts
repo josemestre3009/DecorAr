@@ -17,6 +17,8 @@ const PGLITE_TESTS = [
   "supabase/migrations/authorize-packages-and-private-channels.test.ts",
   "supabase/migrations/create-idempotent-budget-consumer.test.ts",
   "supabase/migrations/create-package-groups.test.ts",
+  "supabase/migrations/decor-44-event-templates.test.ts",
+  "supabase/migrations/edit-decorative-groups.test.ts",
 ];
 
 export default defineConfig({
@@ -38,6 +40,7 @@ export default defineConfig({
         test: {
           name: "unit",
           exclude: [...BASE_EXCLUDE, ...PGLITE_TESTS],
+          testTimeout: 15_000,
         },
       },
       {

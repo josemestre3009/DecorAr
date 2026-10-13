@@ -367,7 +367,7 @@ describe("DECOR-24 Criterios de Aceptación: Prototype y Clonación Profunda", (
       }
 
       const simulatedClient = createSimulatedPackagesClient(null, 0);
-      const created = await simulatedClient.createPackage({ capacityM2: 40, spaceType: "salonSocial" });
+      const created = await simulatedClient.createPackage({ capacityM2: 40, name: "Evento", spaceType: "salonSocial" });
       expect(created.ok).toBe(true);
       if (created.ok) {
         const simCloned = await simulatedClient.clonePackage(created.value.id);

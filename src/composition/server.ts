@@ -12,7 +12,10 @@ import { SupabasePackageGroupRepository } from "@/infrastructure/supabase/supaba
 import { SupabasePackageDetailReader } from "@/infrastructure/supabase/supabase-package-detail-reader";
 import { SupabasePackageReader } from "@/infrastructure/supabase/supabase-package-reader";
 import { SupabasePackageRepository } from "@/infrastructure/supabase/supabase-package-repository";
+import { SupabaseEventTemplateReader } from "@/infrastructure/supabase/supabase-event-template-reader";
+import { SupabaseEventTemplateRepository } from "@/infrastructure/supabase/supabase-event-template-repository";
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
+import { EventTemplateController } from "@/interfaces/templates/event-template-controller";
 import { PackageController } from "@/interfaces/packages/package-controller";
 import { RecoveryController } from "@/interfaces/recovery/recovery-controller";
 import { type AssetStoragePort } from "@/modules/catalog/application/ports/asset-storage.port";
@@ -41,10 +44,19 @@ import type { PackageChangeConsumer } from "@/modules/packages/application/ports
 import { AddModuleToGroupUseCase } from "@/modules/packages/application/use-cases/add-module-to-group.use-case";
 import { AddModuleToPackageUseCase } from "@/modules/packages/application/use-cases/add-module-to-package.use-case";
 import { ClonePackageUseCase } from "@/modules/packages/application/use-cases/clone-package.use-case";
+import { DeletePackageGroupUseCase } from "@/modules/packages/application/use-cases/delete-package-group.use-case";
 import { GetPackageDetailUseCase } from "@/modules/packages/application/use-cases/get-package-detail.use-case";
 import { ListOwnedPackagesUseCase } from "@/modules/packages/application/use-cases/list-owned-packages.use-case";
 import { CreatePackageGroupUseCase } from "@/modules/packages/application/use-cases/create-package-group.use-case";
 import { CreatePackageUseCase } from "@/modules/packages/application/use-cases/create-package.use-case";
+import { MovePackageItemUseCase } from "@/modules/packages/application/use-cases/move-package-item.use-case";
+import { UpdatePackageGroupUseCase } from "@/modules/packages/application/use-cases/update-package-group.use-case";
+import { CreateEventTemplateUseCase } from "@/modules/packages/application/use-cases/create-event-template.use-case";
+import { DeleteEventTemplateUseCase } from "@/modules/packages/application/use-cases/delete-event-template.use-case";
+import { InstantiateEventFromTemplateUseCase } from "@/modules/packages/application/use-cases/instantiate-event-from-template.use-case";
+import { ListOwnedEventTemplatesUseCase } from "@/modules/packages/application/use-cases/list-owned-event-templates.use-case";
+import { RenameEventTemplateUseCase } from "@/modules/packages/application/use-cases/rename-event-template.use-case";
+import { UpdatePackageMetadataUseCase } from "@/modules/packages/application/use-cases/update-package-metadata.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
 
 import { createAuthUseCases } from "@/shared/application/auth";
@@ -171,6 +183,7 @@ export async function createPackageController(
   };
 
   const createPackageUseCase = new CreatePackageUseCase(packageRepository);
+  const updatePackageMetadataUseCase = new UpdatePackageMetadataUseCase(packageRepository);
   const addModuleToPackageUseCase = new AddModuleToPackageUseCase(
     packageReader,
     catalogReader,
@@ -207,6 +220,28 @@ export async function createPackageController(
     packageChangeConsumer,
   );
 
+  const updatePackageGroupUseCase = new UpdatePackageGroupUseCase(
+    packageReader,
+    packageGroupRepository,
+    packageGroupRepository,
+  );
+  const deletePackageGroupUseCase = new DeletePackageGroupUseCase(
+    packageReader,
+    packageGroupRepository,
+    packageGroupRepository,
+    systemClock,
+    uuidGenerator,
+    packageChangeConsumer,
+  );
+  const movePackageItemUseCase = new MovePackageItemUseCase(
+    packageReader,
+    packageGroupRepository,
+    packageGroupRepository,
+    systemClock,
+    uuidGenerator,
+    packageChangeConsumer,
+  );
+
   return new PackageController(
     sessionGateway,
     authorizePackageAccess,
@@ -218,10 +253,54 @@ export async function createPackageController(
       clonePackageUseCase,
       createPackageGroupUseCase,
       defaultHeaders: pendingHeaders,
+      deletePackageGroupUseCase,
       drainOutbox,
       listOwnedPackagesUseCase,
+      movePackageItemUseCase,
+      updatePackageGroupUseCase,
+      updatePackageMetadataUseCase,
     },
   );
+}
+
+/**
+ * Controller factory for Event Template Route Handlers (DECOR-44). Identity,
+ * the package/template ownership checks and the private template reads use the
+ * session client, so RLS also applies; the atomic copies run with the
+ * service-role client because the RPCs deny anon/authenticated. Every operation
+ * verifies ownership at this boundary too, and the RPC repeats it.
+ */
+export async function createEventTemplateController(
+  options: SessionClientOptions = {},
+): Promise<EventTemplateController> {
+  const pendingHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(pendingHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const sessionGateway = createSessionGateway(sessionClient);
+  const authorizePackageAccess = new AuthorizePackageAccessUseCase(
+    sessionGateway,
+    createPackageOwnerReader(sessionClient),
+  );
+  const eventTemplateReader = new SupabaseEventTemplateReader(sessionClient);
+  const eventTemplateRepository = new SupabaseEventTemplateRepository(createAdminClient());
+
+  return new EventTemplateController({
+    authorizePackageAccess,
+    createEventTemplate: new CreateEventTemplateUseCase(eventTemplateRepository),
+    defaultHeaders: pendingHeaders,
+    deleteEventTemplate: new DeleteEventTemplateUseCase(eventTemplateRepository),
+    eventTemplateReader,
+    instantiateEvent: new InstantiateEventFromTemplateUseCase(eventTemplateRepository),
+    listEventTemplates: new ListOwnedEventTemplatesUseCase(eventTemplateReader),
+    renameEventTemplate: new RenameEventTemplateUseCase(eventTemplateRepository),
+    sessionGateway,
+  });
 }
 
 /**

@@ -8,6 +8,7 @@ import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalo
 import { err, ok } from "@/shared/domain/result";
 
 import type { PackagesClient } from "../_lib/packages-client";
+import type { ZoneOption } from "../_lib/zone-tree";
 import { PackageCatalog } from "./package-catalog";
 
 const push = vi.fn();
@@ -22,7 +23,7 @@ const fixture = JSON.parse(
 ) as CatalogModuleDto[];
 
 function client(addItem: PackagesClient["addItem"] = vi.fn()): PackagesClient {
-  return { addItem, clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live", removeItem: vi.fn() };
+  return { addItem, clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live", moveItem: vi.fn(), removeItem: vi.fn(), updateMetadata: vi.fn() };
 }
 
 const visible = (text: string | null) => (text ?? "").replace(/\s/g, " ");
@@ -114,10 +115,10 @@ describe("PackageCatalog", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
 
     await waitFor(() =>
-      expect(screen.getByText("Arco floral se agregó a tu paquete.")).toBeInTheDocument(),
+      expect(screen.getByText("Arco floral se agregó a tu evento.")).toBeInTheDocument(),
     );
     expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id);
-    expect(screen.getByText("Agregado a tu paquete")).toBeInTheDocument();
+    expect(screen.getByText("Agregado a tu evento")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Agregar Arco floral" }));
 
@@ -152,7 +153,7 @@ describe("PackageCatalog", () => {
     fireEvent.click(screen.getByRole("button", { name: "Agregar 3 unidades de Arco floral" }));
 
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id, 3));
-    expect(screen.getByText("3 unidades de Arco floral se agregaron a tu paquete.")).toBeInTheDocument();
+    expect(screen.getByText("3 unidades de Arco floral se agregaron a tu evento.")).toBeInTheDocument();
     expect(screen.getByText("Agregado 3 veces")).toBeInTheDocument();
     // Tras el éxito la cantidad vuelve a 1 y el nombre accesible del botón cambia.
     expect(screen.getByRole("button", { name: "Agregar Arco floral" })).toBeInTheDocument();
@@ -224,7 +225,7 @@ describe("PackageCatalog", () => {
 
     fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
 
-    await screen.findByText("Arco floral se agregó a tu paquete.");
+    await screen.findByText("Arco floral se agregó a tu evento.");
     expect(refresh).not.toHaveBeenCalled();
   });
 
@@ -289,7 +290,7 @@ describe("PackageCatalog", () => {
       <PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" serverCounts={{ [arcId]: 1 }} />,
     );
 
-    expect(await screen.findByText("Agregado a tu paquete")).toBeInTheDocument();
+    expect(await screen.findByText("Agregado a tu evento")).toBeInTheDocument();
   });
 
   it("avisa cuando la API de paquetes está simulada", async () => {
@@ -319,5 +320,71 @@ describe("PackageCatalog: acceso a la vista 3D (DECOR-23)", () => {
       "href",
       `/packages/p-1/modules/${fixture[0]?.id}`,
     );
+  });
+});
+
+const ZONES: ZoneOption[] = [
+  { ancestorIds: [], depth: 1, descendantIds: [], groupId: "g-1", height: 1, name: "Recepción" },
+];
+
+const cardOf = async (name: string) =>
+  (await screen.findByRole("heading", { name })).closest("article") as HTMLElement;
+
+describe("PackageCatalog: destino por zona para agregar módulos", () => {
+  beforeEach(() => {
+    push.mockReset();
+    refresh.mockReset();
+  });
+
+  it("agrega a la zona elegida con una sola instancia", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" zones={ZONES} />);
+
+    const card = await cardOf("Arco floral");
+    fireEvent.change(within(card).getByLabelText("Zona"), { target: { value: "g-1" } });
+    fireEvent.click(within(card).getByRole("button", { name: "Agregar Arco floral" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id, 1, "g-1"));
+    expect(refresh).toHaveBeenCalled();
+  });
+
+  it("mantiene la acción rápida a la raíz sin seleccionar zona", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" zones={ZONES} />);
+
+    const card = await cardOf("Arco floral");
+    expect(within(card).getByLabelText("Zona")).toHaveValue("");
+    fireEvent.click(within(card).getByRole("button", { name: "Agregar Arco floral" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id));
+  });
+
+  it("no bloquea por exceso de área cuando se agrega a una zona", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(
+      <PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={3} zones={ZONES} />,
+    );
+
+    const card = await cardOf("Mesa redonda");
+    const withoutZone = within(card).getByRole("button", { name: "Agregar Mesa redonda" });
+    expect(withoutZone).toHaveAttribute("aria-disabled", "true");
+
+    fireEvent.change(within(card).getByLabelText("Zona"), { target: { value: "g-1" } });
+    const withZone = within(card).getByRole("button", { name: "Agregar Mesa redonda" });
+    expect(withZone).not.toHaveAttribute("aria-disabled");
+
+    fireEvent.click(withZone);
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[0]?.id, 1, "g-1"));
+  });
+
+  it("sin zonas no muestra el selector de destino", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+
+    await screen.findAllByRole("article");
+    expect(screen.queryByLabelText("Zona")).not.toBeInTheDocument();
   });
 });

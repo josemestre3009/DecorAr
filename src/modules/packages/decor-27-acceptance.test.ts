@@ -78,22 +78,24 @@ describe("DECOR-27 Criterios de Aceptación", () => {
   // Criterio 1: Fixture 30 y capacidad configurable
   // --------------------------------------------------------------------------
   describe("1. Fixture 30 y capacidad configurable", () => {
-    it("con fixture de 30 m² acepta 1 pista (16 m²) y rechaza la 2da pista (32 > 30 m²)", () => {
+    it("con fixture de 30 m² acepta 1 y 2 pistas y lo reporta como excedido, sin bloquear", () => {
       const builder = new PaqueteDecoracionBuilderImpl("casa", 30);
 
       const add1 = builder.agregarModulo(CATALOGO_CANONICO.pistaBaile);
       expect(add1.ok).toBe(true);
 
+      // 32 > 30: se guarda igual; el diagnóstico lo informa (DECOR-44).
       const add2 = builder.agregarModulo(CATALOGO_CANONICO.pistaBaile);
-      expect(add2.ok).toBe(false);
-      if (!add2.ok) {
-        expect(add2.error.code).toBe("package.capacity_exceeded");
-        expect(add2.error.message).toContain("excede la capacidad del espacio (32/30 m²)");
-      }
+      expect(add2.ok).toBe(true);
 
       const paquete = builder.construir();
-      expect(paquete.espacioUsadoM2).toBe(16);
-      expect(paquete.modulos).toHaveLength(1);
+      expect(paquete.espacioUsadoM2).toBe(32);
+      expect(paquete.modulos).toHaveLength(2);
+      expect(paquete.diagnosticoEspacial).toEqual({
+        areaDisponibleM2: 30,
+        areaRequeridaM2: 32,
+        estado: "exceeded",
+      });
     });
 
     it("con capacidad configurable de 50 m², acepta 2 pistas (32 <= 50 m²)", () => {
@@ -181,10 +183,10 @@ describe("DECOR-27 Criterios de Aceptación", () => {
   // --------------------------------------------------------------------------
   // Criterio 3: Rechazo de validación deja cero escritura/evento
   // --------------------------------------------------------------------------
-  describe("3. Rechazo deja cero escritura/evento", () => {
-    it("si la capacidad es excedida, la aplicación no llama a la outbox ni crea ítems", async () => {
+  describe("3. El exceso espacial se guarda y emite el evento (DECOR-44)", () => {
+    it("si la capacidad es excedida, la aplicación guarda el cambio y comete el evento", async () => {
       const mockOutbox = {
-        commit: vi.fn(),
+        commit: vi.fn().mockResolvedValue(ok(2)),
       };
 
       const mockPackageReader = {
@@ -192,10 +194,15 @@ describe("DECOR-27 Criterios de Aceptación", () => {
         getPackage: vi.fn().mockResolvedValue(
           ok({
             capacityM2: 20,
+            clientName: null,
+            eventDate: null,
+            eventType: null,
             id: "pkg-cap",
             items: [{ areaM2: 16, itemId: "it-1", moduleId: "mod-1" }],
+            name: "Evento",
             spaceType: "casa",
             userId: "user-1",
+            venue: null,
             version: 1,
           }),
         ),
@@ -220,19 +227,15 @@ describe("DECOR-27 Criterios de Aceptación", () => {
         { generate: () => "uuid" },
       );
 
+      // 16 + 16 = 32 > 20: ya no bloquea, se confirma el cambio.
       const result = await useCase.execute({
         moduleId: "mod-2",
         packageId: "pkg-cap",
         userId: "user-1",
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) {
-        expect(result.error.code).toBe("package.capacity_exceeded");
-      }
-
-      // Verificación estricta: cero escritura a outbox
-      expect(mockOutbox.commit).not.toHaveBeenCalled();
+      expect(result.ok).toBe(true);
+      expect(mockOutbox.commit).toHaveBeenCalledTimes(1);
     });
   });
 

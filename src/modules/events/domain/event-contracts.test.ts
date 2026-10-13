@@ -4,20 +4,23 @@ import { parseDomainEvent, packageChannel, type DomainEvent } from "./event-cont
 import {
   budgetRecalculatedExample,
   packageModuleAddedExample,
+  packageModuleMovedExample,
   packageModuleRemovedExample,
 } from "./event-examples";
 
 const clone = (event: DomainEvent): Record<string, unknown> => JSON.parse(JSON.stringify(event));
 
 describe("event contracts", () => {
-  it.each([packageModuleAddedExample, packageModuleRemovedExample, budgetRecalculatedExample])(
-    "acepta el ejemplo de $type con schemaVersion 1",
-    (example) => {
-      const parsed = parseDomainEvent(clone(example));
+  it.each([
+    packageModuleAddedExample,
+    packageModuleRemovedExample,
+    packageModuleMovedExample,
+    budgetRecalculatedExample,
+  ])("acepta el ejemplo de $type con schemaVersion 1", (example) => {
+    const parsed = parseDomainEvent(clone(example));
 
-      expect(parsed).toEqual({ ok: true, value: example });
-    },
-  );
+    expect(parsed).toEqual({ ok: true, value: example });
+  });
 
   it("conserva identificadores y fecha que reconocen el origen", () => {
     const parsed = parseDomainEvent(clone(packageModuleAddedExample));
@@ -69,6 +72,10 @@ describe("event contracts", () => {
   it.each([
     [packageModuleRemovedExample, "itemId"],
     [packageModuleRemovedExample, "moduleId"],
+    [packageModuleMovedExample, "itemId"],
+    [packageModuleMovedExample, "moduleId"],
+    [packageModuleMovedExample, "fromGroupId"],
+    [packageModuleMovedExample, "toGroupId"],
     [budgetRecalculatedExample, "budgetId"],
     [budgetRecalculatedExample, "totalCop"],
     [budgetRecalculatedExample, "causationEventId"],
@@ -80,6 +87,25 @@ describe("event contracts", () => {
 
     expect(!parsed.ok && parsed.error.message).toContain(`payload.${field}`);
   });
+
+  it("acepta package.module.moved con origen o destino en la raíz (null)", () => {
+    const aRaiz = clone(packageModuleMovedExample);
+    (aRaiz.payload as Record<string, unknown>).toGroupId = null;
+    expect(parseDomainEvent(aRaiz).ok).toBe(true);
+
+    const desdeRaiz = clone(packageModuleMovedExample);
+    (desdeRaiz.payload as Record<string, unknown>).fromGroupId = null;
+    expect(parseDomainEvent(desdeRaiz).ok).toBe(true);
+  });
+
+  it.each(["fromGroupId", "toGroupId"] as const)(
+    "rechaza package.module.moved con payload.%s que no es UUID ni null",
+    (field) => {
+      const event = clone(packageModuleMovedExample);
+      (event.payload as Record<string, unknown>)[field] = "zona";
+      expect(parseDomainEvent(event).ok).toBe(false);
+    },
+  );
 
   it("rechaza un tipo desconocido nombrándolo", () => {
     const parsed = parseDomainEvent({ ...clone(packageModuleAddedExample), type: "package.deleted" });

@@ -30,7 +30,19 @@ function setup(options: {
     getPackage: vi.fn().mockResolvedValue(
       ok(
         options.detail === undefined
-          ? { capacityM2: 30, id: "pkg-1", items: [], spaceType: "casa", userId: "user-1", version: 4 }
+          ? {
+              capacityM2: 30,
+              clientName: null,
+              eventDate: null,
+              eventType: null,
+              id: "pkg-1",
+              items: [],
+              name: "Evento",
+              spaceType: "casa",
+              userId: "user-1",
+              venue: null,
+              version: 4,
+            }
           : options.detail,
       ),
     ),
@@ -153,6 +165,20 @@ describe("CreatePackageGroupUseCase", () => {
     expect(consumer.consume).not.toHaveBeenCalled();
   });
 
+  it("una zona vacía sigue versionando el evento (DECOR-44) aunque no notifique", async () => {
+    const { consumer, useCase } = setup({
+      repositoryResult: Promise.resolve(
+        ok({ depth: 1, groupId: "id-1", itemIds: [], packageVersion: 7 }),
+      ),
+    });
+
+    const result = await useCase.execute({ name: "Vacío", packageId: "pkg-1", userId: "user-1" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.value.packageVersion).toBe(7);
+    expect(consumer.consume).not.toHaveBeenCalled();
+  });
+
   it("crea un subgrupo dentro de un grupo existente", async () => {
     const { groupRepository, useCase } = setup({
       structure: { groups: [{ groupId: "zona", name: "Zona", parentGroupId: null }], itemGroupIds: {} },
@@ -188,14 +214,19 @@ describe("CreatePackageGroupUseCase", () => {
     expect(groupRepository.createGroup).not.toHaveBeenCalled();
   });
 
-  it("rechaza por capacidad contando las hojas que ya están dentro de grupos", async () => {
+  it("guarda el grupo aunque el área requerida supere la disponible (DECOR-44)", async () => {
     const { groupRepository, useCase } = setup({
       detail: {
         capacityM2: 20,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
         id: "pkg-1",
         items: [{ areaM2: 16, itemId: "item-pista", moduleId: PISTA.id }],
+        name: "Evento",
         spaceType: "casa",
         userId: "user-1",
+        venue: null,
         version: 2,
       },
       structure: {
@@ -211,9 +242,9 @@ describe("CreatePackageGroupUseCase", () => {
       userId: "user-1",
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("package.capacity_exceeded");
-    expect(groupRepository.createGroup).not.toHaveBeenCalled();
+    // 16 + 2 + 4 = 22 > 20: el exceso ya no bloquea el guardado.
+    expect(result.ok).toBe(true);
+    expect(groupRepository.createGroup).toHaveBeenCalledTimes(1);
   });
 
   it("rechaza grupo padre inexistente, módulo inexistente y nombre inválido antes del RPC", async () => {

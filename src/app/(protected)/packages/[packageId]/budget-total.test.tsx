@@ -5,7 +5,7 @@ import { ok, err } from "@/shared/domain/result";
 import type { DomainEvent } from "@/modules/events/domain/event-contracts";
 
 import { BudgetTotal } from "./budget-total";
-import { SpaceSummary } from "./space-summary";
+import { EventSummary } from "./event-summary";
 
 const refresh = vi.fn();
 
@@ -25,7 +25,7 @@ describe("BudgetTotal (DECOR-22)", () => {
     );
 
     expect(visible(screen.getByRole("status").textContent)).toBe("Total confirmado$ 1.050.000");
-    expect(screen.getByText(/versión 3 del paquete/)).toBeInTheDocument();
+    expect(screen.getByText(/versión 3 del evento/)).toBeInTheDocument();
   });
 
   it("avisa cuando el total es de una versión anterior y permite actualizar", () => {
@@ -153,11 +153,53 @@ describe("BudgetTotal en tiempo real (DECOR-21)", () => {
   });
 });
 
-describe("SpaceSummary (DECOR-22)", () => {
-  it("muestra tipo descriptivo, capacidad, área usada y restante del servidor", () => {
-    render(<SpaceSummary detail={{ capacityM2: 30, remainingM2: 14, spaceType: "aireLibre", usedM2: 16 }} />);
+describe("EventSummary (DECOR-44)", () => {
+  it("muestra los metadatos del evento y el diagnóstico espacial informativo", () => {
+    render(
+      <EventSummary
+        detail={{
+          capacityM2: 30,
+          clientName: "Ana",
+          eventDate: null,
+          eventType: null,
+          name: "Boda de Ana",
+          spaceType: "aireLibre",
+          spatial: { availableM2: 30, requiredM2: 16, status: "compatible" },
+          venue: null,
+        }}
+      />,
+    );
 
     const values = screen.getAllByRole("definition").map((dd) => visible(dd.textContent));
-    expect(values).toEqual(["Aire libre (parque o playa)", "30 m²", "16 m²", "14 m²"]);
+    expect(values).toEqual([
+      "Boda de Ana",
+      "Ana",
+      "Sin definir",
+      "Sin definir",
+      "Sin definir",
+      "Aire libre (parque o playa)",
+      "30 m²",
+    ]);
+    expect(screen.getByRole("status")).toHaveTextContent("Compatibilidad espacial: compatible");
+    expect(screen.getByRole("status")).toHaveTextContent("16 m² requeridos de 30 m² disponibles");
+  });
+
+  it("avisa cuando la configuración excede el área disponible", () => {
+    render(
+      <EventSummary
+        detail={{
+          capacityM2: 10,
+          clientName: null,
+          eventDate: null,
+          eventType: null,
+          name: "Cena",
+          spaceType: null,
+          spatial: { availableM2: 10, requiredM2: 16, status: "exceeded" },
+          venue: null,
+        }}
+      />,
+    );
+
+    expect(screen.getByRole("status")).toHaveTextContent("Compatibilidad espacial excedida");
   });
 });

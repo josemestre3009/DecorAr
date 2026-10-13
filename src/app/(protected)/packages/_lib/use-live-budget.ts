@@ -54,7 +54,7 @@ export type LiveBudgetState = {
  * Hook reactivo para el presupuesto en tiempo real y resincronización (DECOR-21).
  *
  * Escucha eventos en el canal privado `package:{packageId}` vía Broadcast (DECOR-30):
- * - `package.module.added` / `package.module.removed` marcan el estado como actualizando.
+ * - `package.module.added` / `removed` / `moved` marcan el estado como actualizando.
  * - `budget.recalculated` (DECOR-29 / DECOR-33) aplica el nuevo total confirmado.
  * - Ignora eventos duplicados (`eventId`); la versión solo se compara en la respuesta de
  *   resync, porque `budget.recalculated` no transporta `packageVersion` por contrato
@@ -174,7 +174,11 @@ export function useLiveBudget({
     }
     seenEventIds.current.add(event.eventId);
 
-    if (event.type === "package.module.added" || event.type === "package.module.removed") {
+    if (
+      event.type === "package.module.added" ||
+      event.type === "package.module.removed" ||
+      event.type === "package.module.moved"
+    ) {
       setIsUpdating(true);
       return;
     }

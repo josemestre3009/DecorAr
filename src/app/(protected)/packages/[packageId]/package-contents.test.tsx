@@ -5,6 +5,7 @@ import type { PackageDetailNode } from "@/modules/packages/application/dtos/pack
 import { err, ok } from "@/shared/domain/result";
 
 import type { PackagesClient } from "../_lib/packages-client";
+import type { PackageGroupsClient } from "../_lib/package-groups-client";
 import { PackageContents } from "./package-contents";
 
 const push = vi.fn();
@@ -14,7 +15,7 @@ const router = { push, refresh };
 vi.mock("next/navigation", () => ({ useRouter: () => router }));
 
 function client(removeItem: PackagesClient["removeItem"] = vi.fn()): PackagesClient {
-  return { addItem: vi.fn(), clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live", removeItem };
+  return { addItem: vi.fn(), clonePackage: vi.fn(), createPackage: vi.fn(), mode: "live", moveItem: vi.fn(), removeItem, updateMetadata: vi.fn() };
 }
 
 const leaf = (itemId: string, moduleId: string, name: string, areaM2: number, priceCop: number): PackageDetailNode => ({
@@ -173,7 +174,7 @@ describe("PackageContents (DECOR-22)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quitar una unidad de Arco floral" }));
 
     await waitFor(() =>
-      expect(screen.getByRole("heading", { name: "Contenido del paquete" })).toHaveFocus(),
+      expect(screen.getByRole("heading", { name: "Contenido del evento" })).toHaveFocus(),
     );
   });
 
@@ -202,5 +203,274 @@ describe("PackageContents (DECOR-22)", () => {
     render(<PackageContents client={client()} nodes={[]} packageId="pkg-1" version={3} />);
 
     expect(screen.getByText(/todavía no tiene elementos/)).toBeInTheDocument();
+  });
+});
+
+const groupNode = (
+  groupId: string,
+  name: string,
+  children: PackageDetailNode[],
+): PackageDetailNode => ({ areaM2: 4, children, groupId, kind: "group", name, priceCop: 100 });
+
+// Zona A → Zona B y una Zona C hermana en la raíz: alcanza para mover y anidar.
+const NESTED: PackageDetailNode[] = [
+  groupNode("zona-a", "Zona A", [
+    leaf("i-mesa", "mesa", "Mesa redonda", 4, 250000),
+    groupNode("zona-b", "Zona B", [leaf("i-arco", "arco", "Arco floral", 2, 200000)]),
+  ]),
+  groupNode("zona-c", "Zona C", []),
+];
+
+function groupsClient(partial: Partial<PackageGroupsClient> = {}): PackageGroupsClient {
+  return {
+    createGroup: vi.fn().mockResolvedValue(
+      ok({ depth: 2, groupId: "g-new", itemIds: [], name: "Nueva", packageVersion: 4, parentGroupId: "zona-a" }),
+    ),
+    deleteGroup: vi.fn().mockResolvedValue(ok({ packageVersion: 4 })),
+    mode: "live",
+    updateGroup: vi.fn().mockResolvedValue(ok({ packageVersion: 4 })),
+    ...partial,
+  };
+}
+
+const rowOf = (name: string) =>
+  screen.getByRole("button", { name: new RegExp(name) }).closest("li") as HTMLElement;
+
+describe("PackageContents: zonas editables (Composite)", () => {
+  beforeEach(() => {
+    push.mockReset();
+    refresh.mockReset();
+  });
+
+  it("crea una subzona desde la fila, refresca y la anuncia", async () => {
+    const createGroup = vi.fn().mockResolvedValue(
+      ok({ depth: 2, groupId: "g-new", itemIds: [], name: "Mesa principal", packageVersion: 4, parentGroupId: "zona-a" }),
+    );
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient({ createGroup })}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const row = rowOf("Zona A");
+    fireEvent.click(within(row).getByRole("button", { name: "Crear subzona" }));
+
+    const form = within(row);
+    fireEvent.change(form.getByLabelText("Nombre de la zona"), { target: { value: "Mesa principal" } });
+    fireEvent.click(form.getByRole("button", { name: "Crear subzona" }));
+
+    await waitFor(() =>
+      expect(createGroup).toHaveBeenCalledWith("pkg-1", {
+        expectedVersion: 3,
+        name: "Mesa principal",
+        parentGroupId: "zona-a",
+      }),
+    );
+    expect(refresh).toHaveBeenCalledTimes(1);
+    expect(screen.getByRole("status")).toHaveTextContent("La zona Mesa principal se creó.");
+  });
+
+  it("renombra una zona conservando el resto y muestra el error de dominio", async () => {
+    const updateGroup = vi
+      .fn()
+      .mockResolvedValueOnce(
+        err({ code: "package.version_conflict", kind: "invalid", message: "El evento cambió.", status: 409 }),
+      )
+      .mockResolvedValueOnce(ok({ packageVersion: 4 }));
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient({ updateGroup })}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const row = rowOf("Zona A");
+    fireEvent.click(within(row).getByRole("button", { name: "Renombrar" }));
+    fireEvent.change(within(row).getByLabelText("Nuevo nombre para Zona A"), { target: { value: "Recepción" } });
+    fireEvent.click(within(row).getByRole("button", { name: "Guardar nombre" }));
+
+    expect(await within(row).findByRole("alert")).toHaveTextContent("El evento cambió.");
+
+    fireEvent.click(within(row).getByRole("button", { name: "Guardar nombre" }));
+    await waitFor(() =>
+      expect(updateGroup).toHaveBeenLastCalledWith("pkg-1", "zona-a", { expectedVersion: 3, name: "Recepción" }),
+    );
+  });
+
+  it("mueve una zona a otra zona con las opciones válidas", async () => {
+    const updateGroup = vi.fn().mockResolvedValue(ok({ packageVersion: 4 }));
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient({ updateGroup })}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const row = rowOf("Zona C");
+    fireEvent.click(within(row).getByRole("button", { name: "Mover" }));
+
+    const select = within(row).getByLabelText("Mover Zona C a");
+    // No puede moverse dentro de sí misma; sí bajo su hermana Zona A.
+    expect(within(select).queryByRole("option", { name: /Zona C/ })).not.toBeInTheDocument();
+    fireEvent.change(select, { target: { value: "zona-a" } });
+    fireEvent.click(within(row).getByRole("button", { name: "Mover zona" }));
+
+    await waitFor(() =>
+      expect(updateGroup).toHaveBeenCalledWith("pkg-1", "zona-c", { expectedVersion: 3, parentGroupId: "zona-a" }),
+    );
+  });
+
+  it("confirma la eliminación inline con las dos estrategias y devuelve el foco al encabezado", async () => {
+    const deleteGroup = vi.fn().mockResolvedValue(ok({ packageVersion: 4 }));
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient({ deleteGroup })}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const row = rowOf("Zona C");
+    fireEvent.click(within(row).getByRole("button", { name: "Eliminar" }));
+
+    expect(screen.getByText("¿Eliminar Zona C?")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Mover contenido a la raíz y eliminar zona" })).toBeInTheDocument();
+    const confirm = screen.getByRole("button", { name: "Eliminar zona y todo su contenido" });
+
+    fireEvent.click(confirm);
+
+    await waitFor(() =>
+      expect(deleteGroup).toHaveBeenCalledWith("pkg-1", "zona-c", {
+        expectedVersion: 3,
+        strategy: "delete_contents",
+      }),
+    );
+    await waitFor(() =>
+      expect(screen.getByRole("heading", { name: "Contenido del evento" })).toHaveFocus(),
+    );
+  });
+
+  it("cancelar la eliminación no llama a la API", () => {
+    const deleteGroup = vi.fn();
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient({ deleteGroup })}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const row = rowOf("Zona C");
+    fireEvent.click(within(row).getByRole("button", { name: "Eliminar" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Cancelar" }));
+
+    expect(deleteGroup).not.toHaveBeenCalled();
+    expect(within(row).getByRole("button", { name: "Eliminar" })).toBeInTheDocument();
+  });
+
+  it("mueve una instancia de módulo entre raíz y zonas sin perder el itemId", async () => {
+    const moveItem = vi.fn().mockResolvedValue(ok({ itemId: "i-p2", packageVersion: 4 }));
+    render(
+      <PackageContents
+        client={{ ...client(), moveItem }}
+        groupsClient={groupsClient()}
+        nodes={NODES}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const pista = screen.getByText("Pista de baile").closest("li") as HTMLElement;
+    fireEvent.click(within(pista).getByRole("button", { name: "Mover de zona" }));
+    fireEvent.change(within(pista).getByLabelText("Mover Pista de baile a"), { target: { value: "zona" } });
+    fireEvent.click(within(pista).getByRole("button", { name: "Mover aquí" }));
+
+    await waitFor(() =>
+      expect(moveItem).toHaveBeenCalledWith("pkg-1", "i-p2", { expectedVersion: 3, groupId: "zona" }),
+    );
+    expect(refresh).toHaveBeenCalledTimes(1);
+  });
+
+  it("muestra el conflicto al mover un módulo y no refresca", async () => {
+    const moveItem = vi
+      .fn()
+      .mockResolvedValue(err({ code: "package.version_conflict", kind: "invalid", message: "Conflicto.", status: 409 }));
+    render(
+      <PackageContents
+        client={{ ...client(), moveItem }}
+        groupsClient={groupsClient()}
+        nodes={NODES}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const pista = screen.getByText("Pista de baile").closest("li") as HTMLElement;
+    fireEvent.click(within(pista).getByRole("button", { name: "Mover de zona" }));
+    fireEvent.change(within(pista).getByLabelText("Mover Pista de baile a"), { target: { value: "zona" } });
+    fireEvent.click(within(pista).getByRole("button", { name: "Mover aquí" }));
+
+    expect(await within(pista).findByRole("alert")).toHaveTextContent("Conflicto.");
+    expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("no acepta una segunda mutación mientras hay un refresco pendiente", async () => {
+    let resolveDelete: (value: Awaited<ReturnType<PackageGroupsClient["deleteGroup"]>>) => void = () => {};
+    const deleteGroup = vi.fn(
+      () => new Promise<Awaited<ReturnType<PackageGroupsClient["deleteGroup"]>>>((resolve) => (resolveDelete = resolve)),
+    );
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient({ deleteGroup })}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    const row = rowOf("Zona C");
+    fireEvent.click(within(row).getByRole("button", { name: "Eliminar" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Mover contenido a la raíz y eliminar zona" }));
+
+    fireEvent.click(within(row).getByRole("button", { name: "Mover contenido a la raíz y eliminar zona" }));
+    expect(deleteGroup).toHaveBeenCalledTimes(1);
+
+    resolveDelete(ok({ packageVersion: 4 }));
+    await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
+  });
+
+  it.each([1440, 375])("conserva la jerarquía accesible a %i px de ancho", (width) => {
+    Object.defineProperty(window, "innerWidth", { configurable: true, value: width, writable: true });
+    window.dispatchEvent(new Event("resize"));
+
+    render(
+      <PackageContents
+        client={client()}
+        groupsClient={groupsClient()}
+        nodes={NESTED}
+        packageId="pkg-1"
+        version={3}
+      />,
+    );
+
+    expect(screen.getByRole("heading", { name: "Contenido del evento" })).toBeInTheDocument();
+    const toggle = screen.getByRole("button", { name: /Zona A/ });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(toggle).toHaveAttribute("aria-controls");
   });
 });

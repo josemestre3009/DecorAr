@@ -12,6 +12,9 @@
 /blob-report/
 /e2e/.auth/
 
+# temporary 3D publishing workspace; production assets live in Cloudinary
+/assets/3d/
+
 # local environment files
 .env*
 !.env.example

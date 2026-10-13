@@ -756,7 +756,7 @@ describe("PackageController", () => {
       ["package.module_not_found", 404],
       ["package.not_found", 404],
       ["package.version_conflict", 409],
-      ["package.invalid_group_name", 400],
+      ["package.invalid_group_name", 422],
       ["package.persistence_error", 500],
     ])("traduce %s a %i con el envelope de error", async (code, status) => {
       const mocks = createGroupMocks();
@@ -805,6 +805,136 @@ describe("PackageController", () => {
       expect(thrown.status).toBe(500);
       expect((await thrown.json()).error.code).toBe("internal_error");
       consoleSpy.mockRestore();
+    });
+  });
+
+  describe("handleUpdatePackage (DECOR-44)", () => {
+    const updatedDto = {
+      capacityM2: 30,
+      clientName: "Ana",
+      eventDate: "2026-11-20",
+      eventType: "Boda",
+      id: "pkg-1",
+      name: "Evento",
+      spaceType: "casa",
+      spatial: { availableM2: 30, requiredM2: 0, status: "compatible" },
+      venue: "Salón Norte",
+    };
+
+    const updateRequest = (body: unknown) =>
+      new Request("http://localhost/api/packages/pkg-1", {
+        body: typeof body === "string" ? body : JSON.stringify(body),
+        method: "PATCH",
+      });
+
+    const createUpdateMocks = (result: ReturnType<typeof ok | typeof err> = ok(updatedDto)) => {
+      const base = createMocks();
+      const updatePackageMetadataUseCase = { execute: vi.fn().mockResolvedValue(result) };
+      const controller = new PackageController(
+        base.sessionGateway,
+        base.authorizePackageAccess as unknown as AuthorizePackageAccessUseCase,
+        base.createPackageUseCase as unknown as CreatePackageUseCase,
+        base.addModuleToPackageUseCase as unknown as AddModuleToPackageUseCase,
+        base.removeModuleFromPackageUseCase as unknown as RemoveModuleFromPackageUseCase,
+        { updatePackageMetadataUseCase },
+      );
+      return { ...base, controller, updatePackageMetadataUseCase };
+    };
+
+    it("actualiza sólo las claves presentes y devuelve 200", async () => {
+      const mocks = createUpdateMocks();
+
+      const res = await mocks.controller.handleUpdatePackage(
+        updateRequest({ capacityM2: null, name: " Nuevo " }),
+        "pkg-1",
+      );
+
+      expect(res.status).toBe(200);
+      expect(await res.json()).toEqual(updatedDto);
+      expect(mocks.updatePackageMetadataUseCase.execute).toHaveBeenCalledWith({
+        packageId: "pkg-1",
+        patch: { capacityM2: null, name: " Nuevo " },
+        userId: "user-1",
+      });
+    });
+
+    it("devuelve 401 anónimo sin llamar al caso de uso", async () => {
+      const mocks = createUpdateMocks();
+      mocks.authorizePackageAccess.execute.mockResolvedValue(
+        err(new DomainError("auth.unauthenticated", "Inicia sesión para continuar.")),
+      );
+
+      const res = await mocks.controller.handleUpdatePackage(updateRequest({ name: "X" }), "pkg-1");
+
+      expect(res.status).toBe(401);
+      expect(mocks.updatePackageMetadataUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("devuelve 404 para un evento ajeno o inexistente", async () => {
+      const mocks = createUpdateMocks();
+      mocks.authorizePackageAccess.execute.mockResolvedValue(
+        err(new DomainError("package.not_found", "No encontramos este evento.")),
+      );
+
+      const res = await mocks.controller.handleUpdatePackage(updateRequest({ name: "X" }), "pkg-ajeno");
+
+      expect(res.status).toBe(404);
+      expect(mocks.updatePackageMetadataUseCase.execute).not.toHaveBeenCalled();
+    });
+
+    it("devuelve 422 con errores de validación identificables", async () => {
+      const mocks = createUpdateMocks(err(new DomainError("package.invalid_name", "El nombre del evento es obligatorio.")));
+
+      const res = await mocks.controller.handleUpdatePackage(updateRequest({ name: "" }), "pkg-1");
+
+      expect(res.status).toBe(422);
+      expect((await res.json()).error.code).toBe("package.invalid_name");
+    });
+
+    it("no convierte tipos JSON incorrectos en metadatos válidos", async () => {
+      const mocks = createUpdateMocks(err(new DomainError("package.invalid_client_name", "El nombre del cliente no es válido.")));
+
+      const res = await mocks.controller.handleUpdatePackage(updateRequest({ clientName: {} }), "pkg-1");
+
+      expect(res.status).toBe(422);
+      expect(mocks.updatePackageMetadataUseCase.execute).toHaveBeenCalledWith({
+        packageId: "pkg-1",
+        patch: { clientName: {} },
+        userId: "user-1",
+      });
+    });
+
+    it("devuelve 400 si el cuerpo no es JSON válido", async () => {
+      const mocks = createUpdateMocks();
+
+      const res = await mocks.controller.handleUpdatePackage(updateRequest("{no-json"), "pkg-1");
+
+      expect(res.status).toBe(400);
+      expect((await res.json()).error.code).toBe("package.invalid_body");
+    });
+
+    it("devuelve 500 controlado sin caso de uso configurado", async () => {
+      const mocks = createMocks();
+
+      const res = await mocks.controller.handleUpdatePackage(updateRequest({ name: "X" }), "pkg-1");
+
+      expect(res.status).toBe(500);
+      expect((await res.json()).error.code).toBe("internal_error");
+    });
+
+    it("propaga x-correlation-id a la respuesta", async () => {
+      const mocks = createUpdateMocks();
+
+      const res = await mocks.controller.handleUpdatePackage(
+        new Request("http://localhost/api/packages/pkg-1", {
+          body: JSON.stringify({ name: "X" }),
+          headers: { "x-correlation-id": "corr-update" },
+          method: "PATCH",
+        }),
+        "pkg-1",
+      );
+
+      expect(res.headers.get("x-correlation-id")).toBe("corr-update");
     });
   });
 });

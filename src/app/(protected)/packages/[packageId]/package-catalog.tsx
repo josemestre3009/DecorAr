@@ -7,6 +7,7 @@ import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalo
 
 import { fetchCatalogModules } from "../_lib/catalog-client";
 import { getPackagesClient, type PackagesClient } from "../_lib/packages-client";
+import type { ZoneOption } from "../_lib/zone-tree";
 import { ModuleCard, type AddState } from "./module-card";
 
 type CatalogState =
@@ -23,11 +24,13 @@ type PackageCatalogProps = {
   /** Unidades confirmadas por el servidor por `moduleId`; reconcilia el eco local tras un refresco (DECOR-22). */
   readonly serverCounts?: Readonly<Record<string, number>>;
   readonly remainingM2?: number;
+  /** Zonas del evento para elegir el destino al agregar; la raíz es la acción rápida. */
+  readonly zones?: readonly ZoneOption[];
 };
 
 const IDLE: AddState = { status: "idle" };
 
-export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts }: PackageCatalogProps) {
+export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts, zones }: PackageCatalogProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
   const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
@@ -71,15 +74,17 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     setAttempt((value) => value + 1);
   }
 
-  async function add(module: CatalogModuleDto, quantity: number): Promise<boolean> {
+  async function add(module: CatalogModuleDto, quantity: number, groupId: string | null): Promise<boolean> {
     setAddStates((states) => ({ ...states, [module.id]: { status: "adding" } }));
     setAnnouncement(
       quantity === 1 ? `Agregando ${module.name}…` : `Agregando ${quantity} unidades de ${module.name}…`,
     );
 
-    const result = quantity === 1
-      ? await packages.addItem(packageId, module.id)
-      : await packages.addItem(packageId, module.id, quantity);
+    const result = groupId !== null
+      ? await packages.addItem(packageId, module.id, 1, groupId)
+      : quantity === 1
+        ? await packages.addItem(packageId, module.id)
+        : await packages.addItem(packageId, module.id, quantity);
 
     if (result.ok) {
       setLocalChanges((changes) => {
@@ -97,8 +102,8 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
       });
       setAnnouncement(
         quantity === 1
-          ? `${module.name} se agregó a tu paquete.`
-          : `${quantity} unidades de ${module.name} se agregaron a tu paquete.`,
+          ? `${module.name} se agregó a tu evento.`
+          : `${quantity} unidades de ${module.name} se agregaron a tu evento.`,
       );
       // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
       if (packages.mode === "live") {
@@ -142,7 +147,7 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
 
       {packages.mode === "simulated" ? (
         <p className="simulation-note">
-          Modo simulado: mientras se integra la API de paquetes, lo que agregues se guarda
+          Modo simulado: mientras se integra la API de eventos, lo que agregues se guarda
           solo en este navegador.
         </p>
       ) : null}
@@ -188,6 +193,7 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
                 module={module}
                 onAdd={add}
                 packageId={packageId}
+                zones={zones}
                 remainingM2={remainingM2 === undefined
                   ? undefined
                   : Math.max(0, remainingM2 - (localChanges.version === packageVersion ? localChanges.usedM2 : 0))}

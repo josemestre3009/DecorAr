@@ -7,6 +7,7 @@ import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalo
 import { MAX_BATCH_QUANTITY } from "@/modules/packages/application/dtos/package.dto";
 
 import { formatAreaM2, formatCop } from "../_lib/format";
+import { zoneLabel, type ZoneOption } from "../_lib/zone-tree";
 
 export type AddState =
   | { readonly status: "idle" }
@@ -18,16 +19,22 @@ type ModuleCardProps = {
   readonly module: CatalogModuleDto;
   readonly packageId: string;
   readonly addState: AddState;
-  readonly onAdd: (module: CatalogModuleDto, quantity: number) => Promise<boolean>;
+  /** Zona destino elegida; el destino rápido sigue siendo la raíz (`null`). */
+  readonly onAdd: (module: CatalogModuleDto, quantity: number, groupId: string | null) => Promise<boolean>;
   readonly remainingM2?: number;
+  readonly zones?: readonly ZoneOption[];
 };
 
-export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: ModuleCardProps) {
+export function ModuleCard({ module, packageId, addState, onAdd, remainingM2, zones }: ModuleCardProps) {
   const [posterFailed, setPosterFailed] = useState(false);
   const [quantity, setQuantity] = useState(1);
+  const [destination, setDestination] = useState("");
+  const destinationId = `module-${module.id}-zone`;
   const errorId = `module-${module.id}-error`;
-  const showPoster = module.posterUrl !== null && !posterFailed;
+  const posterUrl = module.posterUrl?.trim() || null;
+  const showPoster = posterUrl !== null && !posterFailed;
   const adding = addState.status === "adding";
+  const inZone = destination !== "";
   const maxQuantity = remainingM2 === undefined
     ? MAX_BATCH_QUANTITY
     : module.areaM2 > 0
@@ -39,32 +46,33 @@ export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: 
     setQuantity((value) => Math.max(1, Math.min(value, maxQuantity)));
   }
   const selectedQuantity = Math.max(1, Math.min(quantity, maxQuantity));
+  // Una subzona recibe una única instancia por operación: el selector de
+  // cantidad se oculta y se agrega de a uno.
+  const effectiveQuantity = inZone ? 1 : selectedQuantity;
   const noSpace = maxQuantity === 0;
   const capacityHintId = `module-${module.id}-capacity`;
 
   return (
     <article aria-labelledby={`module-${module.id}-name`} className="module-card">
-        <div className="module-preview">
+      <div className="module-preview">
         {showPoster ? (
-        // Los posters llegan de dominios externos (Cloudinary, fixture) que
-        // next/image no tiene autorizados; un <img> con tamaño fijo por CSS
-        // evita configurar dominios que aún no están decididos.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          alt={`Vista previa de ${module.name}`}
-          className="module-poster"
-          decoding="async"
-          loading="lazy"
-          onError={() => setPosterFailed(true)}
-          src={module.posterUrl ?? undefined}
-        />
-      ) : (
-        <div className="module-poster module-poster-empty" role="img" aria-label={`${module.name} sin imagen`}>
-          <span aria-hidden="true">Sin imagen</span>
-        </div>
+          // Los posters llegan de dominios externos aún no configurados en next/image.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            alt={`Vista previa de ${module.name}`}
+            className="module-poster"
+            decoding="async"
+            loading="lazy"
+            onError={() => setPosterFailed(true)}
+            src={posterUrl}
+          />
+        ) : (
+          <div aria-label={`${module.name} sin imagen`} className="module-poster module-poster-empty" role="img">
+            <span aria-hidden="true">Sin imagen</span>
+          </div>
         )}
-          {selectedQuantity > 1 ? <span key={selectedQuantity} className="module-quantity-preview">×{selectedQuantity}</span> : null}
-        </div>
+        {selectedQuantity > 1 ? <span key={selectedQuantity} className="module-quantity-preview">×{selectedQuantity}</span> : null}
+      </div>
 
       <div className="module-body">
         <h2 className="module-name" id={`module-${module.id}-name`}>
@@ -82,29 +90,49 @@ export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: 
           </div>
         </dl>
 
-        <div className="quantity-selector" role="group" aria-label={`Cantidad de ${module.name}`}>
-          <button
-            aria-disabled={selectedQuantity === 1 ? true : undefined}
-            aria-label={`Reducir cantidad de ${module.name}`}
-            className="quantity-step"
-            onClick={() => setQuantity(Math.max(1, selectedQuantity - 1))}
-            type="button"
-          >
-            −
-          </button>
-          <output aria-live="polite" className="quantity-value">{selectedQuantity}</output>
-          <button
-            aria-describedby={remainingM2 !== undefined && selectedQuantity >= maxQuantity ? capacityHintId : undefined}
-            aria-disabled={selectedQuantity >= maxQuantity ? true : undefined}
-            aria-label={`Aumentar cantidad de ${module.name}`}
-            className="quantity-step"
-            onClick={() => setQuantity(Math.max(1, Math.min(maxQuantity, selectedQuantity + 1)))}
-            type="button"
-          >
-            +
-          </button>
-        </div>
-        {remainingM2 !== undefined ? (
+        {zones && zones.length > 0 ? (
+          <div className="zone-field module-destination">
+            <label htmlFor={destinationId}>Zona</label>
+            <select
+              id={destinationId}
+              onChange={(event) => setDestination(event.target.value)}
+              value={destination}
+            >
+              <option value="">Sin zona (raíz)</option>
+              {zones.map((zone) => (
+                <option key={zone.groupId} value={zone.groupId}>
+                  {zoneLabel(zone)}
+                </option>
+              ))}
+            </select>
+          </div>
+        ) : null}
+
+        {inZone ? null : (
+          <div className="quantity-selector" role="group" aria-label={`Cantidad de ${module.name}`}>
+            <button
+              aria-disabled={selectedQuantity === 1 ? true : undefined}
+              aria-label={`Reducir cantidad de ${module.name}`}
+              className="quantity-step"
+              onClick={() => setQuantity(Math.max(1, selectedQuantity - 1))}
+              type="button"
+            >
+              −
+            </button>
+            <output aria-live="polite" className="quantity-value">{selectedQuantity}</output>
+            <button
+              aria-describedby={remainingM2 !== undefined && selectedQuantity >= maxQuantity ? capacityHintId : undefined}
+              aria-disabled={selectedQuantity >= maxQuantity ? true : undefined}
+              aria-label={`Aumentar cantidad de ${module.name}`}
+              className="quantity-step"
+              onClick={() => setQuantity(Math.max(1, Math.min(maxQuantity, selectedQuantity + 1)))}
+              type="button"
+            >
+              +
+            </button>
+          </div>
+        )}
+        {remainingM2 !== undefined && !inZone ? (
           <p className="field-hint" id={capacityHintId}>
             {noSpace ? "No queda espacio para otra unidad." : `Máximo ${maxQuantity} según el espacio disponible.`}
           </p>
@@ -116,19 +144,21 @@ export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: 
           "Agregar". Se ignoran los clics mientras la petición está en curso.
         */}
         <button
-          aria-describedby={addState.status === "error" ? errorId : noSpace ? capacityHintId : undefined}
+          aria-describedby={addState.status === "error" ? errorId : !inZone && noSpace ? capacityHintId : undefined}
           aria-busy={adding ? true : undefined}
-          aria-disabled={adding || noSpace ? true : undefined}
+          aria-disabled={adding || (!inZone && noSpace) ? true : undefined}
           aria-label={adding
-            ? selectedQuantity === 1 ? `Agregando ${module.name}` : `Agregando ${selectedQuantity} unidades de ${module.name}`
-            : selectedQuantity === 1 ? `Agregar ${module.name}` : `Agregar ${selectedQuantity} unidades de ${module.name}`}
+            ? effectiveQuantity === 1 ? `Agregando ${module.name}` : `Agregando ${effectiveQuantity} unidades de ${module.name}`
+            : effectiveQuantity === 1 ? `Agregar ${module.name}` : `Agregar ${effectiveQuantity} unidades de ${module.name}`}
           className="auth-submit module-add"
           onClick={async () => {
-            if (!adding && !noSpace && await onAdd(module, selectedQuantity)) setQuantity(1);
+            if (!adding && (inZone || !noSpace) && await onAdd(module, effectiveQuantity, inZone ? destination : null)) {
+              setQuantity(1);
+            }
           }}
           type="button"
         >
-          {adding ? "Agregando…" : selectedQuantity === 1 ? "Agregar" : `Agregar ${selectedQuantity}`}
+          {adding ? "Agregando…" : effectiveQuantity === 1 ? "Agregar" : `Agregar ${effectiveQuantity}`}
         </button>
 
         <Link
@@ -141,7 +171,7 @@ export function ModuleCard({ module, packageId, addState, onAdd, remainingM2 }: 
 
         {addState.status === "added" ? (
           <p className="module-added">
-            {addState.count === 1 ? "Agregado a tu paquete" : `Agregado ${addState.count} veces`}
+            {addState.count === 1 ? "Agregado a tu evento" : `Agregado ${addState.count} veces`}
           </p>
         ) : null}
 

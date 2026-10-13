@@ -20,10 +20,15 @@ function setup(
     getPackage: vi.fn().mockResolvedValue(
       ok({
         capacityM2,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
         id: "pkg-1",
         items: [{ areaM2: 2, itemId: "item-arco", moduleId: "mod-arco" }],
+        name: "Evento",
         spaceType: "casa",
         userId: "user-1",
+        venue: null,
         version: 4,
       }),
     ),
@@ -110,14 +115,13 @@ describe("AddModuleToGroupUseCase", () => {
     expect(groupRepository.addItemToGroup).not.toHaveBeenCalled();
   });
 
-  it("rechaza por capacidad", async () => {
+  it("guarda la hoja aunque el área exceda la capacidad (DECOR-44)", async () => {
     const { groupRepository, useCase } = setup(5);
 
     const result = await useCase.execute({ groupId: "zona", moduleId: "mod-mesa", packageId: "pkg-1", userId: "user-1" });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("package.capacity_exceeded");
-    expect(groupRepository.addItemToGroup).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(groupRepository.addItemToGroup).toHaveBeenCalledTimes(1);
   });
 
   it("propaga el error del RPC y no notifica", async () => {

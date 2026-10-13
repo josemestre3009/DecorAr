@@ -89,10 +89,15 @@ const packageReader: PackageReader = {
     const row = pkg.rows[0];
     return ok({
       capacityM2: Number(row.capacity_m2),
+      clientName: null,
+      eventDate: null,
+      eventType: null,
       id: row.id,
       items: items.rows.map((item) => ({ areaM2: Number(item.area_m2), itemId: item.id, moduleId: item.module_id })),
+      name: "Evento",
       spaceType: row.space_type,
       userId: row.user_id,
+      venue: null,
       version: row.version,
     });
   },
@@ -293,7 +298,7 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
           child.value.groupId,
           parent.value.groupId,
         ]),
-      ).rejects.toMatchObject({ message: expect.stringContaining("package.group_immutable") });
+      ).rejects.toMatchObject({ message: expect.stringContaining("package.group_cycle") });
     });
   });
 
@@ -342,7 +347,7 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
       const result = await useCases(consumer).createGroup.execute({ name: "Vacío", packageId, userId: USER_A });
 
       expect(result.ok).toBe(true);
-      expect(await rows(packageId)).toEqual({ events: 0, groups: 1, items: 0, version: 1 });
+      expect(await rows(packageId)).toEqual({ events: 0, groups: 1, items: 0, version: 2 });
       expect(consumer.consume).not.toHaveBeenCalled();
     });
 
@@ -371,7 +376,7 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
         }),
       ]);
 
-      expect(removed.rows[0].version).toBe(3);
+      expect(removed.rows[0].version).toBe(4);
       const types = await db.query<{ event_type: string }>(
         `SELECT event_type FROM private.domain_events WHERE package_id = $1 ORDER BY id`,
         [packageId],
@@ -380,9 +385,8 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
       expect(await rows(packageId)).toMatchObject({ groups: 1, items: 0 });
     });
 
-    it("la capacidad cuenta las hojas dentro de grupos y rechaza sin escribir", async () => {
+    it("guarda el grupo aunque el área requerida supere la disponible (DECOR-44)", async () => {
       const packageId = await newPackage(USER_A, 5);
-      const before = await rows(packageId);
 
       const result = await useCases().createGroup.execute({
         moduleIds: [MODULE_ARCO, MODULE_MESA],
@@ -391,9 +395,9 @@ describe("DECOR-25 Criterios de aceptación: Composite para grupos decorativos",
         userId: USER_A,
       });
 
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect(result.error.code).toBe("package.capacity_exceeded");
-      expect(await rows(packageId)).toEqual(before);
+      // 2 + 4 = 6 > 5: ya no bloquea el guardado.
+      expect(result.ok).toBe(true);
+      expect(await rows(packageId)).toMatchObject({ groups: 1, items: 2 });
     });
   });
 

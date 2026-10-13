@@ -164,18 +164,40 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       async create(params) {
         try {
           const res = await db.query<{ create_package: { id: string } }>(
-            `SELECT public.create_package($1, $2, $3);`,
-            [params.userId, params.spaceType, params.capacityM2],
+            `SELECT public.create_package($1, $2, $3, $4, $5, $6, $7, $8);`,
+            [
+              params.userId,
+              params.name,
+              params.spaceType,
+              params.capacityM2,
+              params.clientName,
+              params.eventDate,
+              params.venue,
+              params.eventType,
+            ],
           );
           const raw = res.rows[0].create_package;
           return ok({
             capacityM2: params.capacityM2,
+            clientName: params.clientName,
+            eventDate: params.eventDate,
+            eventType: params.eventType,
             id: raw.id,
+            name: params.name,
             spaceType: params.spaceType,
+            spatial: {
+              availableM2: params.capacityM2,
+              requiredM2: 0,
+              status: params.capacityM2 === null ? "pending" : "compatible",
+            },
+            venue: params.venue,
           });
         } catch {
           return err(new DomainError("package.persistence_error", "Error al crear paquete"));
         }
+      },
+      async updateMetadata() {
+        return err(new DomainError("package.persistence_error", "updateMetadata no soportado en la shim PGlite"));
       },
       async clone(params) {
         try {
@@ -233,10 +255,15 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
         const row = pkgRes.rows[0];
         return ok({
           capacityM2: Number(row.capacity_m2),
+          clientName: null,
+          eventDate: null,
+          eventType: null,
           id: row.id,
           items: itemsRes.rows.map((i) => ({ areaM2: Number(i.area_m2), itemId: i.id, moduleId: i.module_id })),
+          name: "Evento",
           spaceType: row.space_type as TipoEspacio,
           userId: row.user_id,
+          venue: null,
           version: Number(row.version),
         });
       },
@@ -463,7 +490,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       // 1. Crear paquete de 50 m² para salonSocial
       const createReq = new Request("http://localhost/api/packages", {
-        body: JSON.stringify({ capacityM2: 50, spaceType: "salonSocial" }),
+        body: JSON.stringify({ capacityM2: 50, name: "Evento", spaceType: "salonSocial" }),
         headers: { "Content-Type": "application/json" },
         method: "POST",
       });
@@ -509,7 +536,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       const createRes = await packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 30, spaceType: "aireLibre" }),
+          body: JSON.stringify({ capacityM2: 30, name: "Evento", spaceType: "aireLibre" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -537,12 +564,12 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       expect(Number(itemsDb.rows[0].count)).toBe(3);
     });
 
-    it("Fixture 3: Capacidad excedida (32 m² en 30 m²) rechaza con 422 y NO emite eventos en outbox", async () => {
+    it("Fixture 3: el exceso de área (32 m² en 30 m²) guarda con 201 y emite el evento (DECOR-44)", async () => {
       const { packageController } = createControllerContext(userA);
 
       const createRes = await packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 30, spaceType: "casa" }),
+          body: JSON.stringify({ capacityM2: 30, name: "Evento", spaceType: "casa" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -560,7 +587,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       );
       expect(res1.status).toBe(201);
 
-      // Segunda pista (16 + 16 = 32 m² > 30 m²) -> 422 Unprocessable Entity
+      // Segunda pista (16 + 16 = 32 m² > 30 m²) -> 201: ya no bloquea.
       const res2 = await packageController.handleAddItem(
         new Request(`http://localhost/api/packages/${pkg.id}/items`, {
           body: JSON.stringify({ moduleId: MOD_PISTA }),
@@ -569,23 +596,20 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
         }),
         pkg.id,
       );
-      expect(res2.status).toBe(422);
-      const errBody = (await res2.json()) as { error: { code: string; message: string } };
-      expect(errBody.error.code).toBe("package.capacity_exceeded");
-      expect(errBody.error.message).toContain("excede la capacidad del espacio (32/30 m²)");
+      expect(res2.status).toBe(201);
 
-      // Aislamiento: Sólo 1 ítem en BD, versión en 2 y 1 solo evento en outbox
+      // El cambio se persiste y emite un evento por cada módulo agregado.
       const itemsCount = await db.query<{ count: string }>(
         `SELECT count(*) FROM public.package_items WHERE package_id = $1`,
         [pkg.id],
       );
-      expect(Number(itemsCount.rows[0].count)).toBe(1);
+      expect(Number(itemsCount.rows[0].count)).toBe(2);
 
       const eventsCount = await db.query<{ count: string }>(
         `SELECT count(*) FROM private.domain_events WHERE package_id = $1`,
         [pkg.id],
       );
-      expect(Number(eventsCount.rows[0].count)).toBe(1);
+      expect(Number(eventsCount.rows[0].count)).toBe(2);
     });
 
     it("Rollback atómico: colisión de evento en outbox no deja package_items parciales ni sube versión", async () => {
@@ -645,7 +669,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       // 1. Crear paquete original con 2 ítems
       const origRes = await packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 40, spaceType: "salonSocial" }),
+          body: JSON.stringify({ capacityM2: 40, name: "Evento", spaceType: "salonSocial" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -718,7 +742,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       const pkgRes = await packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 50, spaceType: "salonSocial" }),
+          body: JSON.stringify({ capacityM2: 50, name: "Evento", spaceType: "salonSocial" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -755,7 +779,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       const pkgRes = await packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 50, spaceType: "salonSocial" }),
+          body: JSON.stringify({ capacityM2: 50, name: "Evento", spaceType: "salonSocial" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -832,7 +856,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       // Intentar reasignar el padre para crear un ciclo Padre -> Hijo -> Padre
       await expect(
         db.query(`UPDATE public.package_groups SET parent_group_id = $1 WHERE id = $2`, [childId, parentId]),
-      ).rejects.toMatchObject({ message: expect.stringContaining("package.group_immutable") });
+      ).rejects.toMatchObject({ message: expect.stringContaining("package.group_cycle") });
     });
   });
 
@@ -845,7 +869,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       const res = await packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 30, spaceType: "casa" }),
+          body: JSON.stringify({ capacityM2: 30, name: "Evento", spaceType: "casa" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -860,7 +884,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       const ctxA = createControllerContext(userA);
       const pkgRes = await ctxA.packageController.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 30, spaceType: "casa" }),
+          body: JSON.stringify({ capacityM2: 30, name: "Evento", spaceType: "casa" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),
@@ -927,7 +951,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       const customCorrId = "trace-uuid-123456";
       const req = new Request("http://localhost/api/packages", {
-        body: JSON.stringify({ capacityM2: 30, spaceType: "casa" }),
+        body: JSON.stringify({ capacityM2: 30, name: "Evento", spaceType: "casa" }),
         headers: {
           "Content-Type": "application/json",
           "x-correlation-id": customCorrId,
@@ -945,6 +969,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
       const sessionGateway: Pick<SessionGateway, "currentUser"> = { currentUser: async () => userA };
       const failingRepo: PackageRepository = {
         create: vi.fn().mockRejectedValue(new Error("FATAL: connection leaked internal db string")),
+        updateMetadata: vi.fn(),
         clone: vi.fn(),
       };
       const controller = new PackageController(
@@ -958,7 +983,7 @@ describe("DECOR-26: Pruebas de integración de API, Persistencia y Patrones", ()
 
       const res = await controller.handleCreatePackage(
         new Request("http://localhost/api/packages", {
-          body: JSON.stringify({ capacityM2: 30, spaceType: "casa" }),
+          body: JSON.stringify({ capacityM2: 30, name: "Evento", spaceType: "casa" }),
           headers: { "Content-Type": "application/json" },
           method: "POST",
         }),

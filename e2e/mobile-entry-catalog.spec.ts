@@ -74,14 +74,36 @@ async function expectVisibleFocus(control: Locator) {
   expect(outline.color).not.toBe("rgba(0, 0, 0, 0)");
 }
 
-async function createPackage(page: Page, capacity = "30") {
-  await page.getByLabel("Salón social").check();
-  await page.getByLabel("Capacidad del espacio (m²)").fill(capacity);
-  await page.getByRole("button", { name: "Crear paquete" }).click();
+/**
+ * Crea un evento (DECOR-44): solo el nombre es obligatorio; el tipo de espacio y
+ * el área son metadatos opcionales que se completan después.
+ */
+async function createEvent(page: Page, name = "Evento de prueba") {
+  await page.getByLabel("Nombre del evento").fill(name);
+  await page.getByRole("button", { name: "Crear evento" }).click();
+}
+
+/**
+ * Avanza con Tab hasta que el control reciba el foco real del teclado (necesario
+ * para activar :focus-visible) y comprueba que el contorno se ve. Evita depender
+ * del número exacto de controles que el configurador interpone antes del
+ * catálogo, que cambia según el modo simulado o live.
+ */
+async function tabUntilVisibleFocus(page: Page, control: Locator, maxTabs = 30) {
+  for (let tab = 0; tab < maxTabs; tab += 1) {
+    if (await control.evaluate((element) => element === document.activeElement).catch(() => false)) {
+      await expectVisibleFocus(control);
+      return;
+    }
+
+    await page.keyboard.press("Tab");
+  }
+
+  await expectVisibleFocus(control);
 }
 
 test.describe("portada", () => {
-  test("la llamada a la acción lleva a crear el paquete y pide sesión", async ({ page }) => {
+  test("la llamada a la acción lleva a crear el evento y pide sesión", async ({ page }) => {
     await page.setViewportSize({ height: 720, width: 360 });
     await page.goto("/");
 
@@ -103,17 +125,17 @@ test.describe("portada", () => {
     await expectVisibleFocus(page.getByRole("link", { name: "Inicia Sesión" }));
   });
 
-  test("la página de un paquete exige sesión", async ({ page }) => {
+  test("la página de un evento exige sesión", async ({ page }) => {
     await page.goto("/packages/paquete-de-prueba");
 
     await expect(page).toHaveURL(/\/login$/);
   });
 });
 
-test.describe("definición del espacio y catálogo", () => {
+test.describe("creación de evento y catálogo", () => {
   test.skip(!hasCredentials, missingCredentials);
 
-  test("valida la capacidad, crea el paquete, muestra el catálogo y agrega un módulo", async ({
+  test("crea el evento solo con el nombre, muestra el catálogo y agrega un módulo", async ({
     page,
   }) => {
     const postgrestCalls = watchPostgrest(page);
@@ -121,26 +143,14 @@ test.describe("definición del espacio y catálogo", () => {
     await serveCatalog(page);
     await signIn(page);
 
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Define tu espacio");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Organiza tus eventos");
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
-    // Cada tipo de valor rechazado tiene su propio mensaje.
-    for (const [raw, message] of [
-      ["treinta", "La capacidad debe escribirse con números, por ejemplo 30."],
-      ["30m2", "No aceptamos este valor. Escribe solo números, por ejemplo 30 o 30,5."],
-      ["0", "La capacidad debe ser mayor que 0."],
-    ]) {
-      await createPackage(page, raw);
-
-      await expect(appAlert(page)).toHaveText(message);
-      await expect(page.getByLabel("Capacidad del espacio (m²)")).toHaveValue(raw);
-      await expect(page).toHaveURL(/\/packages$/);
-    }
-
-    await createPackage(page, "30,5");
+    await createEvent(page, "Boda de prueba");
 
     await expect(page).toHaveURL(/\/packages\/[^/]+$/);
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tu paquete");
+    // En live el título es el nombre del evento; en simulado, el genérico.
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Boda de prueba|Tu evento/);
 
     const cards = page.getByRole("article");
     await expect(cards).toHaveCount(3);
@@ -155,7 +165,7 @@ test.describe("definición del espacio y catálogo", () => {
     await expect(cards.first()).toContainText("×3");
     await page.getByRole("button", { name: "Agregar 3 unidades de Mesa redonda" }).click();
 
-    await expect(page.getByText("3 unidades de Mesa redonda se agregaron a tu paquete.")).toBeAttached();
+    await expect(page.getByText("3 unidades de Mesa redonda se agregaron a tu evento.")).toBeAttached();
     await expect(cards.first()).toContainText("Agregado 3 veces");
 
     expect(postgrestCalls).toEqual([]);
@@ -170,7 +180,7 @@ test.describe("definición del espacio y catálogo", () => {
       await route.fulfill({ body: "[]", contentType: "application/json", status: 200 });
     });
     await signIn(page);
-    await createPackage(page);
+    await createEvent(page);
 
     await expect(page.getByText("Cargando catálogo…")).toBeVisible();
 
@@ -197,7 +207,7 @@ test.describe("definición del espacio y catálogo", () => {
     );
     await page.route("https://example.com/**", (route) => route.abort());
     await signIn(page);
-    await createPackage(page);
+    await createEvent(page);
 
     await expect(appAlert(page)).toContainText("No pudimos cargar el catálogo.");
 
@@ -215,22 +225,18 @@ test.describe("definición del espacio y catálogo", () => {
     // el recorrido debe empezar desde el principio de la página.
     await page.goto("/packages");
 
-    // Definir el espacio: el grupo de opciones es una sola parada de Tab y las
-    // flechas cambian la opción elegida.
+    // Crear el evento (DECOR-44): solo el nombre es obligatorio. Los detalles
+    // opcionales quedan plegados y no interrumpen el recorrido.
     await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("radio", { name: "Casa" }));
-    await page.keyboard.press("ArrowDown");
-    const aireLibre = page.getByRole("radio", { name: "Aire libre (parque o playa)" });
-    await expectVisibleFocus(aireLibre);
-    await expect(aireLibre).toBeChecked();
+    const name = page.getByLabel("Nombre del evento");
+    await expectVisibleFocus(name);
+    await page.keyboard.type("Evento de teclado");
 
     await page.keyboard.press("Tab");
-    const capacity = page.getByLabel("Capacidad del espacio (m²)");
-    await expectVisibleFocus(capacity);
-    await page.keyboard.type("45");
+    await expectVisibleFocus(page.getByText("Agregar detalles (opcional)", { exact: true }));
 
     await page.keyboard.press("Tab");
-    const submit = page.getByRole("button", { name: "Crear paquete" });
+    const submit = page.getByRole("button", { name: "Crear evento" });
     await expectVisibleFocus(submit);
 
     await page.keyboard.press("Tab");
@@ -243,12 +249,13 @@ test.describe("definición del espacio y catálogo", () => {
     // Catálogo: al llegar, el foco pasa al título para que el recorrido empiece
     // arriba de la página nueva y no donde estaba el formulario.
     await expect(page).toHaveURL(/\/packages\/[^/]+$/);
-    await expect(page.getByRole("heading", { level: 1, name: "Tu paquete" })).toBeFocused();
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByRole("article")).toHaveCount(3);
 
-    await page.keyboard.press("Tab");
+    // La tarjeta de la mesa es la primera del catálogo; se alcanza con Tab desde
+    // el título aunque el configurador interponga otros controles.
     const decreaseMesa = page.getByRole("button", { name: "Reducir cantidad de Mesa redonda" });
-    await expectVisibleFocus(decreaseMesa);
+    await tabUntilVisibleFocus(page, decreaseMesa);
 
     await page.keyboard.press("Tab");
     const increaseMesa = page.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
@@ -262,7 +269,7 @@ test.describe("definición del espacio y catálogo", () => {
 
     await page.keyboard.press("Enter");
 
-    await expect(page.getByText("2 unidades de Mesa redonda se agregaron a tu paquete.")).toBeAttached();
+    await expect(page.getByText("2 unidades de Mesa redonda se agregaron a tu evento.")).toBeAttached();
     // Tras el éxito la cantidad vuelve a 1 y el nombre accesible del botón cambia.
     await expectVisibleFocus(page.getByRole("button", { name: "Agregar Mesa redonda" }));
   });

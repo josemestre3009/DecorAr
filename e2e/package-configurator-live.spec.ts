@@ -1,5 +1,7 @@
 /**
- * DECOR-22: configurador de paquete contra la API real y el Supabase alojado.
+ * DECOR-22 / DECOR-44: configurador de evento contra la API real y el Supabase
+ * alojado. DECOR-44: el evento se crea solo con su nombre y el exceso de área es
+ * un diagnóstico informativo que no bloquea la configuración.
  *
  * Opt-in: solo corre con DECOR_LIVE_SMOKE=1 y las variables de Supabase, porque
  * crea un usuario real (admin API, `email_confirm: true`) que se elimina al
@@ -68,15 +70,32 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await expect(page).toHaveURL(/\/packages$/);
   }
 
-  async function createPackage(page: Page, spaceLabel: string, capacity: string) {
-    await page.getByLabel(spaceLabel).check();
-    await page.getByLabel("Capacidad del espacio (m²)").fill(capacity);
-    await page.getByRole("button", { name: "Crear paquete" }).click();
+  /**
+   * Crea un evento (DECOR-44): solo el nombre es obligatorio. El tipo de espacio
+   * y el área se completan en los detalles opcionales del formulario para que el
+   * diagnóstico espacial tenga datos.
+   */
+  async function createEvent(page: Page, name: string, spaceLabel?: string, capacity?: string) {
+    if (spaceLabel !== undefined || capacity !== undefined) {
+      await page.getByText("Agregar detalles (opcional)", { exact: true }).click();
+    }
+    if (spaceLabel !== undefined) {
+      await page.getByLabel("Tipo de espacio").selectOption({ label: spaceLabel });
+    }
+    if (capacity !== undefined) {
+      await page.getByLabel("Área disponible (m²)").fill(capacity);
+    }
+    await page.getByRole("button", { name: "Crear evento" }).click();
     await expect(page).toHaveURL(PACKAGE_URL);
   }
 
-  const contents = (page: Page) => page.getByRole("region", { name: "Contenido del paquete" });
-  const facts = (page: Page) => page.getByRole("region", { name: "Tu espacio" }).getByRole("definition");
+  const eventSummary = (page: Page) =>
+    page.getByRole("region", { name: "Datos del evento", exact: true });
+  const contents = (page: Page) => page.getByRole("region", { name: "Contenido del evento", exact: true });
+  /** Diagnóstico espacial derivado (DECOR-44): informativo, nunca bloqueante. */
+  const spatial = (page: Page) => eventSummary(page).getByRole("status");
+  /** Valor de un dato del evento (cliente, tipo de espacio, área...). */
+  const fact = (region: Locator, label: string) => region.locator(`dt:text-is("${label}") + dd`);
   const leafRow = (scope: Locator, name: string) =>
     scope.getByRole("listitem").filter({ has: scope.page().getByText(name, { exact: true }) }).last();
 
@@ -84,38 +103,51 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await page.getByRole("button", { name: `Agregar ${moduleName}` }).click();
   }
 
-  test("Builder: con 30 m² una pista entra y la segunda se rechaza sin mutar la interfaz", async ({ page }) => {
+  test("Builder: el exceso de área no bloquea, la segunda pista se guarda y el diagnóstico avisa", async ({
+    page,
+  }) => {
     await signIn(page);
-    await createPackage(page, "Casa", "30");
+    await createEvent(page, "Boda Builder", "Casa", "30");
 
-    await expect(facts(page)).toHaveText(["Casa", "30 m²", "0 m²", "30 m²"]);
+    await expect(fact(eventSummary(page), "Tipo de espacio")).toHaveText("Casa");
+    await expect(fact(eventSummary(page), "Área disponible")).toHaveText("30 m²");
 
     await addFromCatalog(page, "Pista de baile");
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×1");
-    await expect(facts(page)).toHaveText(["Casa", "30 m²", "16 m²", "14 m²"]);
+    // 16 m² de 30 m²: compatible, con las medidas visibles.
+    await expect(spatial(page)).toContainText("Compatibilidad espacial: compatible");
+    await expect(spatial(page)).toContainText("16 m² requeridos");
+    await expect(spatial(page)).toContainText("30 m² disponibles");
 
     await addFromCatalog(page, "Pista de baile");
-    await expect(page.getByRole("main").getByRole("alert")).toContainText(
-      "excede la capacidad del espacio (32/30 m²)",
-    );
-    await expect(leafRow(contents(page), "Pista de baile")).toContainText("×1");
-    await expect(facts(page)).toHaveText(["Casa", "30 m²", "16 m²", "14 m²"]);
+    // El exceso es una advertencia, no un rechazo: la segunda pista se guarda.
+    await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
+    await expect(spatial(page)).toContainText("Compatibilidad espacial excedida");
+    await expect(spatial(page)).toContainText("32 m² requeridos");
+    await expect(spatial(page)).toContainText("30 m² disponibles");
   });
 
   test("otra capacidad cambia el resultado y el Composite se despliega con arco + mesa", async ({ page }) => {
     await signIn(page);
-    await createPackage(page, "Salón social", "50");
+    await createEvent(page, "Fiesta Composite", "Salón social", "50");
+
+    await expect(fact(eventSummary(page), "Tipo de espacio")).toHaveText("Salón social");
+    await expect(fact(eventSummary(page), "Área disponible")).toHaveText("50 m²");
 
     await addFromCatalog(page, "Pista de baile");
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×1");
     await addFromCatalog(page, "Pista de baile");
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
-    await expect(facts(page)).toHaveText(["Salón social", "50 m²", "32 m²", "18 m²"]);
+    // El mismo exceso de la prueba anterior no aparece aquí: la compatibilidad
+    // es un valor derivado del área disponible.
+    await expect(spatial(page)).toContainText("Compatibilidad espacial: compatible");
+    await expect(spatial(page)).toContainText("32 m² requeridos");
+    await expect(spatial(page)).toContainText("50 m² disponibles");
 
     await page.getByRole("button", { name: "Agregar Zona de bienvenida" }).click();
     const zona = contents(page).getByRole("button", { name: /Zona de bienvenida/ });
     await expect(zona).toHaveAttribute("aria-expanded", "false");
-    await expect(facts(page)).toHaveText(["Salón social", "50 m²", "38 m²", "12 m²"]);
+    await expect(spatial(page)).toContainText("38 m² requeridos");
 
     await zona.click();
     await expect(zona).toHaveAttribute("aria-expanded", "true");
@@ -128,7 +160,7 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
 
   test("el total confirmado viene de Presupuesto", async ({ page }) => {
     await signIn(page);
-    await createPackage(page, "Casa", "30");
+    await createEvent(page, "Evento Presupuesto", "Casa", "30");
 
     const budget = page.getByRole("region", { name: "Presupuesto" });
     await expect(budget).toContainText("Presupuesto aún no calculado");
@@ -141,7 +173,7 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
 
   test("Prototype: el clon es independiente del original", async ({ page }) => {
     await signIn(page);
-    await createPackage(page, "Salón social", "50");
+    await createEvent(page, "Evento Prototype", "Salón social", "50");
     const originalUrl = page.url();
 
     await addFromCatalog(page, "Pista de baile");
@@ -149,24 +181,28 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
     await addFromCatalog(page, "Pista de baile");
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
 
-    await page.getByRole("button", { name: "Duplicar paquete" }).click();
+    await page.getByRole("button", { name: "Duplicar evento" }).click();
     await expect(page).not.toHaveURL(originalUrl);
     await expect(page).toHaveURL(PACKAGE_URL);
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
 
     await contents(page).getByRole("button", { name: "Quitar una unidad de Pista de baile" }).click();
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×1");
-    await expect(facts(page)).toHaveText(["Salón social", "50 m²", "16 m²", "34 m²"]);
+    // El clon queda con una sola pista: 16 m² requeridos de 50 m² disponibles.
+    await expect(spatial(page)).toContainText("16 m² requeridos");
+    await expect(spatial(page)).toContainText("50 m² disponibles");
 
     await page.goto(originalUrl);
     await expect(leafRow(contents(page), "Pista de baile")).toContainText("×2");
-    await expect(facts(page)).toHaveText(["Salón social", "50 m²", "32 m²", "18 m²"]);
+    // El original no cambió: conserva las dos pistas (32 m² requeridos).
+    await expect(spatial(page)).toContainText("32 m² requeridos");
+    await expect(spatial(page)).toContainText("50 m² disponibles");
   });
 
-  test("un paquete de otro usuario o inexistente responde 404 sin revelar que existe", async ({ page }) => {
+  test("un evento de otro usuario o inexistente responde 404 sin revelar que existe", async ({ page }) => {
     const foreign = await admin
       .from("packages")
-      .insert({ capacity_m2: 30, space_type: "casa", user_id: otherUserId })
+      .insert({ capacity_m2: 30, name: "Evento ajeno E2E", space_type: "casa", user_id: otherUserId })
       .select("id")
       .single<{ id: string }>();
     if (foreign.error) throw foreign.error;

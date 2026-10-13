@@ -1,6 +1,6 @@
 import type { DomainError } from "../../../../shared/domain/domain-error";
 import type { Result } from "../../../../shared/domain/result";
-import type { TipoEspacio } from "../../domain/space-type";
+import type { EventMetadataDto } from "../dtos/package.dto";
 import type { PackageGroupSummary } from "./package-group-repository.port";
 
 export interface PackageDetailItemRecord {
@@ -13,10 +13,8 @@ export interface PackageDetailItemRecord {
   readonly groupId: string | null;
 }
 
-export interface PackageDetailRecord {
+export interface PackageDetailRecord extends EventMetadataDto {
   readonly id: string;
-  readonly spaceType: TipoEspacio;
-  readonly capacityM2: number;
   readonly version: number;
   readonly items: readonly PackageDetailItemRecord[];
   readonly groups: readonly PackageGroupSummary[];

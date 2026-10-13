@@ -20,7 +20,7 @@ export class ModuloCompuesto implements ComponenteDecorativoPadre {
 
   private constructor(
     private readonly _id: string,
-    private readonly _nombre: string,
+    private _nombre: string,
   ) {}
 
   static crear(id: string, nombre: string): Result<ModuloCompuesto, DomainError> {
@@ -28,17 +28,26 @@ export class ModuloCompuesto implements ComponenteDecorativoPadre {
       return err(new DomainError("package.invalid_group", "Identificador de grupo inválido"));
     }
 
-    const nombreLimpio = typeof nombre === "string" ? nombre.trim() : "";
-    if (nombreLimpio.length === 0 || nombreLimpio.length > MAX_LONGITUD_NOMBRE_GRUPO) {
-      return err(
-        new DomainError(
-          "package.invalid_group_name",
-          `El nombre del grupo debe tener entre 1 y ${MAX_LONGITUD_NOMBRE_GRUPO} caracteres`,
-        ),
-      );
+    const nombreResult = validarNombreGrupo(nombre);
+    if (!nombreResult.ok) {
+      return err(nombreResult.error);
     }
 
-    return ok(new ModuloCompuesto(id.trim(), nombreLimpio));
+    return ok(new ModuloCompuesto(id.trim(), nombreResult.value));
+  }
+
+  /**
+   * Renombra el grupo conservando su id, padre, subgrupos y hojas. Valida el
+   * mismo recorte y longitud que la creación; un nombre inválido no toca nada.
+   */
+  renombrar(nombre: string): Result<void, DomainError> {
+    const nombreResult = validarNombreGrupo(nombre);
+    if (!nombreResult.ok) {
+      return err(nombreResult.error);
+    }
+
+    this._nombre = nombreResult.value;
+    return ok(undefined);
   }
 
   get id(): string {
@@ -163,4 +172,19 @@ export class ModuloCompuesto implements ComponenteDecorativoPadre {
   asignarPadre(padre: ComponenteDecorativoPadre | null): void {
     this._padre = padre;
   }
+}
+
+/** Recorta y valida el nombre visible de un grupo (1..80 caracteres). */
+function validarNombreGrupo(nombre: unknown): Result<string, DomainError> {
+  const nombreLimpio = typeof nombre === "string" ? nombre.trim() : "";
+  if (nombreLimpio.length === 0 || nombreLimpio.length > MAX_LONGITUD_NOMBRE_GRUPO) {
+    return err(
+      new DomainError(
+        "package.invalid_group_name",
+        `El nombre del grupo debe tener entre 1 y ${MAX_LONGITUD_NOMBRE_GRUPO} caracteres`,
+      ),
+    );
+  }
+
+  return ok(nombreLimpio);
 }

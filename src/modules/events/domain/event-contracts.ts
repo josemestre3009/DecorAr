@@ -6,6 +6,7 @@ export const EVENT_SCHEMA_VERSION = 1;
 export const EVENT_TYPES = [
   "package.module.added",
   "package.module.removed",
+  "package.module.moved",
   "budget.recalculated",
 ] as const;
 
@@ -27,6 +28,14 @@ export type PackageModulePayload = {
   readonly moduleId: string;
 };
 
+/** Mover conserva la instancia y sólo cambia su ubicación (`null` = raíz). */
+export type PackageModuleMovedPayload = {
+  readonly itemId: string;
+  readonly moduleId: string;
+  readonly fromGroupId: string | null;
+  readonly toGroupId: string | null;
+};
+
 export type BudgetRecalculatedPayload = {
   readonly budgetId: string;
   /** Integer amount in COP. */
@@ -36,11 +45,16 @@ export type BudgetRecalculatedPayload = {
 
 export type PackageModuleAddedEvent = EventEnvelope<"package.module.added", PackageModulePayload>;
 export type PackageModuleRemovedEvent = EventEnvelope<"package.module.removed", PackageModulePayload>;
+export type PackageModuleMovedEvent = EventEnvelope<
+  "package.module.moved",
+  PackageModuleMovedPayload
+>;
 export type BudgetRecalculatedEvent = EventEnvelope<"budget.recalculated", BudgetRecalculatedPayload>;
 
 export type DomainEvent =
   | PackageModuleAddedEvent
   | PackageModuleRemovedEvent
+  | PackageModuleMovedEvent
   | BudgetRecalculatedEvent;
 
 export const packageChannel = (packageId: string): string => `package:${packageId}`;
@@ -48,11 +62,17 @@ export const packageChannel = (packageId: string): string => `package:${packageI
 const ISO_UTC = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,3})?Z$/;
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
 
-type FieldKind = "string" | "uuid" | "nonNegativeInteger";
+type FieldKind = "string" | "uuid" | "nullableUuid" | "nonNegativeInteger";
 
 const PAYLOAD_FIELDS: Record<EventType, Readonly<Record<string, FieldKind>>> = {
   "package.module.added": { itemId: "string", moduleId: "uuid" },
   "package.module.removed": { itemId: "string", moduleId: "uuid" },
+  "package.module.moved": {
+    itemId: "string",
+    moduleId: "uuid",
+    fromGroupId: "nullableUuid",
+    toGroupId: "nullableUuid",
+  },
   "budget.recalculated": {
     budgetId: "string",
     totalCop: "nonNegativeInteger",
@@ -163,7 +183,9 @@ function parseDomainEventUnsafe(input: unknown): Result<DomainEvent, DomainError
         ? typeof value === "number" && Number.isSafeInteger(value) && value >= 0
         : kind === "uuid"
           ? typeof value === "string" && UUID.test(value)
-          : isNonEmptyString(value);
+          : kind === "nullableUuid"
+            ? value === null || (typeof value === "string" && UUID.test(value))
+            : isNonEmptyString(value);
 
     if (!valid) {
       return invalid(`Evento inválido: payload.${field} tiene un valor no válido`);

@@ -154,7 +154,7 @@ describe("Builder y PaqueteDecoracion usan el contrato común del Composite", ()
     expect(paquete.presupuestoTotal).toBe(1050000); // 450k + 600k
   });
 
-  it("la capacidad se valida igual para un grupo: se rechaza si no cabe", () => {
+  it("el exceso de área de un grupo ya no bloquea; el diagnóstico lo informa (DECOR-44)", () => {
     const builder = new PaqueteDecoracionBuilderImpl("casa", 20);
     builder.agregarPistaBaile(); // 16 / 20
 
@@ -162,9 +162,15 @@ describe("Builder y PaqueteDecoracion usan el contrato común del Composite", ()
     if (!zona.ok) throw zona.error;
     const result = builder.agregarComponente(zona.value);
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("package.capacity_exceeded");
-    expect(builder.construir().modulos).toHaveLength(1);
+    expect(result.ok).toBe(true);
+
+    const paquete = builder.construir();
+    expect(paquete.modulos).toHaveLength(3);
+    expect(paquete.diagnosticoEspacial).toEqual({
+      areaDisponibleM2: 20,
+      areaRequeridaM2: 22,
+      estado: "exceeded",
+    });
   });
 
   it("construir() copia los grupos: cambiar el builder no altera el snapshot", () => {

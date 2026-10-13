@@ -30,7 +30,17 @@ function fakeClient(results: Record<string, QueryResult>) {
   return { client: { from } as unknown as SupabaseClient, filters, from };
 }
 
-const PACKAGE_ROW = { capacity_m2: "30.00", id: "pkg-1", space_type: "casa", version: 3 };
+const PACKAGE_ROW = {
+  capacity_m2: "30.00",
+  client_name: null,
+  event_date: null,
+  event_type: null,
+  id: "pkg-1",
+  name: "Boda Ana",
+  space_type: "casa",
+  venue: null,
+  version: 3,
+};
 
 describe("SupabasePackageDetailReader", () => {
   it("lee el paquete del dueño con sus ítems (nombre, precio y área del catálogo) y grupos", async () => {
@@ -66,6 +76,9 @@ describe("SupabasePackageDetailReader", () => {
       ok: true,
       value: {
         capacityM2: 30,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
         groups: [{ groupId: "zona", name: "Zona de bienvenida", parentGroupId: null }],
         id: "pkg-1",
         items: [
@@ -79,7 +92,9 @@ describe("SupabasePackageDetailReader", () => {
             priceCop: 600000,
           },
         ],
+        name: "Boda Ana",
         spaceType: "casa",
+        venue: null,
         version: 3,
       },
     });

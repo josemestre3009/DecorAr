@@ -1,6 +1,5 @@
-import { readFile } from "node:fs/promises";
 import { describe, expect, it } from "vitest";
-import { extractGlbBoundingBox, inspectAllAssets, parseInspectOptions } from "./inspect-glb-bounds";
+import { extractGlbBoundingBox, parseInspectOptions } from "./inspect-glb-bounds";
 
 describe("extractGlbBoundingBox", () => {
   it("lanza error si el buffer es demasiado corto", () => {
@@ -75,63 +74,12 @@ describe("extractGlbBoundingBox", () => {
   });
 });
 
-describe("inspectAllAssets", () => {
-  it.each([
-    ["mesa", "assets/3d/mesa/v1/mahogany_table.glb", [13.714, 6.463, 8.139]],
-    ["arco", "assets/3d/arco/v1/flower_arch.glb", [7.369, 7.233, 1.521]],
-    ["pista", "assets/3d/pista/v1/animated_dance_floor_neon_lights.glb", [7.02, 0.5, 7.02]],
-  ])("reporta las dimensiones nativas verificables para %s", async (_id, file, expected) => {
-    const bounds = extractGlbBoundingBox(await readFile(file));
-    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
-  });
-
-  it.each([
-    ["mesa", "assets/3d/mesa/v2/mahogany_table.glb", [2, 0.943, 1.187]],
-    ["arco", "assets/3d/arco/v2/flower_arch.glb", [2.445, 2.4, 0.505]],
-    ["pista", "assets/3d/pista/v2/animated_dance_floor_neon_lights.glb", [4, 0.285, 4]],
-  ])("verifica la escala física uniforme v2 para %s", async (_id, file, expected) => {
-    const bounds = extractGlbBoundingBox(await readFile(file));
-    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
-  });
-
-  it.each([
-    ["arco", "assets/3d/arco/v3/flower_arch.glb", [2.445, 2.4, 0.505]],
-    ["pista", "assets/3d/pista/v3/animated_dance_floor_neon_lights.glb", [4, 0.285, 4]],
-  ])("recentra %s v3 con la misma escala y la base en el piso", async (_id, file, expected) => {
-    const bounds = extractGlbBoundingBox(await readFile(file));
-    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual(expected);
-    expect(bounds.min[1]).toBeCloseTo(0, 2);
-    expect(bounds.min[0] + bounds.max[0]).toBeCloseTo(0, 2);
-    expect(bounds.min[2] + bounds.max[2]).toBeCloseTo(0, 2);
-  });
-
-  it("mantiene la mesa auxiliar pequeña, centrada y apoyada en el piso", async () => {
-    const bounds = extractGlbBoundingBox(
-      await readFile("assets/3d/mesa-auxiliar/v2/mesa-auxiliar.glb"),
-    );
-
-    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual([0.6, 0.55, 0.45]);
-    expect(bounds.min[1]).toBeCloseTo(0, 3);
-    expect(bounds.min[0] + bounds.max[0]).toBeCloseTo(0, 3);
-    expect(bounds.min[2] + bounds.max[2]).toBeCloseTo(0, 3);
-  });
-
-  it("mantiene la silla plástica a escala real y apoyada en el piso", async () => {
-    const bounds = extractGlbBoundingBox(await readFile("assets/3d/silla/v2/silla.glb"));
-
-    expect([bounds.widthM, bounds.heightM, bounds.depthM]).toEqual([0.642, 0.88, 0.628]);
-    expect(bounds.min[1]).toBeCloseTo(0, 3);
-    expect(bounds.min[0] + bounds.max[0]).toBeCloseTo(0, 3);
-  });
-
-  it("selecciona la versión solicitada sin inspeccionar v1", async () => {
+describe("parseInspectOptions", () => {
+  it("selecciona el módulo y la versión solicitados", () => {
     expect(parseInspectOptions(["--asset=mesa", "--version=2"])).toEqual({
       assetId: "mesa",
       version: 2,
     });
-    const [result] = await inspectAllAssets({ assetId: "mesa", version: 2 });
-    expect(result.version).toBe(2);
-    expect(result.bounds.widthM).toBe(2);
   });
 
   it("rechaza módulo o versión inválidos", () => {

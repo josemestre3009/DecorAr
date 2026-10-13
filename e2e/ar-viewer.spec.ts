@@ -9,8 +9,8 @@ const hasCredentials = Boolean(email && password);
 const missingCredentials = "requiere DECOR_E2E_EMAIL y DECOR_E2E_PASSWORD";
 
 // Fixture de DECOR-28 (misma forma que GET /api/modules). Sus URLs apuntan a
-// example.com: los modelos se sirven con un GLB real del repositorio y el resto
-// se aborta, así la prueba no depende de la red ni de Cloudinary.
+// example.com: los modelos se sirven con un GLB mínimo generado en memoria y el
+// resto se aborta, así la prueba no depende de la red, Cloudinary ni binarios locales.
 const catalogFixture = readFileSync(resolve("public/fixtures/catalog-modules.json"), "utf8");
 const catalog = JSON.parse(catalogFixture) as { id: string; name: string; glbUrl: string; usdzUrl: string }[];
 const [mesa, arco, pista] = catalog as [
@@ -18,7 +18,24 @@ const [mesa, arco, pista] = catalog as [
   (typeof catalog)[number],
   (typeof catalog)[number],
 ];
-const sampleGlb = readFileSync(resolve("assets/3d/pista/v2/animated_dance_floor_neon_lights.glb"));
+
+function createSampleGlb(): Buffer {
+  const json = Buffer.from(
+    JSON.stringify({ asset: { version: "2.0" }, scene: 0, scenes: [{ nodes: [] }] }),
+    "utf8",
+  );
+  const paddedLength = Math.ceil(json.length / 4) * 4;
+  const glb = Buffer.alloc(20 + paddedLength, 0x20);
+  glb.writeUInt32LE(0x46546c67, 0);
+  glb.writeUInt32LE(2, 4);
+  glb.writeUInt32LE(glb.length, 8);
+  glb.writeUInt32LE(paddedLength, 12);
+  glb.writeUInt32LE(0x4e4f534a, 16);
+  json.copy(glb, 20);
+  return glb;
+}
+
+const sampleGlb = createSampleGlb();
 
 const IPHONE_UA =
   "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";

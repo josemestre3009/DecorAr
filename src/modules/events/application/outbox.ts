@@ -1,8 +1,15 @@
 import type { DomainError } from "../../../shared/domain/domain-error";
 import type { Result } from "../../../shared/domain/result";
-import type { PackageModuleAddedEvent, PackageModuleRemovedEvent } from "../domain/event-contracts";
+import type {
+  PackageModuleAddedEvent,
+  PackageModuleMovedEvent,
+  PackageModuleRemovedEvent,
+} from "../domain/event-contracts";
 
-export type PackageChangeEvent = PackageModuleAddedEvent | PackageModuleRemovedEvent;
+export type PackageChangeEvent =
+  | PackageModuleAddedEvent
+  | PackageModuleRemovedEvent
+  | PackageModuleMovedEvent;
 
 /**
  * Contract agreed with DECOR-27. Applies the package change described by the
