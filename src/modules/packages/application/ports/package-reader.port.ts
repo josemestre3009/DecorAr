@@ -1,6 +1,6 @@
 import type { DomainError } from "../../../../shared/domain/domain-error";
 import type { Result } from "../../../../shared/domain/result";
-import type { TipoEspacio } from "../../domain/space-type";
+import type { EventMetadataDto, SpatialDiagnosticDto } from "../dtos/package.dto";
 
 export interface PackageItemSummary {
   readonly itemId: string;
@@ -8,20 +8,17 @@ export interface PackageItemSummary {
   readonly areaM2: number;
 }
 
-export interface PackageDetail {
+export interface PackageDetail extends EventMetadataDto {
   readonly id: string;
   readonly userId: string;
-  readonly spaceType: TipoEspacio;
-  readonly capacityM2: number;
   readonly version: number;
   readonly items: readonly PackageItemSummary[];
 }
 
-export interface PackageSummary {
+export interface PackageSummary extends EventMetadataDto {
   readonly id: string;
-  readonly spaceType: TipoEspacio | null;
-  readonly capacityM2: number | null;
   readonly updatedAt: string;
+  readonly spatial: SpatialDiagnosticDto;
 }
 
 export interface PackageListReader {

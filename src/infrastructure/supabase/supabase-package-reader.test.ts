@@ -27,12 +27,31 @@ function fakeListClient(result: { data: unknown; error: unknown }) {
   };
 }
 
+const SELECT =
+  "id, name, space_type, capacity_m2, client_name, event_date, venue, event_type, updated_at, package_items(catalog_modules(area_m2))";
+
 describe("SupabasePackageReader.listByOwner", () => {
-  it("filtra por propietario, ordena por actualización descendente y mapea NUMERIC", async () => {
+  it("filtra por propietario, ordena por actualización descendente y calcula el diagnóstico espacial", async () => {
     const { calls, client } = fakeListClient({
       data: [
-        { capacity_m2: "35.50", id: "reciente", space_type: "salonSocial", updated_at: "2026-10-12T15:00:00Z" },
-        { capacity_m2: 20, id: "anterior", space_type: "casa", updated_at: "2026-10-11T15:00:00Z" },
+        {
+          capacity_m2: "35.50",
+          event_type: null,
+          id: "reciente",
+          name: "Boda Ana",
+          package_items: [{ catalog_modules: { area_m2: "10.00" } }],
+          space_type: "salonSocial",
+          updated_at: "2026-10-12T15:00:00Z",
+        },
+        {
+          capacity_m2: 20,
+          event_type: null,
+          id: "anterior",
+          name: "Cumpleaños",
+          package_items: [],
+          space_type: "casa",
+          updated_at: "2026-10-11T15:00:00Z",
+        },
       ],
       error: null,
     });
@@ -40,13 +59,35 @@ describe("SupabasePackageReader.listByOwner", () => {
     const result = await new SupabasePackageReader(client).listByOwner("user-1");
 
     expect(calls).toEqual([
-      ["select", "id, space_type, capacity_m2, updated_at"],
+      ["select", SELECT],
       ["eq", "user_id", "user-1"],
       ["order", "updated_at", { ascending: false }],
     ]);
     expect(result).toEqual(ok([
-      { capacityM2: 35.5, id: "reciente", spaceType: "salonSocial", updatedAt: "2026-10-12T15:00:00Z" },
-      { capacityM2: 20, id: "anterior", spaceType: "casa", updatedAt: "2026-10-11T15:00:00Z" },
+      {
+        capacityM2: 35.5,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
+        id: "reciente",
+        name: "Boda Ana",
+        spaceType: "salonSocial",
+        spatial: { availableM2: 35.5, requiredM2: 10, status: "compatible" },
+        updatedAt: "2026-10-12T15:00:00Z",
+        venue: null,
+      },
+      {
+        capacityM2: 20,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
+        id: "anterior",
+        name: "Cumpleaños",
+        spaceType: "casa",
+        spatial: { availableM2: 20, requiredM2: 0, status: "compatible" },
+        updatedAt: "2026-10-11T15:00:00Z",
+        venue: null,
+      },
     ]));
   });
 
@@ -60,14 +101,34 @@ describe("SupabasePackageReader.listByOwner", () => {
     if (!result.ok) expect(result.error.code).toBe("package.persistence_error");
   });
 
-  it("conserva paquetes legacy sin inventar tipo ni capacidad", async () => {
+  it("conserva eventos legacy sin nombre, tipo ni capacidad", async () => {
     const { client } = fakeListClient({
-      data: [{ capacity_m2: null, id: "legacy", space_type: null, updated_at: "2026-10-10T15:00:00Z" }],
+      data: [
+        {
+          capacity_m2: null,
+          id: "legacy",
+          name: null,
+          package_items: null,
+          space_type: null,
+          updated_at: "2026-10-10T15:00:00Z",
+        },
+      ],
       error: null,
     });
 
     expect(await new SupabasePackageReader(client).listByOwner("user-1")).toEqual(ok([
-      { capacityM2: null, id: "legacy", spaceType: null, updatedAt: "2026-10-10T15:00:00Z" },
+      {
+        capacityM2: null,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
+        id: "legacy",
+        name: "",
+        spaceType: null,
+        spatial: { availableM2: null, requiredM2: 0, status: "pending" },
+        updatedAt: "2026-10-10T15:00:00Z",
+        venue: null,
+      },
     ]));
   });
 });

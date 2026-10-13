@@ -35,31 +35,32 @@ describe("Patrón Builder: PaqueteDecoracion y DirectorEvento", () => {
     expect(paquete.presupuestoTotal).toBe(700000); // 200k + 250k + 250k
   });
 
-  it("escenario 3: valida regla de capacidad con fixture de 30 m² rechazando módulos excedentes", () => {
+  it("escenario 3: el exceso de capacidad ya no rechaza; el diagnóstico lo informa", () => {
     const builder = new PaqueteDecoracionBuilderImpl("casa", 30);
 
     // 1. Agregar primera pista (16 m² -> 16 / 30)
     const add1 = builder.agregarModulo(CATALOGO_CANONICO.pistaBaile);
     expect(add1.ok).toBe(true);
 
-    // 2. Intentar agregar segunda pista (16 + 16 = 32 > 30 -> RECHAZO)
+    // 2. Segunda pista (16 + 16 = 32 > 30): se guarda, ya no bloquea (DECOR-44).
     const add2 = builder.agregarModulo(CATALOGO_CANONICO.pistaBaile);
-    expect(add2.ok).toBe(false);
-    if (!add2.ok) {
-      expect(add2.error.code).toBe("package.capacity_exceeded");
-      expect(add2.error.message).toContain("excede la capacidad del espacio (32/30 m²)");
-    }
+    expect(add2.ok).toBe(true);
 
-    // 3. Agregar arco floral (16 + 2 = 18 <= 30 -> ACEPTADO)
+    // 3. Agregar arco floral (16 + 16 + 2 = 34)
     const add3 = builder.agregarModulo(CATALOGO_CANONICO.arcoFloral);
     expect(add3.ok).toBe(true);
 
     const paquete = builder.construir();
 
     expect(paquete.tipoEspacio).toBe("casa");
-    expect(paquete.modulos).toHaveLength(2);
-    expect(paquete.espacioUsadoM2).toBe(18);
-    expect(paquete.presupuestoTotal).toBe(800000); // 600k + 200k
+    expect(paquete.modulos).toHaveLength(3);
+    expect(paquete.espacioUsadoM2).toBe(34);
+    expect(paquete.presupuestoTotal).toBe(1400000); // 600k + 600k + 200k
+    expect(paquete.diagnosticoEspacial).toEqual({
+      areaDisponibleM2: 30,
+      areaRequeridaM2: 34,
+      estado: "exceeded",
+    });
   });
 
   it("rechaza tipo de espacio no soportado", () => {

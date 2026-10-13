@@ -1,6 +1,7 @@
 import type {
   BudgetRecalculatedEvent,
   PackageModuleAddedEvent,
+  PackageModuleMovedEvent,
   PackageModuleRemovedEvent,
 } from "./event-contracts";
 
@@ -22,6 +23,19 @@ export const packageModuleRemovedExample: PackageModuleRemovedEvent = {
   eventId: "7a2d3b8f-4c5e-4f60-9bac-1d2e3f4a5b6c",
   type: "package.module.removed",
   occurredAt: "2026-10-02T15:06:00.000Z",
+};
+
+export const packageModuleMovedExample: PackageModuleMovedEvent = {
+  ...packageModuleAddedExample,
+  eventId: "8b3e4c9a-5d6f-4a71-9cbd-2e3f4a5b6c7d",
+  type: "package.module.moved",
+  occurredAt: "2026-10-02T15:05:00.000Z",
+  payload: {
+    itemId: packageModuleAddedExample.payload.itemId,
+    moduleId: packageModuleAddedExample.payload.moduleId,
+    fromGroupId: "a1b2c3d4-e5f6-4a7b-8c9d-0e1f2a3b4c5d",
+    toGroupId: null,
+  },
 };
 
 export const budgetRecalculatedExample: BudgetRecalculatedEvent = {

@@ -2,20 +2,28 @@ import type { Clock, IdGenerator } from "../../../shared/application/ports";
 import { DomainError } from "../../../shared/domain/domain-error";
 import { err, ok, type Result } from "../../../shared/domain/result";
 import type { EventPublisher } from "../../events/application/event-publisher";
-import { parseDomainEvent, type PackageModuleAddedEvent, type PackageModuleRemovedEvent } from "../../events/domain/event-contracts";
+import {
+  parseDomainEvent,
+  type PackageModuleAddedEvent,
+  type PackageModuleMovedEvent,
+  type PackageModuleRemovedEvent,
+} from "../../events/domain/event-contracts";
 import type { BudgetConsumer } from "./budget-consumer";
 import { calculateBudget } from "../domain/calculate-budget";
 import type { BudgetState } from "../domain/budget-state";
 import type { PackageSnapshotReader } from "./package-snapshot-reader";
 
 /** The only events that trigger a recalculation; `budget.recalculated` itself never does. */
-export type PackageChangedEvent = PackageModuleAddedEvent | PackageModuleRemovedEvent;
+export type PackageChangedEvent =
+  | PackageModuleAddedEvent
+  | PackageModuleRemovedEvent
+  | PackageModuleMovedEvent;
 
 export const BUDGET_CONSUMER = "budget";
 
 /**
- * Consumes a `package.module.added`/`removed` event and recalculates the
- * package's budget. Rereads the package rather than trusting the event
+ * Consumes a `package.module.added`/`removed`/`moved` event and recalculates
+ * the package's budget. Rereads the package rather than trusting the event
  * payload (DECOR-29 keeps prices out of package events on purpose), then asks
  * `process_budget_event` to persist idempotently, and only publishes
  * `budget.recalculated` when that call actually applied a change.
@@ -40,11 +48,15 @@ export class ConsumePackageChangedEvent {
       return err(parsed.error);
     }
 
-    if (parsed.value.type !== "package.module.added" && parsed.value.type !== "package.module.removed") {
+    if (
+      parsed.value.type !== "package.module.added" &&
+      parsed.value.type !== "package.module.removed" &&
+      parsed.value.type !== "package.module.moved"
+    ) {
       return err(
         new DomainError(
           "event.unsupported_type",
-          `ConsumePackageChangedEvent sólo acepta package.module.added/removed, se recibió ${parsed.value.type}`,
+          `ConsumePackageChangedEvent sólo acepta package.module.added/removed/moved, se recibió ${parsed.value.type}`,
         ),
       );
     }

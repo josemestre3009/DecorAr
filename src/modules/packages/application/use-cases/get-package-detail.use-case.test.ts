@@ -14,10 +14,15 @@ function reader(record: PackageDetailRecord | null): PackageDetailReader {
 
 const base: PackageDetailRecord = {
   capacityM2: 30,
+  clientName: null,
+  eventDate: null,
+  eventType: null,
   groups: [],
   id: "pkg-1",
   items: [],
+  name: "Evento base",
   spaceType: "casa",
+  venue: null,
   version: 1,
 };
 
@@ -26,8 +31,34 @@ describe("GetPackageDetailUseCase", () => {
     const result = await new GetPackageDetailUseCase(reader(base)).execute({ packageId: "pkg-1", userId: "user-1" });
 
     expect(result).toEqual(
-      ok({ capacityM2: 30, id: "pkg-1", nodes: [], remainingM2: 30, spaceType: "casa", usedM2: 0, version: 1 }),
+      ok({
+        capacityM2: 30,
+        clientName: null,
+        eventDate: null,
+        eventType: null,
+        id: "pkg-1",
+        name: "Evento base",
+        nodes: [],
+        remainingM2: 30,
+        spaceType: "casa",
+        spatial: { availableM2: 30, requiredM2: 0, status: "compatible" },
+        usedM2: 0,
+        venue: null,
+        version: 1,
+      }),
     );
+  });
+
+  it("sin área disponible el diagnóstico queda pendiente y el restante es null", async () => {
+    const record: PackageDetailRecord = { ...base, capacityM2: null, spaceType: null, id: "pkg-sin-area" };
+
+    const result = await new GetPackageDetailUseCase(reader(record)).execute({ packageId: "pkg-1", userId: "user-1" });
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.value.remainingM2).toBeNull();
+      expect(result.value.spatial).toEqual({ availableM2: null, requiredM2: 0, status: "pending" });
+    }
   });
 
   it("arma hojas sueltas y la Zona de bienvenida con subtotales recursivos (Composite)", async () => {
@@ -102,6 +133,7 @@ describe("GetPackageDetailUseCase", () => {
     if (result.ok) {
       expect(result.value.usedM2).toBe(24);
       expect(result.value.remainingM2).toBe(0);
+      expect(result.value.spatial).toEqual({ availableM2: 20, requiredM2: 24, status: "exceeded" });
     }
   });
 

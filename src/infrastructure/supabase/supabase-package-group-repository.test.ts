@@ -187,4 +187,146 @@ describe("SupabasePackageGroupRepository", () => {
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.error.code).toBe("package.persistence_error");
   });
+
+  it("updateGroup invoca update_package_group y mapea la respuesta", async () => {
+    const rpc = vi.fn().mockResolvedValue({
+      data: { depth: 2, groupId: "grp-1", name: "Recepción", packageVersion: 5, parentGroupId: "grp-2" },
+      error: null,
+    });
+
+    const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).updateGroup({
+      expectedVersion: 4,
+      groupId: "grp-1",
+      name: "Recepción",
+      packageId: "pkg-1",
+      parentGroupId: "grp-2",
+      userId: "user-1",
+    });
+
+    expect(rpc).toHaveBeenCalledWith("update_package_group", {
+      p_correlation_id: null,
+      p_expected_version: 4,
+      p_group_id: "grp-1",
+      p_name: "Recepción",
+      p_package_id: "pkg-1",
+      p_parent_group_id: "grp-2",
+      p_reparent: true,
+      p_user_id: "user-1",
+    });
+    expect(result).toEqual({ ok: true, value: 5 });
+  });
+
+  it("deleteGroup invoca delete_package_group con los eventos y mapea la respuesta", async () => {
+    const removed = {
+      eventId: "evt-del",
+      occurredAt: "2026-10-16T10:00:00.000Z",
+      packageId: "pkg-1",
+      payload: { itemId: "item-1", moduleId: "mod-1" },
+      schemaVersion: 1 as const,
+      type: "package.module.removed" as const,
+      userId: "user-1",
+    };
+    const rpc = vi.fn().mockResolvedValue({
+      data: {
+        eventCount: 1,
+        groupId: "grp-1",
+        movedItemIds: [],
+        packageVersion: 9,
+        removedItemIds: ["item-1"],
+        strategy: "delete_contents",
+      },
+      error: null,
+    });
+
+    const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).deleteGroup({
+      events: [removed],
+      expectedVersion: 8,
+      groupId: "grp-1",
+      packageId: "pkg-1",
+      strategy: "delete_contents",
+      userId: "user-1",
+    });
+
+    expect(rpc).toHaveBeenCalledWith("delete_package_group", {
+      p_correlation_id: null,
+      p_events: [removed],
+      p_expected_version: 8,
+      p_group_id: "grp-1",
+      p_package_id: "pkg-1",
+      p_strategy: "delete_contents",
+      p_user_id: "user-1",
+    });
+    expect(result).toEqual({ ok: true, value: 9 });
+  });
+
+  it("moveItem invoca move_package_item y devuelve la versión", async () => {
+    const moved = {
+      eventId: "evt-move",
+      occurredAt: "2026-10-16T10:00:00.000Z",
+      packageId: "pkg-1",
+      payload: { fromGroupId: null, itemId: "item-1", moduleId: "mod-1", toGroupId: "grp-1" },
+      schemaVersion: 1 as const,
+      type: "package.module.moved" as const,
+      userId: "user-1",
+    };
+    const rpc = vi.fn().mockResolvedValue({ data: 6, error: null });
+
+    const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).moveItem({
+      event: moved,
+      expectedVersion: 5,
+      groupId: "grp-1",
+      itemId: "item-1",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(rpc).toHaveBeenCalledWith("move_package_item", {
+      p_correlation_id: null,
+      p_event: moved,
+      p_expected_version: 5,
+      p_group_id: "grp-1",
+    });
+    expect(result).toEqual({ ok: true, value: 6 });
+  });
+
+  it.each([
+    [{ message: "package.group_cycle" }, "package.group_cycle"],
+    [{ message: "package.group_depth_exceeded" }, "package.group_depth_exceeded"],
+    [{ message: "package.invalid_update" }, "package.invalid_update"],
+    [{ message: "package.invalid_strategy" }, "package.invalid_strategy"],
+    [{ message: "package.item_not_found" }, "package.item_not_found"],
+    [{ message: "package.not_found" }, "package.not_found"],
+    [{ message: "package.version_conflict" }, "package.version_conflict"],
+    [{ code: "22P02", message: "invalid uuid" }, "package.invalid_group"],
+    [{ code: "23503", message: "fk violation" }, "package.module_not_found"],
+    [{ code: "XX000", message: "boom" }, "package.persistence_error"],
+  ])("updateGroup traduce el error %j a %s", async (error, code) => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error });
+
+    const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).updateGroup({
+      expectedVersion: 1,
+      groupId: "grp-1",
+      name: "X",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe(code);
+  });
+
+  it("updateGroup convierte una excepción en package.persistence_error", async () => {
+    const rpc = vi.fn().mockRejectedValue(new Error("network down"));
+
+    const result = await new SupabasePackageGroupRepository(clientWithRpc(rpc)).updateGroup({
+      expectedVersion: 1,
+      groupId: "grp-1",
+      name: "X",
+      packageId: "pkg-1",
+      userId: "user-1",
+    });
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) expect(result.error.code).toBe("package.persistence_error");
+  });
 });

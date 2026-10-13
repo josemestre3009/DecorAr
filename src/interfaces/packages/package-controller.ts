@@ -8,8 +8,13 @@ import type { AddModuleToPackageUseCase } from "../../modules/packages/applicati
 import type { ClonePackageUseCase } from "../../modules/packages/application/use-cases/clone-package.use-case";
 import type { CreatePackageGroupUseCase } from "../../modules/packages/application/use-cases/create-package-group.use-case";
 import type { CreatePackageUseCase } from "../../modules/packages/application/use-cases/create-package.use-case";
+import type { UpdatePackageMetadataUseCase } from "../../modules/packages/application/use-cases/update-package-metadata.use-case";
 import type { ListOwnedPackagesUseCase } from "../../modules/packages/application/use-cases/list-owned-packages.use-case";
 import type { RemoveModuleFromPackageUseCase } from "../../modules/packages/application/use-cases/remove-module-from-package.use-case";
+import type { UpdatePackageGroupUseCase } from "../../modules/packages/application/use-cases/update-package-group.use-case";
+import type { DeletePackageGroupUseCase } from "../../modules/packages/application/use-cases/delete-package-group.use-case";
+import type { MovePackageItemUseCase } from "../../modules/packages/application/use-cases/move-package-item.use-case";
+import type { CreatePackageDto, PackageMetadataPatch } from "../../modules/packages/application/dtos/package.dto";
 import type { SessionGateway } from "../../shared/application/ports";
 import type { SessionUser } from "../../shared/domain/session";
 import { checkPackageAccess } from "./package-access";
@@ -18,18 +23,45 @@ export type PackageControllerOptions = {
   readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
   readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
   readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
+  readonly updatePackageGroupUseCase?: Pick<UpdatePackageGroupUseCase, "execute">;
+  readonly deletePackageGroupUseCase?: Pick<DeletePackageGroupUseCase, "execute">;
+  readonly movePackageItemUseCase?: Pick<MovePackageItemUseCase, "execute">;
+  readonly updatePackageMetadataUseCase?: Pick<UpdatePackageMetadataUseCase, "execute">;
   readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   readonly listOwnedPackagesUseCase?: Pick<ListOwnedPackagesUseCase, "execute">;
   readonly defaultHeaders?: Record<string, string>;
   readonly headers?: Record<string, string>;
 };
 
+/** Estado HTTP de los errores de validación de metadatos (DECOR-44). */
+function metadataErrorStatus(code: string): number {
+  if (code === "auth.unauthenticated") return 401;
+  if (code === "package.not_found") return 404;
+  if (code === "package.persistence_error") return 500;
+  if (code.startsWith("package.invalid")) return 422;
+  return 400;
+}
+
+/** Conserva el tipo recibido para que el dominio rechace JSON con tipos incorrectos. */
+function readOptionalText(value: unknown): unknown {
+  if (value === undefined || value === null) return null;
+  return value;
+}
+
+/** Convierte solo la ausencia explícita en ausente; el dominio valida el resto. */
+function readOptionalCapacity(value: unknown): unknown {
+  if (value === undefined || value === null || value === "") return null;
+  return value;
+}
+
 /** Estado HTTP de los errores al agregar elementos o grupos (incluye el Composite, DECOR-25). */
 function groupErrorStatus(code: string): number {
   if (
     code === "package.capacity_exceeded" ||
     code === "package.group_depth_exceeded" ||
-    code === "package.group_cycle"
+    code === "package.group_cycle" ||
+    code === "package.invalid_group_name" ||
+    code === "package.too_many_children"
   ) {
     return 422;
   }
@@ -49,6 +81,57 @@ function groupErrorStatus(code: string): number {
   return 400;
 }
 
+/**
+ * Estado HTTP del editor de zonas e ítems (Composite editable). A diferencia de
+ * `groupErrorStatus`, un nombre inválido es una regla de dominio (422) y una
+ * zona/ítem ajeno o inexistente se oculta como 404.
+ */
+function structureErrorStatus(code: string): number {
+  if (code === "package.version_conflict" || code === "event.duplicate") {
+    return 409;
+  }
+  if (
+    code === "package.not_found" ||
+    code === "package.group_not_found" ||
+    code === "package.item_not_found" ||
+    code === "package.module_not_found"
+  ) {
+    return 404;
+  }
+  if (code.startsWith("outbox.") || code === "package.persistence_error") {
+    return 500;
+  }
+  if (
+    code === "package.invalid_group_name" ||
+    code === "package.group_cycle" ||
+    code === "package.group_depth_exceeded" ||
+    code === "package.capacity_exceeded"
+  ) {
+    return 422;
+  }
+  return 400;
+}
+
+/** Mismo formato de uuid que `AuthorizePackageAccessUseCase` para los ids del cuerpo. */
+const BODY_UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
+
+/**
+ * `expectedVersion` es obligatorio en las mutaciones del editor y debe ser un
+ * entero seguro >= 1. `null` significa "forma inválida" (400) antes de persistir.
+ */
+function readExpectedVersion(value: unknown): number | null {
+  return typeof value === "number" && Number.isSafeInteger(value) && value >= 1 ? value : null;
+}
+
+/** Respuesta 400 del editor: el cuerpo no llegó a invocar una mutación persistente. */
+function invalidStructureBody(
+  headers: Record<string, string>,
+  code: string,
+  message: string,
+): Response {
+  return Response.json({ error: { code, message } }, { headers, status: 400 });
+}
+
 function isPackageControllerOptions(
   arg: unknown,
 ): arg is PackageControllerOptions {
@@ -57,6 +140,10 @@ function isPackageControllerOptions(
     "clonePackageUseCase" in arg ||
     "createPackageGroupUseCase" in arg ||
     "addModuleToGroupUseCase" in arg ||
+    "updatePackageGroupUseCase" in arg ||
+    "deletePackageGroupUseCase" in arg ||
+    "movePackageItemUseCase" in arg ||
+    "updatePackageMetadataUseCase" in arg ||
     "drainOutbox" in arg ||
     "listOwnedPackagesUseCase" in arg ||
     "defaultHeaders" in arg ||
@@ -142,6 +229,10 @@ export class PackageController {
   private readonly clonePackageUseCase?: Pick<ClonePackageUseCase, "execute">;
   private readonly createPackageGroupUseCase?: Pick<CreatePackageGroupUseCase, "execute">;
   private readonly addModuleToGroupUseCase?: Pick<AddModuleToGroupUseCase, "execute">;
+  private readonly updatePackageGroupUseCase?: Pick<UpdatePackageGroupUseCase, "execute">;
+  private readonly deletePackageGroupUseCase?: Pick<DeletePackageGroupUseCase, "execute">;
+  private readonly movePackageItemUseCase?: Pick<MovePackageItemUseCase, "execute">;
+  private readonly updatePackageMetadataUseCase?: Pick<UpdatePackageMetadataUseCase, "execute">;
   private readonly drainOutbox?: Pick<DrainOutboxUseCase, "execute">;
   private readonly listOwnedPackagesUseCase?: Pick<ListOwnedPackagesUseCase, "execute">;
   private readonly defaultHeaders: Record<string, string>;
@@ -163,6 +254,10 @@ export class PackageController {
       this.clonePackageUseCase = optionsOrCloneOrDrain.clonePackageUseCase;
       this.createPackageGroupUseCase = optionsOrCloneOrDrain.createPackageGroupUseCase;
       this.addModuleToGroupUseCase = optionsOrCloneOrDrain.addModuleToGroupUseCase;
+      this.updatePackageGroupUseCase = optionsOrCloneOrDrain.updatePackageGroupUseCase;
+      this.deletePackageGroupUseCase = optionsOrCloneOrDrain.deletePackageGroupUseCase;
+      this.movePackageItemUseCase = optionsOrCloneOrDrain.movePackageItemUseCase;
+      this.updatePackageMetadataUseCase = optionsOrCloneOrDrain.updatePackageMetadataUseCase;
       this.drainOutbox = optionsOrCloneOrDrain.drainOutbox;
       this.listOwnedPackagesUseCase = optionsOrCloneOrDrain.listOwnedPackagesUseCase;
       this.defaultHeaders =
@@ -230,22 +325,25 @@ export class PackageController {
         );
       }
 
-      const { capacityM2, spaceType } = body as Record<string, unknown>;
+      const { name, clientName, eventDate, venue, eventType, spaceType, capacityM2 } =
+        body as Record<string, unknown>;
 
-      const result = await this.createPackageUseCase.execute({
-        capacityM2: Number(capacityM2),
-        spaceType: String(spaceType ?? ""),
+      const dto: CreatePackageDto = {
+        capacityM2: readOptionalCapacity(capacityM2),
+        clientName: readOptionalText(clientName),
+        eventDate: readOptionalText(eventDate),
+        eventType: readOptionalText(eventType),
+        name,
+        spaceType: spaceType === undefined || spaceType === null ? null : spaceType,
         userId: user.id,
-      });
+        venue: readOptionalText(venue),
+      };
+
+      const result = await this.createPackageUseCase.execute(dto);
 
       if (!result.ok) {
         const { code, message } = result.error;
-        const status =
-          code === "package.invalid_space_type" || code === "package.invalid_capacity"
-            ? 422
-            : code === "package.persistence_error"
-              ? 500
-              : 400;
+        const status = metadataErrorStatus(code);
 
         return Response.json(
           { error: { code, message } },
@@ -260,6 +358,82 @@ export class PackageController {
     } catch (cause) {
       const errorCorrelationId = randomUUID();
       console.error(`[PackageController.create] Error inesperado (${errorCorrelationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
+    }
+  }
+
+  /**
+   * `PATCH /api/packages/{packageId}` (DECOR-44): actualiza los metadatos del
+   * evento sin tocar la configuración decorativa. Solo el propietario; un
+   * evento ajeno o inexistente responde 404.
+   */
+  async handleUpdatePackage(request: Request, packageId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const access = await checkPackageAccess(
+        this.authorizePackageAccess,
+        packageId,
+        responseHeaders,
+      );
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.updatePackageMetadataUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de metadatos no disponible." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return Response.json(
+          { error: { code: "package.invalid_body", message: "Cuerpo de solicitud JSON inválido." } },
+          { headers: responseHeaders, status: 400 },
+        );
+      }
+
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return Response.json(
+          { error: { code: "package.invalid_body", message: "Se requiere un objeto JSON." } },
+          { headers: responseHeaders, status: 400 },
+        );
+      }
+
+      const raw = body as Record<string, unknown>;
+      const patch: Record<string, unknown> = {};
+      for (const key of ["name", "clientName", "eventDate", "venue", "eventType", "spaceType", "capacityM2"]) {
+        if (Object.prototype.hasOwnProperty.call(raw, key)) {
+          patch[key] = raw[key];
+        }
+      }
+
+      const result = await this.updatePackageMetadataUseCase.execute({
+        packageId,
+        patch: patch as PackageMetadataPatch,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: responseHeaders, status: metadataErrorStatus(code) },
+        );
+      }
+
+      return Response.json(result.value, { headers: responseHeaders, status: 200 });
+    } catch (cause) {
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.update] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
         { headers: responseHeaders, status: 500 },
@@ -557,12 +731,21 @@ export class PackageController {
         );
       }
 
-      const { children, name, parentGroupId } = body as Record<string, unknown>;
+      const { children, expectedVersion: rawExpectedVersion, name, parentGroupId } = body as Record<string, unknown>;
 
       if (typeof name !== "string") {
         return Response.json(
           { error: { code: "package.invalid_group_name", message: "El nombre del grupo es obligatorio" } },
           { headers: responseHeaders, status: 400 },
+        );
+      }
+
+      const expectedVersion = rawExpectedVersion === undefined ? undefined : readExpectedVersion(rawExpectedVersion);
+      if (expectedVersion === null) {
+        return invalidStructureBody(
+          responseHeaders,
+          "package.invalid_version",
+          "expectedVersion debe ser un entero mayor o igual a 1.",
         );
       }
 
@@ -604,6 +787,7 @@ export class PackageController {
         packageId,
         parentGroupId: typeof parentGroupId === "string" ? parentGroupId : null,
         userId: access.user.id,
+        ...(expectedVersion === undefined ? {} : { expectedVersion }),
       });
 
       if (!result.ok) {
@@ -630,6 +814,294 @@ export class PackageController {
     } catch (cause) {
       const errorCorrelationId = randomUUID();
       console.error(`[PackageController.createGroup] Error inesperado (${errorCorrelationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
+    }
+  }
+
+  /**
+   * `PATCH /api/packages/{packageId}/groups/{groupId}`: renombra y/o mueve una
+   * zona. Cuerpo `{name?, parentGroupId?, expectedVersion}`; al menos un cambio
+   * y `expectedVersion` entero >= 1. Solo el propietario; ajeno o inexistente 404.
+   */
+  async handleUpdateGroup(request: Request, packageId: string, groupId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const access = await checkPackageAccess(
+        this.authorizePackageAccess,
+        packageId,
+        responseHeaders,
+      );
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.updatePackageGroupUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de zonas no disponible." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Cuerpo de solicitud JSON inválido.");
+      }
+
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Se requiere un objeto JSON.");
+      }
+
+      const raw = body as Record<string, unknown>;
+      const hasName = Object.prototype.hasOwnProperty.call(raw, "name");
+      const hasParent = Object.prototype.hasOwnProperty.call(raw, "parentGroupId");
+      if (!hasName && !hasParent) {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Indica un nombre o un grupo padre.");
+      }
+
+      const expectedVersion = readExpectedVersion(raw.expectedVersion);
+      if (expectedVersion === null) {
+        return invalidStructureBody(
+          responseHeaders,
+          "package.invalid_version",
+          "expectedVersion debe ser un entero mayor o igual a 1.",
+        );
+      }
+
+      let name: string | undefined;
+      if (hasName) {
+        if (typeof raw.name !== "string") {
+          return invalidStructureBody(responseHeaders, "package.invalid_body", "El nombre debe ser texto.");
+        }
+        name = raw.name;
+      }
+
+      let parentGroupId: string | null | undefined;
+      if (hasParent) {
+        if (raw.parentGroupId === null) {
+          parentGroupId = null;
+        } else if (
+          typeof raw.parentGroupId === "string" &&
+          BODY_UUID.test(raw.parentGroupId.trim())
+        ) {
+          parentGroupId = raw.parentGroupId.trim();
+        } else {
+          return invalidStructureBody(responseHeaders, "package.invalid_group", "El grupo no es válido.");
+        }
+      }
+
+      const result = await this.updatePackageGroupUseCase.execute({
+        correlationId,
+        expectedVersion,
+        groupId,
+        packageId,
+        userId: access.user.id,
+        ...(name === undefined ? {} : { name }),
+        ...(parentGroupId === undefined ? {} : { parentGroupId }),
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: responseHeaders, status: structureErrorStatus(code) },
+        );
+      }
+
+      return Response.json(result.value, { headers: responseHeaders, status: 200 });
+    } catch (cause) {
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.updateGroup] Error inesperado (${errorCorrelationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
+    }
+  }
+
+  /**
+   * `DELETE /api/packages/{packageId}/groups/{groupId}`: elimina una zona con
+   * `move_to_root` o `delete_contents`. Cuerpo `{strategy, expectedVersion}`.
+   */
+  async handleDeleteGroup(request: Request, packageId: string, groupId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const access = await checkPackageAccess(
+        this.authorizePackageAccess,
+        packageId,
+        responseHeaders,
+      );
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.deletePackageGroupUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de zonas no disponible." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Cuerpo de solicitud JSON inválido.");
+      }
+
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Se requiere un objeto JSON.");
+      }
+
+      const raw = body as Record<string, unknown>;
+
+      const expectedVersion = readExpectedVersion(raw.expectedVersion);
+      if (expectedVersion === null) {
+        return invalidStructureBody(
+          responseHeaders,
+          "package.invalid_version",
+          "expectedVersion debe ser un entero mayor o igual a 1.",
+        );
+      }
+
+      const strategy = raw.strategy;
+      if (strategy !== "move_to_root" && strategy !== "delete_contents") {
+        return invalidStructureBody(responseHeaders, "package.invalid_strategy", "Elige cómo eliminar la zona.");
+      }
+
+      const result = await this.deletePackageGroupUseCase.execute({
+        correlationId,
+        expectedVersion,
+        groupId,
+        packageId,
+        strategy,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: responseHeaders, status: structureErrorStatus(code) },
+        );
+      }
+
+      if (this.drainOutbox) {
+        try {
+          await this.drainOutbox.execute();
+        } catch (err) {
+          console.error("[PackageController.handleDeleteGroup] Drain outbox error:", err);
+        }
+      }
+
+      return Response.json(result.value, { headers: responseHeaders, status: 200 });
+    } catch (cause) {
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.deleteGroup] Error inesperado (${errorCorrelationId}):`, cause);
+      return Response.json(
+        { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+        { headers: responseHeaders, status: 500 },
+      );
+    }
+  }
+
+  /**
+   * `PATCH /api/packages/{packageId}/items/{itemId}`: mueve una instancia
+   * existente entre zonas. Cuerpo `{groupId, expectedVersion}`; `groupId` null
+   * mueve a la raíz. Conserva `itemId`/`moduleId`.
+   */
+  async handleMoveItem(request: Request, packageId: string, itemId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    const responseHeaders = { ...this.defaultHeaders, [CORRELATION_ID_HEADER]: correlationId };
+
+    try {
+      const access = await checkPackageAccess(
+        this.authorizePackageAccess,
+        packageId,
+        responseHeaders,
+      );
+      if (!access.ok) {
+        return access.response;
+      }
+
+      if (!this.movePackageItemUseCase) {
+        return Response.json(
+          { error: { code: "internal_error", message: "Caso de uso de zonas no disponible." } },
+          { headers: responseHeaders, status: 500 },
+        );
+      }
+
+      let body: unknown;
+      try {
+        body = await request.json();
+      } catch {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Cuerpo de solicitud JSON inválido.");
+      }
+
+      if (typeof body !== "object" || body === null || Array.isArray(body)) {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Se requiere un objeto JSON.");
+      }
+
+      const raw = body as Record<string, unknown>;
+      if (!Object.prototype.hasOwnProperty.call(raw, "groupId")) {
+        return invalidStructureBody(responseHeaders, "package.invalid_body", "Indica el grupo destino.");
+      }
+
+      const expectedVersion = readExpectedVersion(raw.expectedVersion);
+      if (expectedVersion === null) {
+        return invalidStructureBody(
+          responseHeaders,
+          "package.invalid_version",
+          "expectedVersion debe ser un entero mayor o igual a 1.",
+        );
+      }
+
+      let groupId: string | null;
+      if (raw.groupId === null) {
+        groupId = null;
+      } else if (typeof raw.groupId === "string" && BODY_UUID.test(raw.groupId.trim())) {
+        groupId = raw.groupId.trim();
+      } else {
+        return invalidStructureBody(responseHeaders, "package.invalid_group", "El grupo no es válido.");
+      }
+
+      const result = await this.movePackageItemUseCase.execute({
+        correlationId,
+        expectedVersion,
+        groupId,
+        itemId,
+        packageId,
+        userId: access.user.id,
+      });
+
+      if (!result.ok) {
+        const { code, message } = result.error;
+        return Response.json(
+          { error: { code, message } },
+          { headers: responseHeaders, status: structureErrorStatus(code) },
+        );
+      }
+
+      if (this.drainOutbox) {
+        try {
+          await this.drainOutbox.execute();
+        } catch (err) {
+          console.error("[PackageController.handleMoveItem] Drain outbox error:", err);
+        }
+      }
+
+      return Response.json(result.value, { headers: responseHeaders, status: 200 });
+    } catch (cause) {
+      const errorCorrelationId = randomUUID();
+      console.error(`[PackageController.moveItem] Error inesperado (${errorCorrelationId}):`, cause);
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
         { headers: responseHeaders, status: 500 },

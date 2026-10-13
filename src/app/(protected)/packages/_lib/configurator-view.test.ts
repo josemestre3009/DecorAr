@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
 
-import { countUnitsByModule, rowSubtotal, spaceTypeLabel, toContentRows } from "./configurator-view";
+import { countUnitsByModule, rowSubtotal, spaceTypeLabel, spatialDiagnosticText, toContentRows } from "./configurator-view";
 
 const leaf = (itemId: string, moduleId: string, name: string, areaM2: number, priceCop: number): PackageDetailNode => ({
   areaM2,
@@ -113,5 +113,33 @@ describe("spaceTypeLabel", () => {
     expect(spaceTypeLabel("aireLibre")).toBe("Aire libre (parque o playa)");
     expect(spaceTypeLabel("salonSocial")).toBe("Salón social");
     expect(spaceTypeLabel("desconocido")).toBe("desconocido");
+  });
+
+  it("etiqueta la ausencia de espacio", () => {
+    expect(spaceTypeLabel(null)).toBe("Sin definir");
+  });
+});
+
+describe("spatialDiagnosticText (DECOR-44)", () => {
+  it("declara pendiente sin área disponible", () => {
+    const text = spatialDiagnosticText({ availableM2: null, requiredM2: 12, status: "pending" });
+
+    expect(text.title).toBe("Compatibilidad espacial pendiente");
+    expect(text.tone).toBe("neutral");
+    expect(text.detail).toContain("12 m² requeridos");
+  });
+
+  it("declara compatible con ambas medidas", () => {
+    const text = spatialDiagnosticText({ availableM2: 30, requiredM2: 12, status: "compatible" });
+
+    expect(text.title).toBe("Compatibilidad espacial: compatible");
+    expect(text.detail).toContain("12 m² requeridos de 30 m² disponibles");
+  });
+
+  it("advierte cuando se excede el área", () => {
+    const text = spatialDiagnosticText({ availableM2: 10, requiredM2: 16, status: "exceeded" });
+
+    expect(text.title).toBe("Compatibilidad espacial excedida");
+    expect(text.tone).toBe("warning");
   });
 });

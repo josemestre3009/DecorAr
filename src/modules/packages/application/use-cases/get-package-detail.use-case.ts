@@ -3,6 +3,7 @@ import { err, ok, type Result } from "../../../../shared/domain/result";
 import { ModuloCompuesto } from "../../domain/composite-module";
 import type { ComponenteDecorativo } from "../../domain/decorative-component";
 import { reconstruirComponentes } from "../../domain/package-structure";
+import { calcularDiagnosticoEspacial } from "../../domain/spatial-diagnostic";
 import type { GetPackageDetailDto, PackageDetailNode, PackageDetailView } from "../dtos/package-detail.dto";
 import type { PackageDetailItemRecord, PackageDetailReader } from "../ports/package-detail-reader.port";
 
@@ -50,14 +51,26 @@ export class GetPackageDetailUseCase {
     }
 
     const usedM2 = redondear(componentes.value.reduce((total, c) => total + c.calcularAreaM2(), 0));
+    const capacityM2 = record.capacityM2;
+    const diagnostico = calcularDiagnosticoEspacial(capacityM2, usedM2);
 
     return ok({
-      capacityM2: record.capacityM2,
+      capacityM2,
+      clientName: record.clientName,
+      eventDate: record.eventDate,
+      eventType: record.eventType,
       id: record.id,
+      name: record.name,
       nodes: componentes.value.map((componente) => aNodo(componente, itemsById)),
-      remainingM2: redondear(Math.max(0, record.capacityM2 - usedM2)),
+      remainingM2: capacityM2 === null ? null : redondear(Math.max(0, capacityM2 - usedM2)),
       spaceType: record.spaceType,
+      spatial: {
+        availableM2: diagnostico.areaDisponibleM2,
+        requiredM2: diagnostico.areaRequeridaM2,
+        status: diagnostico.estado,
+      },
       usedM2,
+      venue: record.venue,
       version: record.version,
     });
   }

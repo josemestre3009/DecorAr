@@ -58,13 +58,13 @@ export function BudgetTotal({
           {isUpdating ? (
             <div className="budget-note">
               <p aria-live="polite" role="status">
-                Hay cambios más recientes en el paquete; el total se está recalculando.
+                Hay cambios más recientes en el evento; el total se está recalculando.
               </p>
               <RefreshButton label="Actualizar total" onAction={() => void retry()} />
             </div>
           ) : (
             <p className="budget-note">
-              Calculado por Presupuesto para la versión {budget.packageVersion} del paquete.
+              Calculado por Presupuesto para la versión {budget.packageVersion} del evento.
             </p>
           )}
 

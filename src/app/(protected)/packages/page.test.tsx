@@ -17,9 +17,28 @@ vi.mock("@/composition/server", () => ({
     listOwnedPackages: { execute: listMock },
   })),
 }));
-vi.mock("./space-form", () => ({ SpaceForm: () => <form aria-label="Crear paquete" /> }));
+vi.mock("./event-form", () => ({ EventForm: () => <form aria-label="Crear evento" /> }));
+vi.mock("./template-manager", () => ({ TemplateManager: () => <section aria-label="Plantillas" /> }));
 
 const { default: PackagesPage, loadPackageHistory } = await import("./page");
+
+const COMPATIBLE = { availableM2: 35.5, requiredM2: 10, status: "compatible" as const };
+
+function summary(overrides: Partial<Record<string, unknown>> = {}) {
+  return {
+    capacityM2: 35.5,
+    clientName: "Ana",
+    eventDate: null,
+    eventType: "Boda",
+    id: "pkg-new",
+    name: "Boda de Ana",
+    spaceType: "salonSocial",
+    spatial: COMPATIBLE,
+    updatedAt: "2026-10-12T15:00:00Z",
+    venue: "Salón",
+    ...overrides,
+  };
+}
 
 describe("PackagesPage", () => {
   const originalMode = process.env.NEXT_PUBLIC_DECOR_PACKAGES_API;
@@ -35,19 +54,19 @@ describe("PackagesPage", () => {
     else process.env.NEXT_PUBLIC_DECOR_PACKAGES_API = originalMode;
   });
 
-  it("muestra paquetes ordenados por el lector con datos y acción Continuar", async () => {
+  it("separa Eventos y Plantillas y lista los eventos del lector con acción Continuar", async () => {
     listMock.mockResolvedValue(ok([
-      { capacityM2: 35.5, id: "pkg-new", spaceType: "salonSocial", updatedAt: "2026-10-12T15:00:00Z" },
-      { capacityM2: 20, id: "pkg-old", spaceType: "casa", updatedAt: "2026-10-11T15:00:00Z" },
+      summary(),
+      summary({ capacityM2: 20, clientName: null, eventType: null, id: "pkg-old", name: "Cumpleaños", spaceType: "casa", venue: null }),
     ]));
 
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Mis paquetes" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Eventos" })).toBeInTheDocument();
+    expect(screen.getByRole("region", { name: "Plantillas" })).toBeInTheDocument();
     expect(screen.getAllByRole("listitem")).toHaveLength(2);
-    expect(screen.getByRole("list")).toHaveAttribute("role", "list");
-    expect(screen.getByText("Salón social")).toBeInTheDocument();
-    expect(screen.getByText("35.5 m²")).toBeInTheDocument();
+    expect(screen.getByText("Boda de Ana")).toBeInTheDocument();
+    expect(screen.getByText(/Ana · Salón social/)).toBeInTheDocument();
     expect(screen.getAllByText(/Actualizado el/)).toHaveLength(2);
     expect(screen.getAllByRole("link", { name: /Continuar con/ }).map((link) => link.getAttribute("href"))).toEqual([
       "/packages/pkg-new",
@@ -56,19 +75,26 @@ describe("PackagesPage", () => {
     expect(listMock).toHaveBeenCalledWith("user-1");
   });
 
-  it("describe registros legacy sin mostrar valores falsos", async () => {
+  it("describe un evento legacy sin datos opcionales sin mostrar valores falsos", async () => {
     listMock.mockResolvedValue(ok([
-      { capacityM2: null, id: "legacy", spaceType: null, updatedAt: "2026-10-10T15:00:00Z" },
+      summary({ capacityM2: null, clientName: null, eventType: null, id: "legacy", name: "Evento legado", spaceType: null, venue: null }),
     ]));
 
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("heading", { name: "Espacio sin definir" })).toBeInTheDocument();
-    expect(screen.getByText("Capacidad sin definir")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Continuar con espacio sin definir, paquete legacy" })).toHaveAttribute(
+    expect(screen.getByText("Sin datos del cliente")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Continuar con Evento legado" })).toHaveAttribute(
       "href",
       "/packages/legacy",
     );
+  });
+
+  it("usa un nombre de reserva cuando el evento no tiene nombre", async () => {
+    listMock.mockResolvedValue(ok([summary({ id: "sin-nombre", name: "" })]));
+
+    render(await PackagesPage({ searchParams: Promise.resolve({}) }));
+
+    expect(screen.getByText("Evento sin nombre")).toBeInTheDocument();
   });
 
   it("muestra un estado vacío sin ocultar el formulario de creación", async () => {
@@ -76,8 +102,8 @@ describe("PackagesPage", () => {
 
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByText("Aún no tienes paquetes.")).toBeInTheDocument();
-    expect(screen.getByRole("form", { name: "Crear paquete" })).toBeInTheDocument();
+    expect(screen.getByText("Aún no tienes eventos.")).toBeInTheDocument();
+    expect(screen.getByRole("form", { name: "Crear evento" })).toBeInTheDocument();
   });
 
   it("convierte fallos de lectura en un estado recuperable", async () => {
@@ -93,8 +119,8 @@ describe("PackagesPage", () => {
 
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
-    expect(screen.getByRole("alert")).toHaveTextContent("No pudimos cargar tus paquetes");
-    expect(screen.getByRole("form", { name: "Crear paquete" })).toBeInTheDocument();
+    expect(screen.getByRole("alert")).toHaveTextContent("No pudimos cargar tus eventos");
+    expect(screen.getByRole("form", { name: "Crear evento" })).toBeInTheDocument();
   });
 
   it("no consulta historial persistente en modo simulado", async () => {

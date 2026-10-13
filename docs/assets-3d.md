@@ -8,6 +8,7 @@ Este documento detalla la arquitectura, directrices operativas, especificaciones
 
 ### 1.1. Principio Server-Only y Clean Architecture
 * El almacenamiento de activos 3D se realiza en **Cloudinary**.
+* El repositorio no conserva copias de los binarios publicados. `assets/3d/` es un espacio de trabajo local ignorado por Git, usado solo al preparar una versión nueva.
 * La variable `CLOUDINARY_URL` reside de forma estrictamente confidencial en el servidor (`.env`) y se accede exclusivamente mediante `getCloudinaryEnv()` en `src/lib/env.ts`.
 * El cliente web y la capa de dominio (`src/modules/catalog/domain/`) desconocen por completo a Cloudinary:
   - **Puerto de Aplicación:** `AssetStoragePort` (`src/modules/catalog/application/ports/asset-storage.port.ts`) define un contrato agnóstico con `destinationPath`, tipo de contenido y política de idempotencia (`ifExists: "reuse"`).
@@ -59,7 +60,7 @@ La silla v2 usa el modelo CC0 [Plastic Monobloc Chair 01](https://polyhaven.com/
 
 `area_m2` representa el área comercial reservada para cotización y composición de paquetes. No es el producto automático `width_m × depth_m`; esos campos describen el bounding box físico del modelo AR.
 
-`scripts/inspect-glb-bounds.test.ts` fija los bounds v2 y el recentrado v3 (base en Y = 0, centro X/Z = 0). `scripts/validate-usdz-dimensions.py` reimporta cada USDZ con Blender y verifica las mismas dimensiones con el cambio esperado de ejes Y-up/Z-up. Los tres GLB pasan Khronos glTF Validator sin errores. Todos los archivos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
+Los bounds publicados v2/v3 se verificaron antes de subirlos y quedan documentados aquí como evidencia histórica. `scripts/inspect-glb-bounds.test.ts` prueba el lector con un GLB generado en memoria; `scripts/validate-usdz-dimensions.py` permite verificar archivos nuevos colocados temporalmente en `assets/3d/`. Los tres GLB publicados pasaron Khronos glTF Validator sin errores. Todos cumplen el máximo operativo de Cloudinary de 10 MiB; el arco GLB queda en 7.829 MiB y su USDZ móvil en 8.518 MiB.
 
 `<model-viewer ar-scale="fixed">` impide el redimensionamiento por el usuario. Si una ficha de fabricante posterior cambia una referencia, se debe aplicar otra escala **uniforme** y publicar una versión nueva. No se publica una escala por eje. La validación geométrica automatizada no sustituye una prueba visual final en dispositivos Android/iOS.
 
@@ -129,8 +130,8 @@ Las tres URLs respondieron HTTP 200 con el MIME esperado. Supabase conserva la s
 ## 6. Procedimiento Operativo: Publicación de una Nueva Versión
 
 Para actualizar o crear una nueva versión de un activo sin afectar la versión activa:
-1. **Crear carpeta de versión:**
-   Colocar los archivos optimizados bajo `assets/3d/{assetId}/v{version}/` (`{assetId}.glb`, `{assetId}.usdz`, `poster.{webp|png|jpg}`).
+1. **Crear carpeta temporal de versión:**
+   Colocar los archivos optimizados bajo `assets/3d/{assetId}/v{version}/` (`{assetId}.glb`, `{assetId}.usdz`, `poster.{webp|png|jpg}`). La carpeta está ignorada por Git y puede eliminarse después de verificar la publicación.
 2. **Inspeccionar límites y bounding box:**
    Ejecutar la herramienta de medición:
    ```bash
@@ -145,6 +146,8 @@ Para actualizar o crear una nueva versión de un activo sin afectar la versión 
    ```
 5. **Verificación:**
    El caso de uso subirá los archivos a `decorar/{assetId}/v{version}/...`. La RPC serializa por `asset_id`, retira la versión activa anterior a `retired` y activa la nueva en la misma transacción. El índice `uq_catalog_modules_one_active_asset` impide dos versiones activas.
+6. **Limpieza local:**
+   Confirmar las URLs activas y eliminar la carpeta temporal. Cloudinary y las referencias de Supabase son la fuente operativa.
 
 ## 7. Recuperación, limpieza y rollback
 

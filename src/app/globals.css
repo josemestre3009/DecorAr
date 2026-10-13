@@ -843,10 +843,6 @@ a {
   padding-left: 0.75rem;
 }
 
-.welcome-zone {
-  margin-bottom: 1.5rem;
-}
-
 /* --- DECOR-23: vista 3D y realidad aumentada ------------------------------ */
 
 .module-view {
@@ -1203,15 +1199,6 @@ a {
   gap: 1.25rem;
 }
 
-.package-history-kicker {
-  color: var(--color-decor-copper-dark);
-  font-size: 0.75rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
-  margin: 0 0 0.35rem;
-  text-transform: uppercase;
-}
-
 .package-history .section-title,
 .package-history-card h3,
 .package-history-card p,
@@ -1261,8 +1248,23 @@ a {
 
 @media (min-width: 52rem) {
   .packages-layout {
-    align-items: start;
+    align-items: stretch;
+    grid-template-areas:
+      "create events"
+      ". templates";
     grid-template-columns: minmax(0, 0.9fr) minmax(22rem, 1.1fr);
+  }
+
+  .packages-create {
+    grid-area: create;
+  }
+
+  .events-history {
+    grid-area: events;
+  }
+
+  .templates-history {
+    grid-area: templates;
   }
 
   .package-history-card {
@@ -1447,4 +1449,279 @@ body:has(.catalog-page) {
     transition: none;
   }
 }
+}
+
+/* --- DECOR-44: eventos, plantillas y metadatos --- */
+
+.package-pagination {
+  align-items: center;
+  display: flex;
+  justify-content: space-between;
+  margin-top: 1.25rem;
+  gap: 1rem;
+}
+
+.package-pagination p {
+  margin: 0;
+  text-align: center;
+}
+
+.package-pagination button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.section-header {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  justify-content: space-between;
+}
+
+.package-history-meta {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.9rem;
+}
+
+.event-details {
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 12%, transparent);
+  border-radius: 0.875rem;
+  padding: 0.35rem 0.9rem 0.9rem;
+}
+
+.event-details-summary {
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  padding: 0.55rem 0;
+}
+
+.event-details-summary:focus-visible {
+  outline: 3px solid var(--color-decor-copper);
+  outline-offset: 2px;
+}
+
+.event-details[open] .event-details-summary {
+  margin-bottom: 0.5rem;
+}
+
+.metadata-grid {
+  display: grid;
+  gap: 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+.metadata-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.spatial-diagnostic {
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 14%, transparent);
+  border-radius: 0.875rem;
+  display: grid;
+  gap: 0.25rem;
+  margin-top: 1rem;
+  padding: 0.85rem 1rem;
+}
+
+.spatial-title {
+  font-weight: 600;
+  margin: 0;
+}
+
+.spatial-detail {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.9rem;
+  margin: 0;
+}
+
+.spatial-ok {
+  background: color-mix(in srgb, var(--color-decor-copper-light) 45%, transparent);
+  border-color: color-mix(in srgb, var(--color-decor-copper) 35%, transparent);
+}
+
+.spatial-warning {
+  background: color-mix(in srgb, #e9c46a 22%, var(--color-decor-surface));
+  border-color: color-mix(in srgb, var(--color-decor-copper) 55%, transparent);
+}
+
+.template-list {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.template-card {
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 12%, transparent);
+  border-radius: 0.875rem;
+  display: grid;
+  gap: 0.5rem;
+  padding: 1rem;
+}
+
+.template-name {
+  font-size: 1rem;
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.template-meta {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.template-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.template-confirm {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.template-confirm p {
+  margin: 0;
+}
+
+.template-delete {
+  border-color: color-mix(in srgb, var(--color-decor-copper-dark) 40%, transparent);
+  color: var(--color-decor-copper-dark);
+}
+
+/* --- DECOR-25: editor de zonas (Composite editable) ----------------------- */
+
+.zone-form,
+.zone-editor {
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 1rem;
+}
+
+.zone-field {
+  display: grid;
+  gap: 0.35rem;
+}
+
+.zone-field label {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.zone-field input,
+.zone-field select {
+  background: var(--color-decor-surface);
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 22%, transparent);
+  border-radius: 0.6rem;
+  color: var(--color-decor-ink);
+  font: inherit;
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  width: 100%;
+}
+
+.zone-field input:hover,
+.zone-field select:hover {
+  border-color: color-mix(in srgb, var(--color-decor-copper) 45%, transparent);
+}
+
+.zone-field input:focus-visible,
+.zone-field select:focus-visible,
+.text-button:focus-visible,
+.zone-submit:focus-visible {
+  outline: 3px solid var(--color-decor-copper-dark);
+  outline-offset: 2px;
+}
+
+.zone-field input[aria-invalid="true"],
+.zone-field select[aria-invalid="true"] {
+  border-color: var(--color-decor-copper-dark);
+}
+
+.zone-parent,
+.zone-depth {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.8rem;
+  margin: 0;
+}
+
+.zone-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem 1rem;
+  margin-bottom: 0.5rem;
+}
+
+.zone-editor-actions {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+}
+
+.text-button {
+  background: transparent;
+  border: 0;
+  color: var(--color-decor-copper-dark);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+  min-height: 2.75rem;
+  padding: 0 0.25rem;
+  text-decoration: underline;
+  text-underline-offset: 0.2em;
+}
+
+.text-button[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.55;
+}
+
+.zone-editor .secondary-button[aria-busy="true"],
+.zone-editor .secondary-button[aria-disabled="true"] {
+  cursor: progress;
+  opacity: 0.65;
+}
+
+.zone-delete {
+  color: var(--color-decor-copper-dark);
+}
+
+.zone-confirm {
+  border: 1px solid color-mix(in srgb, var(--color-decor-copper) 35%, transparent);
+  border-radius: 0.75rem;
+  background: color-mix(in srgb, var(--color-decor-copper-light) 30%, transparent);
+  display: grid;
+  gap: 0.75rem;
+  margin-bottom: 0.75rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.zone-confirm p {
+  font-weight: 600;
+  margin: 0;
+}
+
+.zone-error {
+  margin-top: 0.5rem;
+}
+
+.module-destination {
+  margin-bottom: 0.5rem;
+}
+
+@media (max-width: 480px) {
+  .zone-field input,
+  .zone-field select {
+    font-size: 1rem;
+  }
 }

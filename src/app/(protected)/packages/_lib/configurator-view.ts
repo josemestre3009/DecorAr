@@ -1,4 +1,5 @@
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
+import type { SpatialDiagnosticDto } from "@/modules/packages/application/dtos/package.dto";
 
 import { SPACE_TYPES } from "./space-definition";
 
@@ -120,6 +121,50 @@ export function rowSubtotal(row: ContentRow): { readonly areaM2: number; readonl
   };
 }
 
-export function spaceTypeLabel(spaceType: string): string {
+export function spaceTypeLabel(spaceType: string | null): string {
+  if (!spaceType) {
+    return "Sin definir";
+  }
+
   return SPACE_TYPES.find((option) => option.value === spaceType)?.label ?? spaceType;
+}
+
+export type SpatialDiagnosticText = {
+  readonly title: string;
+  readonly detail: string;
+  readonly tone: "neutral" | "ok" | "warning";
+};
+
+/**
+ * Traduce el diagnóstico espacial del servidor a texto visible (DECOR-44). Es
+ * informativo: nunca bloquea guardar cambios.
+ */
+export function spatialDiagnosticText(spatial: SpatialDiagnosticDto): SpatialDiagnosticText {
+  const requerida = `${formatArea(spatial.requiredM2)} requeridos`;
+
+  if (spatial.status === "pending" || spatial.availableM2 === null) {
+    return {
+      detail: `Aún no registras el área disponible. La configuración ocupa ${requerida}.`,
+      title: "Compatibilidad espacial pendiente",
+      tone: "neutral",
+    };
+  }
+
+  if (spatial.status === "exceeded") {
+    return {
+      detail: `La configuración ocupa ${requerida} y supera los ${formatArea(spatial.availableM2)} disponibles.`,
+      title: "Compatibilidad espacial excedida",
+      tone: "warning",
+    };
+  }
+
+  return {
+    detail: `La configuración ocupa ${requerida} de ${formatArea(spatial.availableM2)} disponibles.`,
+    title: "Compatibilidad espacial: compatible",
+    tone: "ok",
+  };
+}
+
+function formatArea(value: number): string {
+  return `${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(value)} m²`;
 }

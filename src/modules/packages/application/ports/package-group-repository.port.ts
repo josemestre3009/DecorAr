@@ -1,6 +1,11 @@
 import type { DomainError } from "../../../../shared/domain/domain-error";
 import type { Result } from "../../../../shared/domain/result";
-import type { PackageModuleAddedEvent } from "../../../events/domain/event-contracts";
+import type {
+  PackageModuleAddedEvent,
+  PackageModuleMovedEvent,
+  PackageModuleRemovedEvent,
+} from "../../../events/domain/event-contracts";
+import type { DeletePackageGroupStrategy } from "../dtos/package-group.dto";
 
 export interface PackageGroupSummary {
   readonly groupId: string;
@@ -50,4 +55,52 @@ export interface PackageGroupRepository {
     expectedVersion: number,
     correlationId?: string,
   ): Promise<Result<number, DomainError>>;
+}
+
+/** Eventos que acompañan una edición estructural masiva dentro de una RPC. */
+export type PackageStructureEditEvent = PackageModuleRemovedEvent | PackageModuleMovedEvent;
+
+export interface UpdatePackageGroupCommand {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly groupId: string;
+  /** Nombre final recortado; se omite cuando la operación no renombra. */
+  readonly name?: string;
+  /** Padre final (`null` = raíz); se omite cuando la operación no mueve. */
+  readonly parentGroupId?: string | null;
+  readonly expectedVersion: number;
+  readonly correlationId?: string | null;
+}
+
+export interface DeletePackageGroupCommand {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly groupId: string;
+  readonly strategy: DeletePackageGroupStrategy;
+  /** Un `removed` por hoja o un `moved` por hoja directa, en la misma transacción. */
+  readonly events: readonly PackageStructureEditEvent[];
+  readonly expectedVersion: number;
+  readonly correlationId?: string | null;
+}
+
+export interface MovePackageItemCommand {
+  readonly packageId: string;
+  readonly userId: string;
+  readonly itemId: string;
+  /** Destino (`null` = raíz). */
+  readonly groupId: string | null;
+  readonly event: PackageModuleMovedEvent;
+  readonly expectedVersion: number;
+  readonly correlationId?: string | null;
+}
+
+/**
+ * RPC de edición estructural (renombrar/mover zona, eliminar con estrategia y
+ * mover instancia). Cada una bloquea el evento, compara `expectedVersion` y
+ * confirma todos los cambios o ninguno; devuelve la nueva versión del evento.
+ */
+export interface PackageStructureEditorRepository {
+  updateGroup(command: UpdatePackageGroupCommand): Promise<Result<number, DomainError>>;
+  deleteGroup(command: DeletePackageGroupCommand): Promise<Result<number, DomainError>>;
+  moveItem(command: MovePackageItemCommand): Promise<Result<number, DomainError>>;
 }

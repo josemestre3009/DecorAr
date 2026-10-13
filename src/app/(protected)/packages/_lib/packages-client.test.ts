@@ -17,22 +17,56 @@ function memoryStorage() {
   };
 }
 
-describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
-  it("crea el paquete con POST /api/packages {spaceType, capacityM2}", async () => {
-    const fetcher = vi
-      .fn<typeof fetch>()
-      .mockResolvedValue(
-        Response.json({ id: "p1", spaceType: "casa", capacityM2: 30 }, { status: 201 }),
-      );
+describe("createHttpPackagesClient (contrato de DECOR-44)", () => {
+  const CREATED = {
+    capacityM2: 30,
+    clientName: null,
+    eventDate: null,
+    eventType: null,
+    id: "p1",
+    name: "Boda de Ana",
+    spaceType: "casa" as const,
+    spatial: { availableM2: 30, requiredM2: 0, status: "compatible" as const },
+    venue: null,
+  };
+
+  it("crea el evento con POST /api/packages {name, ...metadata}", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(CREATED, { status: 201 }));
     const client = createHttpPackagesClient(fetcher);
 
-    const result = await client.createPackage({ spaceType: "casa", capacityM2: 30 });
+    const result = await client.createPackage({ capacityM2: 30, name: "Boda de Ana", spaceType: "casa" });
 
-    expect(result).toEqual({ ok: true, value: { id: "p1", spaceType: "casa", capacityM2: 30 } });
+    expect(result).toEqual({ ok: true, value: CREATED });
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/packages");
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({ capacityM2: 30, spaceType: "casa" });
+    expect(JSON.parse(String(init?.body))).toEqual({ capacityM2: 30, name: "Boda de Ana", spaceType: "casa" });
+  });
+
+  it("crea el evento solo con nombre (sin metadatos)", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ ...CREATED, capacityM2: null, spaceType: null, spatial: { availableM2: null, requiredM2: 0, status: "pending" } }, { status: 201 }),
+      );
+
+    const result = await createHttpPackagesClient(fetcher).createPackage({ name: "Solo nombre" });
+
+    expect(result.ok).toBe(true);
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ name: "Solo nombre" });
+  });
+
+  it("actualiza metadatos con PATCH /api/packages/{id}", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(CREATED, { status: 200 }));
+    const client = createHttpPackagesClient(fetcher);
+
+    const result = await client.updateMetadata("p 1", { capacityM2: null, name: "Boda" });
+
+    expect(result).toEqual({ ok: true, value: CREATED });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/packages/p%201");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ capacityM2: null, name: "Boda" });
   });
 
   it("agrega un módulo con POST /api/packages/{id}/items {moduleId}", async () => {
@@ -128,6 +162,7 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
       .mockResolvedValue(Response.json({ error: "unauthorized" }, { status: 401 }));
 
     const result = await createHttpPackagesClient(fetcher).createPackage({
+      name: "X",
       spaceType: "casa",
       capacityM2: 30,
     });
@@ -141,6 +176,7 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
       .mockResolvedValue(Response.json({ packageId: "p1" }, { status: 201 }));
 
     const result = await createHttpPackagesClient(fetcher).createPackage({
+      name: "X",
       spaceType: "casa",
       capacityM2: 30,
     });
@@ -195,12 +231,52 @@ describe("createHttpPackagesClient (contrato de DECOR-27)", () => {
     ).removeItem("p1", "i1");
     expect(!offline.ok && offline.error.kind).toBe("network");
   });
+
+  it("mueve un elemento con PATCH /api/packages/{id}/items/{itemId} {groupId, expectedVersion}", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ itemId: "i1", packageVersion: 5 }, { status: 200 }));
+
+    const result = await createHttpPackagesClient(fetcher).moveItem("p 1", "i/1", {
+      expectedVersion: 4,
+      groupId: "g-1",
+    });
+
+    expect(result).toEqual({ ok: true, value: { itemId: "i1", packageVersion: 5 } });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/packages/p%201/items/i%2F1");
+    expect(init?.method).toBe("PATCH");
+    expect(JSON.parse(String(init?.body))).toEqual({ expectedVersion: 4, groupId: "g-1" });
+  });
+
+  it("mover a la raíz envía groupId null sin expectedVersion", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(Response.json({ itemId: "i1", packageVersion: 5 }, { status: 200 }));
+
+    await createHttpPackagesClient(fetcher).moveItem("p1", "i1", { groupId: null });
+
+    expect(JSON.parse(String(fetcher.mock.calls[0][1]?.body))).toEqual({ groupId: null });
+  });
+
+  it("al mover, un 409 se traduce con el envelope", async () => {
+    const fetcher = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(
+        Response.json({ error: { code: "package.version_conflict", message: "Conflicto." } }, { status: 409 }),
+      );
+
+    const result = await createHttpPackagesClient(fetcher).moveItem("p1", "i1", { groupId: "g-1" });
+
+    expect(!result.ok && result.error.code).toBe("package.version_conflict");
+    expect(!result.ok && result.error.kind).toBe("invalid");
+  });
 });
 
 describe("createSimulatedPackagesClient", () => {
   it("quita un elemento, sube la versión y responde 404 si no existe", async () => {
     const client = createSimulatedPackagesClient(memoryStorage(), 0);
-    const created = await client.createPackage({ spaceType: "casa", capacityM2: 30 });
+    const created = await client.createPackage({ name: "Evento", spaceType: "casa", capacityM2: 30 });
     if (!created.ok) throw new Error("no se creó el paquete");
     const added = await client.addItem(created.value.id, "mesa");
     if (!added.ok) throw new Error("no se agregó");
@@ -214,26 +290,84 @@ describe("createSimulatedPackagesClient", () => {
     expect(!unknown.ok && unknown.error.code).toBe("package.not_found");
   });
 
+  it("mueve un elemento entre zonas, sube la versión y detecta el conflicto y el 404", async () => {
+    const client = createSimulatedPackagesClient(memoryStorage(), 0);
+    const created = await client.createPackage({ name: "Evento", spaceType: "casa", capacityM2: 30 });
+    if (!created.ok) throw new Error("no se creó el paquete");
+    const added = await client.addItem(created.value.id, "mesa");
+    if (!added.ok) throw new Error("no se agregó");
+
+    const moved = await client.moveItem(created.value.id, added.value.itemId, {
+      expectedVersion: added.value.packageVersion,
+      groupId: "g-2",
+    });
+    expect(moved).toEqual({
+      ok: true,
+      value: { itemId: added.value.itemId, packageVersion: added.value.packageVersion + 1 },
+    });
+
+    const conflict = await client.moveItem(created.value.id, added.value.itemId, { expectedVersion: 1, groupId: "g-3" });
+    expect(!conflict.ok && conflict.error.code).toBe("package.version_conflict");
+
+    const missing = await client.moveItem(created.value.id, "nope", { groupId: "g-2" });
+    expect(!missing.ok && missing.error.code).toBe("package.item_not_found");
+  });
+
   it("responde con la misma forma que el contrato y guarda en sessionStorage", async () => {
     const storage = memoryStorage();
     const client = createSimulatedPackagesClient(storage, 0);
 
-    const created = await client.createPackage({ spaceType: "salonSocial", capacityM2: 45.5 });
+    const created = await client.createPackage({ name: "Evento", spaceType: "salonSocial", capacityM2: 45.5 });
 
     expect(client.mode).toBe("simulated");
     expect(created.ok).toBe(true);
     if (!created.ok) return;
-    expect(created.value).toEqual({
-      id: expect.any(String),
-      spaceType: "salonSocial",
+    expect(created.value).toMatchObject({
       capacityM2: 45.5,
+      name: "Evento",
+      spaceType: "salonSocial",
+      spatial: { availableM2: 45.5, requiredM2: 0, status: "compatible" },
     });
     expect(storage.data.get(SIMULATED_STORAGE_KEY)).toContain(created.value.id);
   });
 
+  it("crea un evento solo con nombre y deja el diagnóstico pendiente", async () => {
+    const created = await createSimulatedPackagesClient(memoryStorage(), 0).createPackage({ name: "Solo nombre" });
+
+    expect(created.ok && created.value).toMatchObject({
+      capacityM2: null,
+      name: "Solo nombre",
+      spaceType: null,
+      spatial: { availableM2: null, status: "pending" },
+    });
+  });
+
+  it("rechaza un nombre vacío en modo simulado", async () => {
+    const result = await createSimulatedPackagesClient(memoryStorage(), 0).createPackage({ name: "   " });
+
+    expect(!result.ok && result.error.code).toBe("package.invalid_name");
+  });
+
+  it("actualiza metadatos y recalcula el diagnóstico (PATCH simulado)", async () => {
+    const client = createSimulatedPackagesClient(memoryStorage(), 0);
+    const created = await client.createPackage({ name: "Evento" });
+    if (!created.ok) throw new Error("no se creó");
+
+    const updated = await client.updateMetadata(created.value.id, { capacityM2: 25, clientName: "Ana" });
+
+    expect(updated.ok && updated.value).toMatchObject({
+      capacityM2: 25,
+      clientName: "Ana",
+      spatial: { availableM2: 25, status: "compatible" },
+    });
+
+    const cleared = await client.updateMetadata(created.value.id, { capacityM2: null });
+    expect(cleared.ok && cleared.value.spatial.status).toBe("pending");
+  });
+
   it("incrementa la versión del paquete con cada módulo agregado", async () => {
     const client = createSimulatedPackagesClient(memoryStorage(), 0);
-    const created = await client.createPackage({ spaceType: "casa", capacityM2: 30 });
+    const created = await client.createPackage({ name: "Evento", spaceType: "casa", capacityM2: 30 });
     if (!created.ok) throw new Error("no se creó el paquete");
 
     const first = await client.addItem(created.value.id, "mesa");
@@ -246,6 +380,7 @@ describe("createSimulatedPackagesClient", () => {
   it("conserva el paquete al recargar con el mismo almacenamiento", async () => {
     const storage = memoryStorage();
     const created = await createSimulatedPackagesClient(storage, 0).createPackage({
+      name: "Evento",
       spaceType: "aireLibre",
       capacityM2: 80,
     });
@@ -261,7 +396,7 @@ describe("createSimulatedPackagesClient", () => {
   it("clona un paquete existente con nuevo id y version 1 en modo simulado", async () => {
     const storage = memoryStorage();
     const client = createSimulatedPackagesClient(storage, 0);
-    const created = await client.createPackage({ spaceType: "salonSocial", capacityM2: 50 });
+    const created = await client.createPackage({ name: "Evento", spaceType: "salonSocial", capacityM2: 50 });
     if (!created.ok) throw new Error("no se creó el paquete");
 
     await client.addItem(created.value.id, "arco");
@@ -298,10 +433,7 @@ describe("createSimulatedPackagesClient", () => {
   });
 
   it("responde 422 para una capacidad inválida, como el servidor", async () => {
-    const result = await createSimulatedPackagesClient(memoryStorage(), 0).createPackage({
-      spaceType: "casa",
-      capacityM2: Number.POSITIVE_INFINITY,
-    });
+    const result = await createSimulatedPackagesClient(memoryStorage(), 0).createPackage({ name: "Evento", spaceType: "casa", capacityM2: Number.POSITIVE_INFINITY });
 
     expect(!result.ok && result.error).toMatchObject({
       code: "package.invalid_capacity",
@@ -311,7 +443,7 @@ describe("createSimulatedPackagesClient", () => {
 
   it("sigue funcionando sin almacenamiento del navegador", async () => {
     const client = createSimulatedPackagesClient(null, 0);
-    const created = await client.createPackage({ spaceType: "casa", capacityM2: 30 });
+    const created = await client.createPackage({ name: "Evento", spaceType: "casa", capacityM2: 30 });
     if (!created.ok) throw new Error("no se creó el paquete");
 
     await expect(client.addItem(created.value.id, "mesa")).resolves.toMatchObject({ ok: true });
@@ -329,7 +461,7 @@ describe("createSimulatedPackagesClient", () => {
     try {
       const client = createSimulatedPackagesClient(undefined, 0);
       await expect(
-        client.createPackage({ spaceType: "casa", capacityM2: 30 }),
+        client.createPackage({ name: "Evento", spaceType: "casa", capacityM2: 30 }),
       ).resolves.toMatchObject({ ok: true });
     } finally {
       if (descriptor) Object.defineProperty(window, "sessionStorage", descriptor);

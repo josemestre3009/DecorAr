@@ -4,7 +4,7 @@
 
 ## 1. Contexto del proyecto
 
-DecorAR es una herramienta de realidad aumentada dirigida hacia la planificación visual del adorno de eventos sociales, como celebraciones corporativas, fiestas y matrimonios. El propósito es mitigar la incertidumbre previa a la contratación de una decoración: el usuario tiene la capacidad de seleccionar módulos del catálogo, elaborar un paquete y visualizar los elementos 3D a escala 1:1 en el espacio real a través del dispositivo móvil. En iOS, la experiencia puede abrir AR Quick Look; en Android, Scene Viewer; `<model-viewer>` como capa de integración es compatible con el cliente web.
+DecorAR es una herramienta de realidad aumentada dirigida hacia la planificación visual del adorno de eventos sociales, como celebraciones corporativas, fiestas y matrimonios. El propósito es mitigar la incertidumbre previa a la contratación de una decoración: el usuario tiene la capacidad de seleccionar módulos del catálogo, configurar un evento y visualizar los elementos 3D a escala 1:1 en el espacio real a través del dispositivo móvil. En iOS, la experiencia puede abrir AR Quick Look; en Android, Scene Viewer; `<model-viewer>` como capa de integración es compatible con el cliente web.
 
 ### 1.1 Problema central del MVP
 
@@ -23,13 +23,16 @@ La experiencia AR del MVP detecta una superficie horizontal o vertical compatibl
 
 El MVP no escanea una habitación completa, no calcula automáticamente su área disponible, no reconoce todos los muebles u obstáculos y no distribuye automáticamente varios elementos evitando colisiones. Estas capacidades requerirían tecnologías de escaneo espacial dependientes del dispositivo, como ARKit RoomPlan, LiDAR o ARCore Depth, y quedan fuera del alcance de esta entrega.
 
-La validación de capacidad realizada por Builder es independiente de la detección de superficies AR. Los valores de capacidad utilizados en los ejemplos de la sección 4.1 son datos demostrativos para probar el patrón, no capacidades oficiales asociadas a una casa, un salón social o un espacio al aire libre. Cuando se necesite demostrar esta regla, la capacidad se proporciona como dato configurable del paquete.
+El diagnóstico de capacidad realizado por Composite es independiente de la detección de superficies AR y, desde DECOR-44, es informativo: nunca impide guardar el evento. Los valores de capacidad utilizados en los ejemplos de la sección 4.1 son datos demostrativos para probar el patrón, no capacidades oficiales asociadas a una casa, un salón social o un espacio al aire libre. Cuando se necesite demostrar esta regla, el área disponible se proporciona como dato configurable del evento.
 
 ### 1.4 Decisiones funcionales del MVP
 
-- Capacidad del espacio: el usuario ingresa manualmente los metros cuadrados disponibles al crear el paquete. El valor debe ser positivo y finito. El paquete conserva este valor como referencia para que cambios posteriores no alteren silenciosamente una configuración existente.
-- Preferencias clonables: una configuración conserva `estilo`, `colores` y `notas`. Prototype realiza una copia profunda de estos datos y de las colecciones mutables.
-- Composite: se permiten hasta tres niveles de grupos y se rechazan ciclos. La demostración mínima usa el grupo "Zona de bienvenida", compuesto por un arco floral y una mesa redonda existentes en el catálogo.
+- Terminología visible: la interfaz presenta "evento" y "plantilla"; `package` queda como nombre técnico del agregado persistido y de las rutas `/packages` (DECOR-44). No se renombraron la tabla, el agregado, las URLs ni los contratos de eventos.
+- Nombre y metadatos del evento: un evento se crea solo con su nombre (1 a 120 caracteres, recortado). Cliente, fecha, lugar, tipo de evento, tipo de espacio y área disponible son opcionales, se completan después mediante `PATCH /api/packages/{id}` y se pueden eliminar sin reconstruir la configuración decorativa.
+- Capacidad informativa: el tipo de espacio y el área disponible son datos opcionales. Composite calcula el área requerida y el sistema expone un diagnóstico derivado `pending | compatible | exceeded`; el exceso nunca bloquea guardar (DECOR-44).
+- Plantillas privadas: guardar un evento como plantilla copia módulos, cantidades, zonas, jerarquía y preferencias, y excluye deliberadamente cliente, fecha y lugar. Crear un evento desde una plantilla produce un agregado independiente.
+- Preferencias clonables: una configuración conserva `estilo`, `colores` y `notas`. Prototype realiza una copia profunda de estos datos y de las colecciones mutables, tanto al duplicar un evento (`clone_package`) como al guardar o instanciar plantillas (RPC atómicas `create_event_template_from_package` y `create_package_from_event_template`).
+- Composite editable: se permiten hasta tres niveles de zonas y se rechazan ciclos. El configurador crea, renombra, mueve y elimina zonas reales ("Zona" en la interfaz) y mueve la misma instancia de módulo entre raíz y zonas sin tocar el catálogo; la demostración fija de "Zona de bienvenida" se reemplazó por el formulario inline "Nueva zona" (sección 2.2.10).
 - Autenticación: Supabase Auth con correo electrónico y contraseña. Las pruebas de RLS utilizan al menos dos usuarios para demostrar aislamiento.
 - Compatibilidad iOS: los tres módulos iniciales deben disponer de USDZ. Cada activo publica GLB, USDZ y poster en Cloudinary.
 - Recuperación de eventos: se realizan como máximo tres reintentos, después de 1, 2 y 4 segundos. Tras agotarlos, el evento permanece pendiente para reconciliación desde PostgreSQL.
@@ -63,7 +66,8 @@ La validación de capacidad realizada por Builder es independiente de la detecci
 
 | Componente | Responsabilidad principal | Evento / interacción relevante |
 |---|---|---|
-| Paquetes | Construcción incremental del paquete y validación de reglas de espacio. | Publica ModuloAgregado / ModuloEliminado. |
+| Paquetes | Construcción incremental del evento (agregado técnico `package`), metadatos opcionales y diagnóstico espacial informativo. | Publica ModuloAgregado / ModuloEliminado. |
+| Plantillas | Snapshots privados y normalizados de la configuración decorativa de un evento. | Copia profunda evento↔plantilla; nunca cliente, fecha ni lugar. |
 | Presupuesto | Recalcular total y exponer el último valor confirmado. | Consume cambios del paquete. |
 | Catálogo | Metadatos de módulos, dimensiones, precio y URL del activo 3D. | Consulta síncrona; no necesita conocer Presupuesto. |
 | Event Bus | Distribuir eventos del dominio a consumidores interesados. | Desacopla productor y consumidores. |
@@ -114,42 +118,48 @@ Límites conocidos que conviene no ocultar:
 - Con la confirmación de correo activa, Supabase ofusca el registro duplicado y devuelve éxito sin error, así que el aviso "ya existe una cuenta con ese correo" no es observable en este proyecto: quien se registra con un correo ya usado ve el mensaje de revisar la bandeja. El mapeo del error se conserva por si se desactiva la confirmación o si la cuenta se creó enlazada a otro proveedor, y su prueba unitaria sigue ejercitando el código alcanzable.
 - Al proteger por defecto, una ruta inexistente devuelve una redirección a `/login` en lugar de un `404` para quien no tiene sesión. Se acepta como forma de no revelar qué rutas existen.
 
-### 2.2.3 Recorrido móvil inicial y simulación temporal de paquetes
+### 2.2.3 Recorrido móvil y simulación temporal de eventos y plantillas
 
-El primer recorrido del cliente (DECOR-20) va de la portada a `/packages`, donde la persona define el tipo de espacio (`casa`, `aireLibre` o `salonSocial`) y la capacidad en metros cuadrados, y de ahí a `/packages/{id}`, que muestra el catálogo. Las dos páginas pertenecen a `(protected)/` y llaman a `requireSessionUser()`. Los componentes cliente sólo hablan HTTP: el catálogo se consulta con `GET /api/modules` y el paquete se crea y se amplía a través del puerto `PackagesClient` (`src/app/(protected)/packages/_lib/packages-client.ts`), con el contrato de DECOR-27: `POST /api/packages` y `POST /api/packages/{id}/items`. El navegador no ejecuta `.from()` sobre tablas de negocio, y la prueba E2E comprueba que no sale ninguna petición a `/rest/v1/`.
+El recorrido del cliente (DECOR-20, reorganizado por DECOR-44) va de la portada a `/packages`, que ahora separa dos colecciones: **Eventos** y **Plantillas**. La creación de un evento pide solo el nombre (`EventForm`) y despliega en línea los datos opcionales (cliente, fecha, lugar, tipo de evento, tipo de espacio y área); de ahí se pasa a `/packages/{id}`, que muestra el catálogo y la configuración. Las dos páginas pertenecen a `(protected)/` y llaman a `requireSessionUser()`. Los componentes cliente sólo hablan HTTP: el catálogo se consulta con `GET /api/modules`; los eventos se crean y amplían a través del puerto `PackagesClient` (`src/app/(protected)/packages/_lib/packages-client.ts`) y las plantillas a través de `EventTemplatesClient` (`src/app/(protected)/packages/_lib/event-templates-client.ts`). Contratos: `POST /api/packages {name, …metadatos?}`, `PATCH /api/packages/{id}`, `POST /api/packages/{id}/items`, `GET/POST /api/event-templates`, `GET/PATCH/DELETE /api/event-templates/{id}` y `POST /api/event-templates/{id}/instantiate`. El navegador no ejecuta `.from()` sobre tablas de negocio, y la prueba E2E comprueba que no sale ninguna petición a `/rest/v1/`.
 
 Mientras DECOR-27 no esté integrado, `NEXT_PUBLIC_DECOR_PACKAGES_API=simulated` (valor por defecto) activa una implementación que responde con la misma forma y los mismos códigos sin red. La interfaz lo indica con un aviso "Modo simulado". Al integrar DECOR-27 basta con construir con `live`; la implementación HTTP ya está probada contra el contrato.
 
 Límites conocidos de esta etapa:
 
-- En modo simulado el paquete vive en `sessionStorage` de la pestaña: no existe en el servidor, no pasa por RLS y la capacidad no se compara con el área de los módulos, que es responsabilidad del Builder de DECOR-27.
+- En modo simulado el evento vive en `sessionStorage` de la pestaña: no existe en el servidor, no pasa por RLS y el diagnóstico espacial no refleja el área real de los módulos (el área requerida la calcula Composite en el servidor).
 - `GET /api/modules` devuelve `[]` mientras el seed mantenga los módulos en `draft`; la pantalla muestra entonces el estado vacío. Las tarjetas se verifican con el fixture de DECOR-28 servido mediante `page.route`.
 - `GET /api/modules` responde sus errores como `{error:"Internal Server Error", correlationId}`, no con el envelope `{error:{code,message}}`, y no exige sesión. La interfaz acepta ambos formatos y nunca muestra el detalle de un `5xx`.
 
 **Configurador (DECOR-22).** Con `live`, `/packages/{id}` lee el paquete en el Server Component mediante `createPackageQueryDependencies()`:
 
 - `authorizePackageAccess`: un paquete ajeno o inexistente responde 404.
-- `GetPackageDetailUseCase`: reconstruye el árbol Composite con los precios del catálogo y calcula el área usada y restante.
+- `GetPackageDetailUseCase`: reconstruye el árbol Composite con los precios del catálogo, calcula el área usada, el área restante (o `null` si no hay área) y el diagnóstico espacial informativo (DECOR-44).
 - `GetBudgetUseCase`: el total confirmado. Si responde `budget.not_found` se muestra "aún no calculado"; la interfaz nunca suma un total.
 
-La página muestra el tipo de espacio, la capacidad, el área usada y restante, y el contenido con las hojas agrupadas por módulo ("×N"), subtotales informativos y grupos que se despliegan con `aria-expanded`. Agregar (`POST /items`), quitar (`DELETE /items/{itemId}`) y crear la Zona de bienvenida terminan con `router.refresh()`, que vuelve a leer todo del servidor; un 422 no cambia nada en pantalla. Duplicar navega al clon (DECOR-24). El presupuesto se actualiza en tiempo real mediante `useLiveBudget` (DECOR-21) vía Broadcast privado y resync HTTP. En modo simulado la página sigue como antes, con un aviso. La E2E opt-in `e2e/package-configurator-live.spec.ts` (`DECOR_LIVE_SMOKE=1`) recorre el flujo contra la API real y graba video.
+La página muestra los datos del evento (`EventSummary`: nombre, cliente, fecha, lugar, tipo de evento, tipo de espacio y área, con "Sin definir" cuando faltan), el diagnóstico espacial (`spatialDiagnosticText`, tono neutral/ok/warning, en región `aria-live`) y el contenido con las hojas agrupadas por módulo ("×N"), subtotales informativos y grupos que se despliegan con `aria-expanded`. `EventMetadataEditor` edita los metadatos en línea con `PATCH /api/packages/{id}` sin reconstruir el árbol, y `SaveTemplateButton` guarda la configuración como plantilla privada. Agregar (`POST /items`), quitar (`DELETE /items/{itemId}`) y las operaciones del editor de zonas —crear, renombrar, mover y eliminar (sección 2.2.10)— terminan con `router.refresh()`, que vuelve a leer todo del servidor; un cambio que excede el área se guarda igual y solo cambia el diagnóstico (DECOR-44). Duplicar navega al clon (DECOR-24). El presupuesto se actualiza en tiempo real mediante `useLiveBudget` (DECOR-21) vía Broadcast privado y resync HTTP. En modo simulado la página sigue como antes, con un aviso. La E2E opt-in `e2e/package-configurator-live.spec.ts` (`DECOR_LIVE_SMOKE=1`) recorre el flujo contra la API real y graba video.
 - `NEXT_PUBLIC_DECOR_PACKAGES_API` se fija al compilar: en Docker se pasa como argumento de construcción y hay que reconstruir la imagen para cambiarla.
 
 ### 2.2.4 Autorización por propiedad, RLS y canales privados
 
-La autorización tiene tres barreras independientes (DECOR-30):
+La autorización tiene tres barreras independientes (DECOR-30, ampliada por DECOR-44):
 
-1. **Route Handler.** DECOR-30 entrega `checkPackageAccess` (`src/interfaces/packages/package-access.ts`) y `createPackageAccessDependencies()`. Todo handler de paquete que añada DECOR-27 deberá llamarlos antes del caso de uso. `AuthorizePackageAccessUseCase` valida la identidad con `getUser()` y compara el dueño en TypeScript, así que la decisión no depende de RLS. Sin sesión responde `401`. Un paquete ajeno o inexistente responde `404 package.not_found`, para no revelar qué paquetes existen.
-2. **RLS.** `authenticated` sólo puede leer sus `packages` y `package_items`, y `anon` no tiene permisos. Ningún cliente escribe directamente: las escrituras pasan por `commit_package_change`, que ejecuta `service_role` y vuelve a exigir la propiedad. Las tablas internas (`private.domain_events` y, en DECOR-33, `processed_events`) viven en el schema `private`, que PostgREST no expone.
+1. **Route Handler.** `checkPackageAccess` (`src/interfaces/packages/package-access.ts`) y `createPackageAccessDependencies()` protegen todo handler de evento, incluidos `PATCH /api/packages/{id}` y la creación de plantillas desde un evento. Para plantillas, `checkEventTemplateAccess` (`src/interfaces/templates/event-template-access.ts`) resuelve sesión y propiedad antes de cada operación. `AuthorizePackageAccessUseCase` valida la identidad con `getUser()` y compara el dueño en TypeScript, así que la decisión no depende de RLS. Sin sesión responde `401`. Un recurso ajeno o inexistente responde `404` (`package.not_found` o `template.not_found`, indistinguibles), para no revelar qué existe.
+2. **RLS.** `authenticated` sólo puede leer sus `packages` y `package_items`, y sus `event_templates` (más `event_template_groups` y `event_template_items` vía cabecera); `anon` no tiene permisos y ningún cliente escribe directamente. Las escrituras de eventos pasan por `commit_package_change` y las de plantillas por RPC atómicas `service_role`, que vuelven a exigir la propiedad. Las tablas internas (`private.domain_events` y, en DECOR-33, `processed_events`) viven en el schema `private`, que PostgREST no expone.
 3. **Realtime.** El navegador sólo se suscribe, con `subscribeToPackageChannel`, al canal privado `package:{packageId}`. Una política sobre `realtime.messages` lo autoriza únicamente al dueño. No existe política de escritura, así que ningún cliente puede publicar un `budget.recalculated` falso: sólo publica el backend.
 
 | Recurso / acción | Dueño (A) | Ajeno (B) | Anónimo |
 |---|---|---|---|
-| Route Handler de paquete (cableado por DECOR-27) | ejecuta | 404 | 401 |
-| Leer paquete y elementos | sus filas | 0 filas | denegado |
-| Escribir paquete, RPC de outbox o de catálogo | denegado | denegado | denegado |
+| Route Handler de evento (cableado por DECOR-27) | ejecuta | 404 | 401 |
+| Route Handler de plantilla (DECOR-44) | ejecuta | 404 | 401 |
+| Editar zona o mover módulo (`PATCH/DELETE /groups`, `PATCH /items`) | ejecuta | 404 | 401 |
+| Leer paquete, elementos, plantilla, grupos e ítems | sus filas | 0 filas | denegado |
+| Escribir paquete, plantilla, RPC de outbox o de catálogo | denegado | denegado | denegado |
 | Unirse a `package:{id}` | aceptado | rechazado | rechazado |
 | Publicar en `package:{id}` | rechazado | rechazado | rechazado |
+
+Las plantillas viven en su propia jerarquía normalizada (`public.event_templates` con `event_template_groups` y `event_template_items`), sin columnas de cliente, fecha ni lugar. Guardar o instanciar una plantilla usa las RPC atómicas `create_event_template_from_package` y `create_package_from_event_template`; renombrar y eliminar usan `rename_event_template` y `delete_event_template`. Todas son `SECURITY INVOKER` con `search_path` vacío, de `service_role`, y comprueban la propiedad dentro de la transacción. Eliminar una plantilla no modifica ni elimina los eventos creados desde ella: el vínculo es una copia profunda con identificadores nuevos, no una referencia compartida.
+
+**Composite editable.** Las mutaciones de zonas y el movimiento de una instancia usan los endpoints `POST /api/packages/{id}/groups`, `PATCH|DELETE /api/packages/{id}/groups/{groupId}` y `PATCH /api/packages/{id}/items/{itemId}`, todos server-side tras `checkPackageAccess`; el navegador nunca escribe `package_groups` ni `package_items`. Las RPC `create_package_group`, `update_package_group`, `delete_package_group` y `move_package_item` son `SECURITY INVOKER` con `search_path` vacío, bloquean el evento `FOR UPDATE`, comparan `expectedVersion` y comprueban propiedad en la transacción; sólo `service_role` tiene `EXECUTE` (revocado a `PUBLIC`, `anon` y `authenticated`) y las tablas conservan la lectura RLS del propietario. Un recurso ajeno o inexistente responde 404 indistinguible.
 
 Las pruebas negativas cubren cada fila (detalle en `openspec/changes/decor-30-auth-rls-private-channels/design.md`). `supabase/migrations/authorize-packages-and-private-channels.test.ts` aplica todas las migraciones en PGlite y ejecuta las políticas con roles y funciones de Supabase simulados dentro de `npm test`. Los fixtures A/B contra el proyecto alojado son opt-in (`DECOR_RLS_INTEGRATION=1`), porque crean usuarios reales con la admin API y verifican también el servidor Realtime.
 
@@ -159,7 +169,7 @@ Límite operativo: en la configuración de Realtime del proyecto, "Allow public 
 
 ### 2.2.5 Consumidor idempotente de presupuesto
 
-Presupuesto (DECOR-33) consume `package.module.added`/`removed` releyendo el paquete, nunca confiando en el payload del evento: DECOR-29 deja los precios fuera de los eventos de paquete a propósito. `calculateBudget` (Composite puro en `src/modules/budget/domain`) suma el `priceCop` de cada hoja existente en `package_items`; un grupo nunca aporta un monto propio además del de sus hojas, y un paquete sin hojas suma cero.
+Presupuesto (DECOR-33) consume `package.module.added`/`removed`/`moved` releyendo el paquete, nunca confiando en el payload del evento: DECOR-29 deja los precios fuera de los eventos de paquete a propósito. `calculateBudget` (Composite puro en `src/modules/budget/domain`) suma el `priceCop` de cada hoja existente en `package_items`; un grupo nunca aporta un monto propio además del de sus hojas, y un paquete sin hojas suma cero.
 
 La persistencia es atómica e idempotente mediante `process_budget_event`, invocada con `supabase.rpc()` por el cliente `service_role`:
 
@@ -170,7 +180,7 @@ La persistencia es atómica e idempotente mediante `process_budget_event`, invoc
 
 `GET /api/packages/{id}/budget` expone el resync que Rafael 4/6 (DECOR-21) llama en hueco, reconexión, `online` y `visibilitychange`: usa `checkPackageAccess` igual que cualquier otro endpoint de paquete y responde `{totalCop, currency:'COP', packageVersion, updatedAt}` o el envelope `{error:{code,message}}` en 401/404/500.
 
-`ConsumePackageChangedEvent` no se suscribe al canal Broadcast: quien comitea el cambio de paquete (DECOR-27) lo invoca directamente con el mismo evento recién persistido, así que el recálculo nunca depende de que Realtime haya entregado nada. `supabase/migrations/create-idempotent-budget-consumer.test.ts` aplica todas las migraciones en PGlite y verifica duplicado, versión desordenada y los permisos de `anon`/`authenticated` sobre `budgets` y `processed_events`.
+`ConsumePackageChangedEvent` no se suscribe al canal Broadcast: quien comitea el cambio de paquete (DECOR-27) lo invoca directamente con el mismo evento recién persistido, así que el recálculo nunca depende de que Realtime haya entregado nada. `supabase/migrations/create-idempotent-budget-consumer.test.ts` aplica todas las migraciones en PGlite y verifica duplicado, versión desordenada y los permisos de `anon`/`authenticated` sobre `budgets` y `processed_events`. Mover una instancia (`package.module.moved`) entra por el mismo puerto y reconcilia contra la versión final releída; el caso de uso de packages no importa budget, sólo notifica al consumidor por el puerto `PackageChangeConsumer`.
 
 ### 2.2.6 Recuperación observable: logs, reintentos y reconciliación
 
@@ -284,20 +294,20 @@ La suite de integración de DECOR-26 (`tests/package-catalog-api.test.ts`) demue
 2. **Builder demostrado vía API:**
    - **Fixture 1 (Salón social paso a paso):** Paquete en `salonSocial` de 50 m² con 2 mesas, 1 arco y 1 pista = 26 m² y 4 eventos generados en outbox.
    - **Fixture 2 (Director):** Paquete básico en `aireLibre` de 30 m² con 1 arco y 2 mesas = 10 m².
-   - **Fixture 3 (Capacidad excedida):** Espacio residencial de 30 m² rechaza la segunda pista (32/30 m²) con HTTP `422 Unprocessable Entity` (`package.capacity_exceeded`). **Demostración de outbox limpia:** No se emite ningún evento ni se altera la versión del paquete.
+   - **Fixture 3 (Área excedida, DECOR-44):** El espacio residencial de 30 m² acepta la segunda pista (32/30 m²) con HTTP `201 Created`: el cambio se persiste, sube la versión y emite `package.module.added` como cualquier otro. El exceso solo aparece en el diagnóstico espacial (`exceeded`); ya no existe un `422 package.capacity_exceeded` que bloquee.
    - **Rollback transaccional:** Ante una colisión simulada de `eventId` en outbox, `commit_package_change` revierte atómicamente la inserción de `package_items` y la versión de `packages`.
 3. **Prototype demostrado vía API:**
    - `POST /api/packages/{id}/clone` duplica un paquete con todos sus elementos dependientes y preferencias mutables, generando un clon con `version = 1`.
    - **Demostración de copia profunda:** Al eliminar un elemento en el clon con `DELETE /items/{itemId}`, el paquete original permanece intacto con la totalidad de sus ítems.
 4. **Composite demostrado vía API:**
-   - `POST /api/packages/{id}/groups` crea la *Zona de bienvenida* agrupando el arco floral y la mesa redonda con respuesta `201 Created`.
+   - `POST /api/packages/{id}/groups` crea una zona (por ejemplo la Zona de bienvenida agrupando el arco floral y la mesa redonda) con respuesta `201 Created`.
    - Soporte verificado de hasta 3 niveles de profundidad jerárquica; el 4to nivel se rechaza con HTTP `422` (`package.group_depth_exceeded`).
-   - Prevención de ciclos: La inmutabilidad de `parent_group_id` y las validaciones de dominio impiden reasignaciones cíclicas (`package.group_immutable` / `package.group_cycle`).
+   - Prevención de ciclos: reparentar se valida en dominio y en SQL; mover una zona dentro de sí misma o de un descendiente se rechaza (`package.group_cycle`) y la profundidad se recalcula en cada escritura.
 5. **Seguridad y Ownership A/B (DECOR-30):**
    - Solicitudes no autenticadas son rechazadas con HTTP `401 Unauthorized`.
    - El Usuario B intentando mutar o clonar un paquete del Usuario A recibe HTTP `404 Not Found` (`package.not_found`), previniendo la enumeración de recursos ajenos.
 6. **Manejo de errores y observabilidad (8.18):**
-   - Respuestas HTTP estándar: `200/201` (éxito), `204` (borrado), `400` (cuerpo/identificador inválido), `401` (sin auth), `404` (inexistente/ajeno), `422` (regla de negocio) y `500` (controlado sin filtrar stack traces).
+   - Respuestas HTTP estándar: `200/201` (éxito), `204` (borrado), `400` (cuerpo/identificador inválido), `401` (sin auth), `404` (inexistente/ajeno), `422` (regla de negocio: estructura de grupos, nombre o metadatos inválidos; el exceso de área ya no responde 422) y `500` (controlado sin filtrar stack traces).
    - Trazabilidad: Generación y propagación de `x-correlation-id` en todas las respuestas.
    - Colección de solicitudes reproducible documentada en `tests/package-catalog-api.http`.
 
@@ -308,7 +318,7 @@ classDiagram
         <<Builder - Creacional>>
         +agregarModulo()
         +construir()
-        +validarCapacidad()
+        +diagnosticoEspacial()
     }
     class ConfiguracionClonable {
         <<Prototype - Creacional>>
@@ -377,6 +387,34 @@ docker compose up --build -d                   # esperar a que el servicio esté
 npm run e2e:seed                               # opcional: el setup también lo ejecuta
 npm run test:e2e:mvp
 ```
+
+### 2.2.10 Eventos con metadatos opcionales y plantillas privadas (DECOR-44)
+
+DECOR-44 evoluciona el agregado existente sin romper IDs, URLs, presupuesto, outbox ni Realtime; `package` sigue siendo el nombre técnico.
+
+**Evento mínimo y metadatos opcionales.** `public.packages` gana `name` obligatorio (backfill determinista `Evento <id-corto>` y trigger `set_default_package_name`) y las columnas opcionales `client_name`, `event_date`, `venue` y `event_type`. `space_type` y `capacity_m2` pasan a ser nullable conservando sus `CHECK`. La RPC `create_package(user_id, name, …)` exige el nombre y acepta los metadatos; `clone_package` mantiene su firma y copia las columnas nuevas. `PATCH /api/packages/{id}` (solo propietario, 404 si es ajeno o inexistente) actualiza los metadatos sin tocar la configuración decorativa; una clave ausente no cambia y `null`/vacío borra el dato.
+
+**Diagnóstico espacial no bloqueante.** `calcularDiagnosticoEspacial` (`src/modules/packages/domain/spatial-diagnostic.ts`) deriva `pending` (sin área), `compatible` o `exceeded` con `areaDisponibleM2`/`areaRequeridaM2`. El Builder y `PaqueteDecoracion` dejaron de rechazar por exceso: siguen validando cantidades, jerarquía (máximo tres niveles), ciclos, existencia y concurrencia. El detalle y las respuestas `POST /api/packages`/`PATCH` exponen el diagnóstico, que la interfaz muestra sin impedir el cambio.
+
+**Plantillas normalizadas y privadas.** Las tablas `public.event_templates` (cabecera), `event_template_groups` y `event_template_items` guardan un snapshot con módulos del catálogo y hasta tres niveles de jerarquía; nunca contienen cliente, fecha ni lugar. La profundidad se deriva por trigger y el padre es inmutable. RLS habilita solo `SELECT` al propietario (`auth.uid() = owner_id`, y cabecera para las tablas hijas); `anon`/`authenticated` no escriben y `service_role` muta únicamente por RPC.
+
+**Autorización en profundidad y copia profunda.** `EventTemplateController` (`src/interfaces/templates`) resuelve la sesión y comprueba propiedad con `checkEventTemplateAccess` (plantilla) y `checkPackageAccess` (evento origen) antes de invocar repositorio/RPC; un recurso ajeno o inexistente responde el mismo `404`. Las RPC atómicas `create_event_template_from_package` (evento→plantilla) y `create_package_from_event_template` (plantilla→evento) bloquean el origen, copian con identificadores nuevos y comprueban la propiedad en la transacción. `rename_event_template` y `delete_event_template` siguen el mismo criterio. Como la copia es profunda y con IDs nuevos, modificar o eliminar un origen no altera el destino ni al revés.
+
+**Endpoints.** `POST /api/packages {name, …metadatos?}` (201) y `PATCH /api/packages/{id}` (200); `GET/POST /api/event-templates`; `GET/PATCH/DELETE /api/event-templates/{id}`; `POST /api/event-templates/{id}/instantiate` (201 evento). Todos usan el envelope `{error:{code,message}}` y `x-correlation-id`; los errores 4xx/5xx mantienen los códigos existentes y añaden `template.*`.
+
+**Evidencia.** `supabase/migrations/20261015000000_event_templates_and_metadata.sql` define tablas, RLS y RPC; `supabase/migrations/decor-44-event-templates.test.ts` cubre migración, aislamiento A/B, copia, independencia de borrado y permisos en PGlite; `tests/package-catalog-api.test.ts` (Fixture 3) demuestra que el exceso de área ya no bloquea.
+
+### 2.2.11 Composite editable: zonas y movimiento de módulos
+
+El configurador dejó de ofrecer la "Zona de bienvenida" fija. `PackageContents` (`src/app/(protected)/packages/[packageId]/package-contents.tsx`) edita inline el árbol real: `NewZoneForm` crea zonas vacías con nombre obligatorio (recortado 1..80) y padre opcional, y cada fila permite renombrar, crear subzona, mover y eliminar. La interfaz usa el término visible "Zona"; cada operación muestra estados normal, foco, pendiente, error y éxito, evita el doble envío, anuncia por `aria-live` y devuelve el foco cuando desaparece una fila. Un cambio válido hace `router.refresh()` y el exceso de área sólo cambia el diagnóstico.
+
+Todas las mutaciones pasan por `package-groups-client.ts` y `packages-client.ts` (sin `.from()`): `POST /api/packages/{id}/groups`, `PATCH|DELETE /api/packages/{id}/groups/{groupId}` y `PATCH /api/packages/{id}/items/{itemId}`. `PackageController` (`src/interfaces/packages/package-controller.ts`) reutiliza `checkPackageAccess` y `x-correlation-id`; un cuerpo inválido responde 400, una versión obsoleta 409 y nombre, ciclo o profundidad 422.
+
+Persistencia: una migración aditiva a DECOR-44 (`supabase/migrations/20261016000000_edit_package_groups.sql`) reemplaza la inmutabilidad de `parent_group_id` por un trigger de reparentado con defensa SQL de ciclos y profundidad, y define `create_package_group`, `update_package_group`, `delete_package_group` y `move_package_item`. Cada RPC es `SECURITY INVOKER` con `search_path` vacío, bloquea el evento `FOR UPDATE`, exige `expectedVersion` y propiedad, escribe la outbox en lote y sube la versión una sola vez; el `EXECUTE` queda sólo para `service_role`.
+
+Eventos y presupuesto: agregar emite `package.module.added`; `delete_contents` emite `package.module.removed` por cada hoja del subárbol; mover una instancia y `move_to_root` emiten `package.module.moved` (identidad `itemId`/`moduleId` y `fromGroupId`/`toGroupId`), sin borrar ni recrear el item. Renombrar o reparentar no producen eventos de módulo, sólo suben la versión. El consumidor de Presupuesto acepta también `moved` y reconcilia contra la versión final releyendo el paquete.
+
+Compatibilidad DECOR-44: `create_event_template_from_package` y `create_package_from_event_template` no cambian; siguen copiando `package_groups`/`package_items` por profundidad con IDs nuevos, así que el snapshot de plantilla conserva la jerarquía editada y permanece independiente del origen.
 
 ### 2.3 Diagrama de contenedores
 
@@ -487,7 +525,7 @@ El patrón Bridge, también estructural, desacopla el elemento decorativo de la 
 
 ### 4.1. Builder: patrón principal implementado
 
-El propósito del patrón Builder es distinguir entre la construcción incremental de PaqueteDecoracion y su representación final, lo que posibilita que cada adición sea validada. El problema que soluciona es el de evitar constructores con numerosos parámetros opcionales o setters desparramados, ya que estos podrían producir estados intermedios inválidos y redundar las normas de capacidad. Los participantes más importantes son PaqueteDecoracion, PaqueteDecoracionBuilderImpl, DirectorEvento y PaqueteDecoracionBuilder. Por lo tanto, se optimiza la legibilidad, se simplifica el encadenamiento de operaciones y se centralizan las validaciones; sin embargo, se agrega una capa de indirección que es necesaria a causa de las reglas y variaciones del objeto.
+El propósito del patrón Builder es distinguir entre la construcción incremental de PaqueteDecoracion y su representación final, lo que posibilita que cada adición sea validada. El problema que soluciona es el de evitar constructores con numerosos parámetros opcionales o setters desparramados, ya que estos podrían producir estados intermedios inválidos y duplicar las validaciones de estructura (niveles y ciclos). Desde DECOR-44 la capacidad ya no es una regla de admisión: se calcula como diagnóstico informativo. Los participantes más importantes son PaqueteDecoracion, PaqueteDecoracionBuilderImpl, DirectorEvento y PaqueteDecoracionBuilder. Por lo tanto, se optimiza la legibilidad, se simplifica el encadenamiento de operaciones y se centralizan las validaciones; sin embargo, se agrega una capa de indirección que es necesaria a causa de las reglas y variaciones del objeto.
 
 ```mermaid
 classDiagram
@@ -507,9 +545,10 @@ classDiagram
 
     class PaqueteDecoracion {
         +Modulo[] modulos
-        +TipoEspacio tipoEspacio
-        +number capacidadM2
+        +TipoEspacio? tipoEspacio
+        +number? capacidadM2
         +number espacioUsadoM2
+        +diagnosticoEspacial() Diagnostico
         +agregarModulo(m: Modulo)
     }
 
@@ -540,15 +579,12 @@ class PaqueteDecoracionBuilderImpl extends PaqueteDecoracionBuilder {
   }
 
   _validarYAgregar(modulo) {
-    const espacioFinal = this.paquete.espacioUsadoM2 + modulo.ocupaM2;
-    if (espacioFinal > this.reglas.capacidadM2) {
-      console.log(
-        `ERROR: No se agregó "${modulo.nombre}": excede la capacidad del espacio ` +
-        `(${espacioFinal}/${this.reglas.capacidadM2} m²).`
-      );
-      return this;
+    // DECOR-44: el exceso de área ya no rechaza. Solo se valida la estructura
+    // (niveles, ciclos, duplicados); la compatibilidad espacial es un diagnóstico.
+    const resultado = this.paquete.agregarModulo(modulo);
+    if (!resultado.ok) {
+      console.log(`ERROR: No se agregó "${modulo.nombre}": ${resultado.error.message}`);
     }
-    this.paquete.agregarModulo(modulo);
     return this;
   }
 
@@ -607,8 +643,8 @@ PRUEBA 1: Paquete armado paso a paso para un salón social:
 ```
 
 ```text
-PRUEBA 3: Validación de regla de espacio: se intenta agregar DOS pistas de baile a una casa (30 m²):
-  ERROR: No se agregó "Pista de baile 4x4": excede la capacidad del espacio (32/30 m²).
+PRUEBA 3 (DECOR-44): se agregan DOS pistas de baile a una casa (30 m²). El exceso
+ya no bloquea: ambas se agregan y se informa el diagnóstico.
 {
   tipoEspacio: 'casa',
   modulos: [
@@ -619,14 +655,15 @@ PRUEBA 3: Validación de regla de espacio: se intenta agregar DOS pistas de bail
       ocupaM2: 16
     },
     {
-      id: 'arco-floral',
-      nombre: 'Arco floral de entrada',
-      precio: 200000,
-      ocupaM2: 2
+      id: 'pista-baile-4x4',
+      nombre: 'Pista de baile 4x4',
+      precio: 600000,
+      ocupaM2: 16
     }
   ],
-  presupuestoTotal: 800000,
-  espacioUsadoM2: 18
+  presupuestoTotal: 1200000,
+  espacioUsadoM2: 32,
+  diagnosticoEspacial: { estado: 'exceeded', areaDisponibleM2: 30, areaRequeridaM2: 32 }
 }
 ```
 
@@ -691,6 +728,8 @@ classDiagram
     ServicioDeEventos --> ConfiguracionClonable : solicita clonar()
 ```
 
+**Implementación (DECOR-24 y DECOR-44).** `ServicioDeEventos` se materializa en `clone_package`, que duplica un evento completo con IDs nuevos. DECOR-44 lleva el mismo patrón a las plantillas privadas: `create_event_template_from_package` copia evento→plantilla y `create_package_from_event_template` copia plantilla→evento, en una sola transacción, con identificadores nuevos para el agregado, las zonas y los elementos mutables, y conservando las referencias inmutables del catálogo. Cliente, fecha y lugar nunca se copian. Modificar o eliminar un origen después de copiar no modifica ni elimina el destino.
+
 ### 4.3. Composite: paquetes y módulos jerárquicos
 
 **Intención:** Componer objetos en estructuras de árbol y tratar de forma uniforme elementos simples y grupos.
@@ -701,7 +740,7 @@ classDiagram
 
 **Consecuencias:** Simplifica recorridos y cálculos recursivos; facilita crear paquetes anidados. La implementación rechaza ciclos y limita los grupos a tres niveles.
 
-**Implementación (DECOR-25):** `ComponenteDecorativo` (`calcularPrecio`, `calcularAreaM2`, `obtenerModulos`, `profundidad`) lo implementan `ElementoDecorativo` y `ModuloCompuesto` en `src/modules/packages/domain`. "Tres niveles" significa grupo → subgrupo → sub-subgrupo; las hojas pueden estar en cualquiera de ellos. `PaqueteDecoracion` y `PaqueteDecoracionBuilderImpl` validan capacidad sobre el contrato común (`agregarZonaBienvenida`, `agregarComponente`). Los grupos se persisten en `public.package_groups` mediante las RPC atómicas `create_package_group` y `add_package_item_to_group` (`POST /api/packages/{packageId}/groups` y `POST /items` con `parentGroupId`; sin `parentGroupId` o con `null` el elemento va a la raíz, y un `parentGroupId` vacío o en blanco responde 400 `package.invalid_group`). Cada hoja emite `package.module.added` en la misma transacción; al crear un grupo con hojas se recalcula el presupuesto una sola vez, con el último evento, y un grupo sin hojas no emite eventos ni recalcula. La base calcula la profundidad por trigger e impide re-asignar el padre de un grupo, de modo que no puede formarse un ciclo. `clone_package` copia los grupos conservando la estructura.
+**Implementación (DECOR-25):** `ComponenteDecorativo` (`calcularPrecio`, `calcularAreaM2`, `obtenerModulos`, `profundidad`) lo implementan `ElementoDecorativo` y `ModuloCompuesto` en `src/modules/packages/domain`. "Tres niveles" significa grupo → subgrupo → sub-subgrupo; las hojas pueden estar en cualquiera de ellos. `PaqueteDecoracion` y `PaqueteDecoracionBuilderImpl` aplican el contrato común (`agregarZonaBienvenida`, `agregarComponente`) a hojas y grupos y validan niveles y ciclos; desde DECOR-44 la capacidad ya no se valida como admisión, solo se informa. Los grupos se persisten en `public.package_groups` mediante las RPC atómicas `create_package_group` y `add_package_item_to_group` (`POST /api/packages/{packageId}/groups` y `POST /items` con `parentGroupId`; sin `parentGroupId` o con `null` el elemento va a la raíz, y un `parentGroupId` vacío o en blanco responde 400 `package.invalid_group`). Cada hoja emite `package.module.added` en la misma transacción; al crear un grupo con hojas se recalcula el presupuesto una sola vez, con el último evento, y un grupo sin hojas no emite eventos ni recalcula. La base calcula la profundidad por trigger e impide re-asignar el padre de un grupo, de modo que no puede formarse un ciclo. `clone_package` copia los grupos conservando la estructura. Las plantillas normalizadas (`event_template_groups` y `event_template_items`, DECOR-44) reutilizan la misma jerarquía y el mismo límite de tres niveles mediante un trigger equivalente, y las RPC de copia conservan la estructura padre-hijo con IDs nuevos.
 
 ### 4.4. Bridge: desacoplar decoración y render AR
 

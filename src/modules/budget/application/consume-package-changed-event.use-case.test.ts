@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { packageModuleAddedExample, packageModuleRemovedExample } from "../../events/domain/event-examples";
+import { packageModuleAddedExample, packageModuleMovedExample, packageModuleRemovedExample } from "../../events/domain/event-examples";
 import { DomainError } from "../../../shared/domain/domain-error";
 import { err, ok } from "../../../shared/domain/result";
 import type { BudgetState } from "../domain/budget-state";
@@ -123,6 +123,22 @@ describe("ConsumePackageChangedEvent", () => {
       expect.objectContaining({ eventId: packageModuleRemovedExample.eventId }),
     );
     expect(result.ok).toBe(true);
+  });
+
+  it("acepta package.module.moved y reconcilia contra la versión releída", async () => {
+    const { consumer, reader, useCase } = harness({ applied: true, budget: BUDGET });
+
+    const result = await useCase.execute(packageModuleMovedExample);
+
+    expect(reader.read).toHaveBeenCalledWith(packageModuleMovedExample.packageId);
+    expect(consumer.process).toHaveBeenCalledWith({
+      consumer: BUDGET_CONSUMER,
+      eventId: packageModuleMovedExample.eventId,
+      packageId: packageModuleMovedExample.packageId,
+      packageVersion: SNAPSHOT.packageVersion,
+      totalCop: 450000,
+    });
+    expect(result).toEqual(ok(BUDGET));
   });
 
   it("rechaza un evento budget.recalculated: no es un cambio de paquete", async () => {

@@ -1,4 +1,4 @@
-import type { TipoEspacio } from "../../domain/space-type";
+import type { EventMetadataDto, SpatialDiagnosticDto } from "./package.dto";
 
 /**
  * Vista de solo lectura del paquete para el configurador (DECOR-22). Es un
@@ -24,12 +24,16 @@ export type PackageDetailNode =
       readonly children: readonly PackageDetailNode[];
     };
 
-export interface PackageDetailView {
+/**
+ * Detalle del evento para el configurador. Incluye los metadatos opcionales y
+ * el diagnóstico espacial informativo (DECOR-44). `remainingM2` es `null`
+ * cuando no hay área disponible registrada.
+ */
+export interface PackageDetailView extends EventMetadataDto {
   readonly id: string;
-  readonly spaceType: TipoEspacio;
-  readonly capacityM2: number;
   readonly usedM2: number;
-  readonly remainingM2: number;
+  readonly remainingM2: number | null;
+  readonly spatial: SpatialDiagnosticDto;
   readonly version: number;
   readonly nodes: readonly PackageDetailNode[];
 }

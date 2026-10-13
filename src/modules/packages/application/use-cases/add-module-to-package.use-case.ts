@@ -75,16 +75,8 @@ export class AddModuleToPackageUseCase {
       return err(packageEntityResult.error);
     }
 
-    const usedM2 = packageEntityResult.value.espacioUsadoM2;
-    if (usedM2 + moduleDetail.areaM2 * quantity > packageDetail.capacityM2) {
-      return err(
-        new DomainError(
-          "package.capacity_exceeded",
-          `No se agregó "${moduleDetail.name}": excede la capacidad del espacio (${usedM2 + moduleDetail.areaM2 * quantity}/${packageDetail.capacityM2} m²).`,
-        ),
-      );
-    }
-
+    // El exceso de área ya no bloquea (DECOR-44): la configuración se guarda y
+    // el diagnóstico espacial del detalle informa disponible y requerida.
     for (let index = 0; index < quantity; index += 1) {
       const addValidation = packageEntityResult.value.agregarModulo({
         id: `${moduleDetail.id}-${index}`,

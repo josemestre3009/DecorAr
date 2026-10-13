@@ -11,7 +11,6 @@ import { crearZonaBienvenida } from "./welcome-zone";
 
 export class PaqueteDecoracionBuilderImpl implements PaqueteDecoracionBuilder {
   private paquete: PaqueteDecoracion;
-  private readonly reglas: { capacidadM2: number };
   private zonasCreadas = 0;
 
   constructor(tipoEspacio: TipoEspacio, capacidadM2: number) {
@@ -32,20 +31,14 @@ export class PaqueteDecoracionBuilderImpl implements PaqueteDecoracionBuilder {
     }
 
     this.paquete = packageResult.value;
-    this.reglas = { capacidadM2 };
   }
 
-  /** Valida y agrega cualquier `ComponenteDecorativo`: hoja o grupo usan la misma regla. */
+  /**
+   * Valida y agrega cualquier `ComponenteDecorativo`: hoja o grupo usan la
+   * misma regla. El exceso de área ya no rechaza (DECOR-44); solo lo informa
+   * el diagnóstico espacial del paquete.
+   */
   private _validarYAgregar(componente: ComponenteDecorativo): Result<this, DomainError> {
-    const espacioFinal = this.paquete.espacioUsadoM2 + componente.calcularAreaM2();
-    if (espacioFinal > this.reglas.capacidadM2) {
-      const error = new DomainError(
-        "package.capacity_exceeded",
-        `No se agregó "${componente.nombre}": excede la capacidad del espacio (${espacioFinal}/${this.reglas.capacidadM2} m²).`,
-      );
-      return err(error);
-    }
-
     const addResult = this.paquete.agregarComponente(componente);
     if (!addResult.ok) {
       return err(addResult.error);

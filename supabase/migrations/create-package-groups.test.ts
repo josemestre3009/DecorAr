@@ -179,14 +179,14 @@ describe("DECOR-25 migración: grupos decorativos (Composite)", () => {
     expect(types.rows.map((row) => row.event_type)).toEqual(["package.module.added", "package.module.added"]);
   });
 
-  it("un grupo sin hojas no emite eventos ni cambia la versión (no recalcula)", async () => {
+  it("un grupo sin hojas no emite eventos pero sí versiona el agregado (edit-decorative-groups)", async () => {
     const packageId = await newPackage();
 
     const result = await createGroup({ packageId });
 
-    expect(result.packageVersion).toBe(1);
+    expect(result.packageVersion).toBe(2);
     expect(result.itemIds).toEqual([]);
-    expect(await snapshot(packageId)).toEqual({ events: 0, groups: 1, items: 0, version: 1 });
+    expect(await snapshot(packageId)).toEqual({ events: 0, groups: 1, items: 0, version: 2 });
   });
 
   it("admite tres niveles y rechaza el cuarto sin dejar escrituras", async () => {
@@ -272,14 +272,15 @@ describe("DECOR-25 migración: grupos decorativos (Composite)", () => {
     expect(await snapshot(packageId)).toMatchObject({ groups: 0, version: 5 });
   });
 
-  it("la posición de un grupo es inmutable: no se puede formar un ciclo en la base", async () => {
+  it("la base impide formar un ciclo aunque el padre sea editable (edit-decorative-groups)", async () => {
     const packageId = await newPackage();
     const padre = await createGroup({ name: "Padre", packageId });
     const hijo = await createGroup({ name: "Hijo", packageId, parentGroupId: padre.groupId });
 
+    // Mover el padre dentro de su propio hijo formaría un ciclo.
     await expect(
       db.query(`UPDATE public.package_groups SET parent_group_id = $1 WHERE id = $2`, [hijo.groupId, padre.groupId]),
-    ).rejects.toMatchObject({ message: expect.stringContaining("package.group_immutable") });
+    ).rejects.toMatchObject({ message: expect.stringContaining("package.group_cycle") });
 
     await expect(
       db.query(
@@ -288,6 +289,14 @@ describe("DECOR-25 migración: grupos decorativos (Composite)", () => {
         [randomUUID(), packageId],
       ),
     ).rejects.toBeDefined();
+
+    // Un movimiento válido sí se permite y recalcula la profundidad.
+    const other = await createGroup({ name: "Otra", packageId });
+    await db.query(`UPDATE public.package_groups SET parent_group_id = $1 WHERE id = $2`, [hijo.groupId, other.groupId]);
+    const moved = await db.query<{ depth: number }>(`SELECT depth FROM public.package_groups WHERE id = $1`, [
+      other.groupId,
+    ]);
+    expect(moved.rows[0].depth).toBe(3);
   });
 
   it("agrega una hoja a un grupo existente; un grupo ajeno revierte la hoja y su evento", async () => {
@@ -297,9 +306,9 @@ describe("DECOR-25 migración: grupos decorativos (Composite)", () => {
 
     const version = await db.query<{ version: number }>(
       `SELECT public.add_package_item_to_group($1::jsonb, $2, $3) AS version`,
-      [JSON.stringify(event), zona.groupId, 1],
+      [JSON.stringify(event), zona.groupId, 2],
     );
-    expect(version.rows[0].version).toBe(2);
+    expect(version.rows[0].version).toBe(3);
 
     const item = await db.query<{ group_id: string }>(`SELECT group_id FROM public.package_items WHERE id = $1`, [
       event.payload.itemId,

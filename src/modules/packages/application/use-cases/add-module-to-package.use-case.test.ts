@@ -4,8 +4,25 @@ import { DomainError } from "../../../../shared/domain/domain-error";
 import type { Clock, IdGenerator } from "../../../../shared/application/ports";
 import type { PackageChangeOutbox } from "../../../events/application/outbox";
 import type { CatalogModuleReader } from "../ports/catalog-module-reader.port";
-import type { PackageReader } from "../ports/package-reader.port";
+import type { PackageDetail, PackageReader } from "../ports/package-reader.port";
 import { AddModuleToPackageUseCase } from "./add-module-to-package.use-case";
+
+function detail(overrides: Partial<PackageDetail> = {}): PackageDetail {
+  return {
+    capacityM2: 30,
+    clientName: null,
+    eventDate: null,
+    eventType: null,
+    id: "pkg-1",
+    items: [],
+    name: "Evento",
+    spaceType: "casa",
+    userId: "user-1",
+    venue: null,
+    version: 1,
+    ...overrides,
+  };
+}
 
 describe("AddModuleToPackageUseCase", () => {
   const fixedDate = new Date("2026-10-08T12:00:00.000Z");
@@ -15,19 +32,12 @@ describe("AddModuleToPackageUseCase", () => {
     generate: () => `id-${idCounter++}`,
   };
 
-  it("agrega un módulo y comete el evento atómicamente si está dentro de la capacidad", async () => {
+  it("agrega un módulo y comete el evento atómicamente", async () => {
     idCounter = 1;
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn(),
       getPackage: vi.fn().mockResolvedValue(
-        ok({
-          capacityM2: 30,
-          id: "pkg-1",
-          items: [{ areaM2: 10, itemId: "item-prev", moduleId: "mod-prev" }],
-          spaceType: "casa",
-          userId: "user-1",
-          version: 2,
-        }),
+        ok(detail({ capacityM2: 30, items: [{ areaM2: 10, itemId: "item-prev", moduleId: "mod-prev" }], version: 2 })),
       ),
     };
 
@@ -88,14 +98,7 @@ describe("AddModuleToPackageUseCase", () => {
     idCounter = 1;
     const packageReader: PackageReader = {
       getItemModuleId: vi.fn(),
-      getPackage: vi.fn().mockResolvedValue(ok({
-        capacityM2: 30,
-        id: "pkg-1",
-        items: [],
-        spaceType: "casa",
-        userId: "user-1",
-        version: 4,
-      })),
+      getPackage: vi.fn().mockResolvedValue(ok(detail({ capacityM2: 30, items: [], version: 4 }))),
     };
     const catalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(ok({
@@ -160,22 +163,16 @@ describe("AddModuleToPackageUseCase", () => {
     expect(outbox.commit).not.toHaveBeenCalled();
   });
 
-  it("rechaza el lote completo cuando la cantidad supera la capacidad", async () => {
+  it("guarda el lote aunque el área requerida supere la disponible (DECOR-44)", async () => {
     const packageReader: PackageReader = {
       getItemModuleId: vi.fn(),
-      getPackage: vi.fn().mockResolvedValue(ok({
-        capacityM2: 5,
-        id: "pkg-1",
-        items: [],
-        spaceType: "casa",
-        userId: "user-1",
-        version: 1,
-      })),
+      getPackage: vi.fn().mockResolvedValue(ok(detail({ capacityM2: 5, items: [], version: 1 }))),
     };
     const catalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(ok({ areaM2: 2, id: "mod-1", name: "Silla", priceCop: 1 })),
     };
-    const outbox: PackageChangeOutbox = { commit: vi.fn(), commitBatch: vi.fn() };
+    const commitBatch = vi.fn().mockResolvedValue(ok(3));
+    const outbox: PackageChangeOutbox = { commit: vi.fn(), commitBatch };
     const useCase = new AddModuleToPackageUseCase(
       packageReader,
       catalogReader,
@@ -184,27 +181,18 @@ describe("AddModuleToPackageUseCase", () => {
       mockIdGenerator,
     );
 
+    // 3 × 2 m² = 6 m² > 5 m²: no bloquea, se confirma el lote.
     const result = await useCase.execute({ moduleId: "mod-1", packageId: "pkg-1", quantity: 3, userId: "user-1" });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error.code).toBe("package.capacity_exceeded");
-    expect(outbox.commitBatch).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(commitBatch).toHaveBeenCalledTimes(1);
   });
 
   it("pasa correlationId al outbox cuando se recibe en el dto (DECOR-31)", async () => {
     idCounter = 1;
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn(),
-      getPackage: vi.fn().mockResolvedValue(
-        ok({
-          capacityM2: 30,
-          id: "pkg-1",
-          items: [],
-          spaceType: "casa",
-          userId: "user-1",
-          version: 1,
-        }),
-      ),
+      getPackage: vi.fn().mockResolvedValue(ok(detail({ capacityM2: 30, items: [], version: 1 }))),
     };
     const mockCatalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(
@@ -235,16 +223,7 @@ describe("AddModuleToPackageUseCase", () => {
     idCounter = 1;
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn(),
-      getPackage: vi.fn().mockResolvedValue(
-        ok({
-          capacityM2: 30,
-          id: "pkg-1",
-          items: [],
-          spaceType: "casa",
-          userId: "user-1",
-          version: 1,
-        }),
-      ),
+      getPackage: vi.fn().mockResolvedValue(ok(detail({ capacityM2: 30, items: [], version: 1 }))),
     };
     const mockCatalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(
@@ -280,16 +259,7 @@ describe("AddModuleToPackageUseCase", () => {
   it("no notifica al consumidor si el commit falla", async () => {
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn(),
-      getPackage: vi.fn().mockResolvedValue(
-        ok({
-          capacityM2: 50,
-          id: "pkg-1",
-          items: [],
-          spaceType: "casa",
-          userId: "user-1",
-          version: 1,
-        }),
-      ),
+      getPackage: vi.fn().mockResolvedValue(ok(detail({ capacityM2: 50, items: [], version: 1 }))),
     };
     const mockCatalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(
@@ -320,25 +290,18 @@ describe("AddModuleToPackageUseCase", () => {
     expect(consume).not.toHaveBeenCalled();
   });
 
-  it("rechaza y deja cero escritura/evento cuando excede la capacidad", async () => {
+  it("guarda aunque el área resultante exceda la capacidad (DECOR-44)", async () => {
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn(),
       getPackage: vi.fn().mockResolvedValue(
-        ok({
-          capacityM2: 30,
-          id: "pkg-1",
-          items: [{ areaM2: 16, itemId: "item-prev", moduleId: "mod-prev" }],
-          spaceType: "casa",
-          userId: "user-1",
-          version: 2,
-        }),
+        ok(detail({ capacityM2: 30, items: [{ areaM2: 16, itemId: "item-prev", moduleId: "mod-prev" }], version: 2 })),
       ),
     };
 
     const mockCatalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(
         ok({
-          areaM2: 16, // 16 + 16 = 32 > 30!
+          areaM2: 16, // 16 + 16 = 32 > 30, ya no bloquea.
           id: "mod-pista-2",
           name: "Pista de baile 4x4",
           priceCop: 600000,
@@ -347,7 +310,7 @@ describe("AddModuleToPackageUseCase", () => {
     };
 
     const mockOutbox: PackageChangeOutbox = {
-      commit: vi.fn(),
+      commit: vi.fn().mockResolvedValue(ok(3)),
     };
 
     const useCase = new AddModuleToPackageUseCase(
@@ -364,14 +327,8 @@ describe("AddModuleToPackageUseCase", () => {
       userId: "user-1",
     });
 
-    expect(result.ok).toBe(false);
-    if (!result.ok) {
-      expect(result.error.code).toBe("package.capacity_exceeded");
-      expect(result.error.message).toContain("excede la capacidad del espacio (32/30 m²)");
-    }
-
-    // Cero escritura / evento: outbox.commit jamás debe llamarse
-    expect(mockOutbox.commit).not.toHaveBeenCalled();
+    expect(result.ok).toBe(true);
+    expect(mockOutbox.commit).toHaveBeenCalledTimes(1);
   });
 
   it("rechaza si el paquete no existe o no pertenece al usuario", async () => {
@@ -406,16 +363,7 @@ describe("AddModuleToPackageUseCase", () => {
   it("rechaza si el módulo no existe en el catálogo", async () => {
     const mockPackageReader: PackageReader = {
       getItemModuleId: vi.fn(),
-      getPackage: vi.fn().mockResolvedValue(
-        ok({
-          capacityM2: 50,
-          id: "pkg-1",
-          items: [],
-          spaceType: "casa",
-          userId: "user-1",
-          version: 1,
-        }),
-      ),
+      getPackage: vi.fn().mockResolvedValue(ok(detail({ capacityM2: 50, items: [], version: 1 }))),
     };
     const mockCatalogReader: CatalogModuleReader = {
       getModuleById: vi.fn().mockResolvedValue(ok(null)),

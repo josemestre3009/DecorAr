@@ -30,6 +30,38 @@ export type SpaceDefinitionResult = Result<SpaceDefinition, SpaceDefinitionError
 
 export const MAX_CAPACITY_M2 = 999999.99;
 
+/** Límite del nombre visible del evento, alineado con el contrato HTTP (DECOR-44). */
+export const MAX_EVENT_NAME_LENGTH = 120;
+
+export const EVENT_NAME_MESSAGES = {
+  empty: "El nombre del evento es obligatorio.",
+  tooLong: `El nombre del evento no puede superar ${MAX_EVENT_NAME_LENGTH} caracteres.`,
+} as const;
+
+/** Nombre obligatorio: se recorta y debe quedar entre 1 y 120 caracteres. */
+export function validateEventName(raw: string): Result<string, string> {
+  const name = raw.trim();
+
+  if (name.length === 0) {
+    return err(EVENT_NAME_MESSAGES.empty);
+  }
+
+  if (name.length > MAX_EVENT_NAME_LENGTH) {
+    return err(EVENT_NAME_MESSAGES.tooLong);
+  }
+
+  return ok(name);
+}
+
+export function validateTemplateName(raw: string): Result<string, string> {
+  const name = raw.trim();
+  if (name.length === 0) return err("El nombre de la plantilla es obligatorio.");
+  if (name.length > MAX_EVENT_NAME_LENGTH) {
+    return err(`El nombre de la plantilla no puede superar ${MAX_EVENT_NAME_LENGTH} caracteres.`);
+  }
+  return ok(name);
+}
+
 export function isSpaceType(value: unknown): value is SpaceType {
   return SPACE_TYPES.some((type) => type.value === value);
 }

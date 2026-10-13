@@ -85,3 +85,18 @@ Durante la presentación, el grupo debe mostrar:
 - Demo funcional.
 - Evidencia de patrones.
 - Evidencia de separación en capas.
+
+---
+
+## Evidencia de cumplimiento (esta entrega)
+
+| Criterio | Evidencia |
+|---|---|
+| 8.14 Código fuente | Monolito modular Next.js con límites de Clean Architecture (`docs/architecture.md`). |
+| 8.15 Implementación real de patrones | Composite, Builder, Prototype, Bridge y Flyweight con código y pruebas (`docs/DecorAR.md` §4 y §2.2.7). |
+| 8.16 Clean Architecture visible | Capas y reglas verificadas por `scripts/scan-architecture.test.ts` (`docs/architecture.md`). |
+| 8.17 API o interacción funcional | Endpoints de evento, zona e instancia y eventos de dominio (`docs/DecorAR.md` §2.2.3, §2.2.4 y §2.2.10). |
+| 8.18 Manejo de errores | Envelope `{error:{code,message}}`, `x-correlation-id`, outbox y recuperación (`docs/DecorAR.md` §2.2.5 y §2.2.6). |
+| 8.19 README técnico | `README.md` y `src/modules/packages/README.md`. |
+
+Composite editable: `POST /api/packages/{id}/groups`, `PATCH|DELETE /api/packages/{id}/groups/{groupId}` y `PATCH /api/packages/{id}/items/{itemId}` con autorización `checkPackageAccess` y RLS de lectura del propietario, RPC atómicas `create_package_group`, `update_package_group`, `delete_package_group` y `move_package_item`, outbox y presupuesto con `package.module.moved`. Las plantillas privadas de DECOR-44 siguen copiando la jerarquía editada con IDs nuevos.

@@ -13,6 +13,7 @@ describe("ClonePackageUseCase", () => {
   it("rechaza si el userId no está presente", async () => {
     const repository: PackageRepository = {
       create: vi.fn(),
+      updateMetadata: vi.fn(),
       clone: vi.fn(),
     };
     const useCase = new ClonePackageUseCase(repository);
@@ -32,6 +33,7 @@ describe("ClonePackageUseCase", () => {
   it("rechaza si el sourcePackageId tiene formato inválido", async () => {
     const repository: PackageRepository = {
       create: vi.fn(),
+      updateMetadata: vi.fn(),
       clone: vi.fn(),
     };
     const useCase = new ClonePackageUseCase(repository);
@@ -62,6 +64,7 @@ describe("ClonePackageUseCase", () => {
 
     const repository: PackageRepository = {
       create: vi.fn(),
+      updateMetadata: vi.fn(),
       clone: vi.fn().mockResolvedValue(ok(clonedDto)),
     };
     const useCase = new ClonePackageUseCase(repository);
@@ -86,6 +89,7 @@ describe("ClonePackageUseCase", () => {
   it("propaga el error si el repositorio falla", async () => {
     const repository: PackageRepository = {
       create: vi.fn(),
+      updateMetadata: vi.fn(),
       clone: vi.fn().mockResolvedValue(err(new DomainError("package.not_found", "Paquete no encontrado"))),
     };
     const useCase = new ClonePackageUseCase(repository);

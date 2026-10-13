@@ -12,8 +12,13 @@ import type { TipoEspacio } from "../../modules/packages/domain/space-type";
 
 interface PackageRow {
   id: string;
-  space_type: TipoEspacio;
-  capacity_m2: number | string;
+  name: string | null;
+  space_type: TipoEspacio | null;
+  capacity_m2: number | string | null;
+  client_name: string | null;
+  event_date: string | null;
+  venue: string | null;
+  event_type: string | null;
   version: number;
 }
 
@@ -58,7 +63,9 @@ export class SupabasePackageDetailReader implements PackageDetailReader {
     try {
       const { data: pkgData, error: pkgError } = await this.client
         .from("packages")
-        .select("id, space_type, capacity_m2, version")
+        .select(
+          "id, name, space_type, capacity_m2, client_name, event_date, venue, event_type, version",
+        )
         .eq("id", packageId)
         .eq("user_id", userId)
         .maybeSingle();
@@ -109,7 +116,10 @@ export class SupabasePackageDetailReader implements PackageDetailReader {
       });
 
       return ok({
-        capacityM2: Number(pkg.capacity_m2),
+        capacityM2: pkg.capacity_m2 === null ? null : Number(pkg.capacity_m2),
+        clientName: pkg.client_name ?? null,
+        eventDate: pkg.event_date ?? null,
+        eventType: pkg.event_type ?? null,
         groups: ((groupsData as GroupRow[]) ?? []).map((row) => ({
           groupId: row.id,
           name: row.name,
@@ -117,7 +127,9 @@ export class SupabasePackageDetailReader implements PackageDetailReader {
         })),
         id: pkg.id,
         items,
-        spaceType: pkg.space_type,
+        name: pkg.name ?? "",
+        spaceType: pkg.space_type ?? null,
+        venue: pkg.venue ?? null,
         version: pkg.version,
       });
     } catch (cause) {

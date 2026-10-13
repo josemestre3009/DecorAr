@@ -1,4 +1,9 @@
 import { err, ok, type Result } from "@/shared/domain/result";
+import type {
+  EventMetadataDto,
+  PackageMetadataPatch,
+  SpatialDiagnosticDto,
+} from "@/modules/packages/application/dtos/package.dto";
 import { MAX_BATCH_QUANTITY } from "@/modules/packages/application/dtos/package.dto";
 
 import {
@@ -10,26 +15,37 @@ import {
 import {
   isSpaceType,
   isValidCapacity,
-  type SpaceDefinition,
+  validateEventName,
   type SpaceType,
 } from "./space-definition";
 
 /**
- * Puerto de la interfaz hacia la API de paquetes. El contrato pertenece a
- * DECOR-27; DECOR-20 solo lo consume:
+ * Puerto de la interfaz hacia la API de eventos (persistidos como `package`,
+ * nombre técnico interno). Contrato DECOR-44:
  *
- * - `POST /api/packages {spaceType, capacityM2}` → 201 `{id, spaceType, capacityM2}`
+ * - `POST /api/packages {name, ...metadata?}` → 201 `CreatedPackage`
+ * - `PATCH /api/packages/{id} {name?, clientName?, ...}` → 200 `CreatedPackage`
  * - `POST /api/packages/{id}/items {moduleId}` → 201 `{itemId, packageVersion}`
- * - errores `{error:{code,message}}` con 400/404/422
+ * - errores `{error:{code,message}}` con 400/401/404/409/422
  *
- * Mientras DECOR-27 no exista se usa la implementación simulada. Cuando exista,
- * basta con `NEXT_PUBLIC_DECOR_PACKAGES_API=live`.
+ * Mientras la API no esté activa se usa la implementación simulada; cuando
+ * exista, basta con `NEXT_PUBLIC_DECOR_PACKAGES_API=live`.
  */
 
-export type CreatedPackage = {
+/** Metadatos editables de un evento; solo `name` es obligatorio. */
+export type CreatePackageInput = {
+  readonly name: string;
+  readonly clientName?: string | null;
+  readonly eventDate?: string | null;
+  readonly venue?: string | null;
+  readonly eventType?: string | null;
+  readonly spaceType?: SpaceType | null;
+  readonly capacityM2?: number | null;
+};
+
+export type CreatedPackage = EventMetadataDto & {
   readonly id: string;
-  readonly spaceType: SpaceType;
-  readonly capacityM2: number;
+  readonly spatial: SpatialDiagnosticDto;
 };
 
 export type AddedItem = {
@@ -38,10 +54,21 @@ export type AddedItem = {
   readonly packageVersion: number;
 };
 
+export type MoveItemRequest = {
+  /** `null` mueve el módulo a la raíz. */
+  readonly groupId: string | null;
+  readonly expectedVersion?: number;
+};
+
+export type MovedItem = {
+  readonly itemId: string;
+  readonly packageVersion: number;
+};
+
 export type ClonedPackage = {
   readonly id: string;
-  readonly spaceType: SpaceType;
-  readonly capacityM2: number;
+  readonly spaceType: SpaceType | null;
+  readonly capacityM2: number | null;
   readonly style?: string | null;
   readonly colors?: readonly string[];
   readonly notes?: string;
@@ -53,21 +80,56 @@ export type PackagesClientMode = "live" | "simulated";
 
 export interface PackagesClient {
   readonly mode: PackagesClientMode;
-  createPackage(definition: SpaceDefinition): Promise<Result<CreatedPackage, ApiFailure>>;
-  addItem(packageId: string, moduleId: string, quantity?: number): Promise<Result<AddedItem, ApiFailure>>;
+  createPackage(input: CreatePackageInput): Promise<Result<CreatedPackage, ApiFailure>>;
+  /** `PATCH /api/packages/{id}`: solo los campos presentes del parche cambian. */
+  updateMetadata(packageId: string, patch: PackageMetadataPatch): Promise<Result<CreatedPackage, ApiFailure>>;
+  addItem(
+    packageId: string,
+    moduleId: string,
+    quantity?: number,
+    groupId?: string | null,
+  ): Promise<Result<AddedItem, ApiFailure>>;
   clonePackage(packageId: string): Promise<Result<ClonedPackage, ApiFailure>>;
-  /** `DELETE /api/packages/{id}/items/{itemId}` → 204 sin cuerpo (DECOR-27). */
+  /** `DELETE /api/packages/{id}/items/{itemId}` → 204 sin cuerpo. */
   removeItem(packageId: string, itemId: string): Promise<Result<void, ApiFailure>>;
+  /** `PATCH /api/packages/{id}/items/{itemId}`: mueve la instancia sin recrearla. */
+  moveItem(packageId: string, itemId: string, request: MoveItemRequest): Promise<Result<MovedItem, ApiFailure>>;
 }
 
 export const PACKAGES_ENDPOINT = "/api/packages";
 
-function isCreatedPackage(value: unknown): value is CreatedPackage {
+function isNullableText(value: unknown): value is string | null {
+  return value === null || typeof value === "string";
+}
+
+function isSpatialDiagnostic(value: unknown): value is SpatialDiagnosticDto {
   if (typeof value !== "object" || value === null) return false;
 
   const body = value as Record<string, unknown>;
 
-  return typeof body.id === "string" && isSpaceType(body.spaceType) && isValidCapacity(body.capacityM2);
+  return (
+    (body.status === "pending" || body.status === "compatible" || body.status === "exceeded") &&
+    (body.availableM2 === null || typeof body.availableM2 === "number") &&
+    typeof body.requiredM2 === "number"
+  );
+}
+
+export function isCreatedPackage(value: unknown): value is CreatedPackage {
+  if (typeof value !== "object" || value === null) return false;
+
+  const body = value as Record<string, unknown>;
+
+  return (
+    typeof body.id === "string" &&
+    typeof body.name === "string" &&
+    isNullableText(body.clientName) &&
+    isNullableText(body.eventDate) &&
+    isNullableText(body.venue) &&
+    isNullableText(body.eventType) &&
+    (body.spaceType === null || isSpaceType(body.spaceType)) &&
+    (body.capacityM2 === null || isValidCapacity(body.capacityM2)) &&
+    isSpatialDiagnostic(body.spatial)
+  );
 }
 
 function isAddedItem(value: unknown): value is AddedItem {
@@ -80,12 +142,24 @@ function isAddedItem(value: unknown): value is AddedItem {
     typeof body.packageVersion === "number";
 }
 
+function isMovedItem(value: unknown): value is MovedItem {
+  if (typeof value !== "object" || value === null) return false;
+
+  const body = value as Record<string, unknown>;
+
+  return typeof body.itemId === "string" && typeof body.packageVersion === "number";
+}
+
 function isClonedPackage(value: unknown): value is ClonedPackage {
   if (typeof value !== "object" || value === null) return false;
 
   const body = value as Record<string, unknown>;
 
-  return typeof body.id === "string" && isSpaceType(body.spaceType) && isValidCapacity(body.capacityM2);
+  return (
+    typeof body.id === "string" &&
+    (body.spaceType === null || isSpaceType(body.spaceType)) &&
+    (body.capacityM2 === null || isValidCapacity(body.capacityM2))
+  );
 }
 
 async function postJson<T>(
@@ -93,6 +167,7 @@ async function postJson<T>(
   url: string,
   payload: unknown,
   isExpected: (value: unknown) => value is T,
+  method: "POST" | "PATCH" = "POST",
 ): Promise<Result<T, ApiFailure>> {
   let response: Response;
 
@@ -100,13 +175,13 @@ async function postJson<T>(
     response = await fetcher(url, {
       body: JSON.stringify(payload),
       headers: { Accept: "application/json", "Content-Type": "application/json" },
-      method: "POST",
+      method,
     });
   } catch {
     return err(networkFailure());
   }
 
-  if (response.status !== 201) {
+  if (response.status !== 200 && response.status !== 201) {
     return err(
       response.ok ? unexpectedResponseFailure(response.status) : await readApiError(response),
     );
@@ -139,21 +214,41 @@ async function deleteNoContent(fetcher: typeof fetch, url: string): Promise<Resu
   return err(response.ok ? unexpectedResponseFailure(response.status) : await readApiError(response));
 }
 
+function metadataPayload(input: CreatePackageInput | PackageMetadataPatch): Record<string, unknown> {
+  const body: Record<string, unknown> = {};
+
+  for (const key of ["name", "clientName", "eventDate", "venue", "eventType", "spaceType", "capacityM2"] as const) {
+    const value = (input as Record<string, unknown>)[key];
+    if (value !== undefined) {
+      body[key] = value;
+    }
+  }
+
+  return body;
+}
+
 export function createHttpPackagesClient(fetcher: typeof fetch = fetch): PackagesClient {
   return {
     mode: "live",
-    createPackage: (definition) =>
+    createPackage: (input) =>
+      postJson(fetcher, PACKAGES_ENDPOINT, metadataPayload(input), isCreatedPackage),
+    updateMetadata: (packageId, patch) =>
       postJson(
         fetcher,
-        PACKAGES_ENDPOINT,
-        { capacityM2: definition.capacityM2, spaceType: definition.spaceType },
+        `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}`,
+        metadataPayload(patch),
         isCreatedPackage,
+        "PATCH",
       ),
-    addItem: (packageId, moduleId, quantity = 1) =>
+    addItem: (packageId, moduleId, quantity = 1, groupId = null) =>
       postJson(
         fetcher,
         `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items`,
-        quantity === 1 ? { moduleId } : { moduleId, quantity },
+        groupId !== null
+          ? { moduleId, parentGroupId: groupId }
+          : quantity === 1
+            ? { moduleId }
+            : { moduleId, quantity },
         isAddedItem,
       ),
     clonePackage: (packageId) =>
@@ -168,16 +263,26 @@ export function createHttpPackagesClient(fetcher: typeof fetch = fetch): Package
         fetcher,
         `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items/${encodeURIComponent(itemId)}`,
       ),
+    moveItem: (packageId, itemId, request) =>
+      postJson(
+        fetcher,
+        `${PACKAGES_ENDPOINT}/${encodeURIComponent(packageId)}/items/${encodeURIComponent(itemId)}`,
+        request.expectedVersion === undefined
+          ? { groupId: request.groupId }
+          : { expectedVersion: request.expectedVersion, groupId: request.groupId },
+        isMovedItem,
+        "PATCH",
+      ),
   };
 }
 
-// --- Simulación temporal (hasta DECOR-27) ---------------------------------
+// --- Simulación temporal (hasta que la API esté activa) -------------------
 
 export const SIMULATED_STORAGE_KEY = "decorar.simulated-packages";
 
 type SimulatedPackage = CreatedPackage & {
   version: number;
-  items: { itemId: string; moduleId: string }[];
+  items: { itemId: string; moduleId: string; groupId: string | null }[];
 };
 
 type KeyValueStorage = Pick<Storage, "getItem" | "setItem">;
@@ -196,10 +301,21 @@ function failure(kind: ApiFailure["kind"], status: number, code: string, message
   return err<ApiFailure>({ code, kind, message, status });
 }
 
+function simulatedSpatial(capacityM2: number | null, requiredM2 = 0): SpatialDiagnosticDto {
+  if (capacityM2 === null) {
+    return { availableM2: null, requiredM2, status: "pending" };
+  }
+
+  return {
+    availableM2: capacityM2,
+    requiredM2,
+    status: requiredM2 > capacityM2 ? "exceeded" : "compatible",
+  };
+}
+
 /**
- * Responde como lo hará DECOR-27, sin red ni servidor. Los paquetes viven en
- * `sessionStorage`: sobreviven a una recarga, pero no a cerrar la pestaña, y no
- * se comparan con el área de los módulos (eso es del Builder de DECOR-27).
+ * Responde como lo hará la API real, sin red ni servidor. Los eventos viven en
+ * `sessionStorage`: sobreviven a una recarga, pero no a cerrar la pestaña.
  */
 export function createSimulatedPackagesClient(
   storage?: KeyValueStorage | null,
@@ -237,42 +353,100 @@ export function createSimulatedPackagesClient(
 
   const wait = () => new Promise((resolve) => setTimeout(resolve, delayMs));
 
+  const validate = (input: CreatePackageInput): ApiFailure | null => {
+    const name = validateEventName(input.name);
+    if (!name.ok) {
+      return { code: "package.invalid_name", kind: "invalid", message: name.error, status: 422 };
+    }
+
+    if (input.spaceType !== undefined && input.spaceType !== null && !isSpaceType(input.spaceType)) {
+      return { code: "package.invalid_space_type", kind: "invalid", message: "Elige el tipo de espacio.", status: 422 };
+    }
+
+    if (input.capacityM2 !== undefined && input.capacityM2 !== null && !isValidCapacity(input.capacityM2)) {
+      return {
+        code: "package.invalid_capacity",
+        kind: "invalid",
+        message: "La capacidad debe ser un número mayor que 0.",
+        status: 422,
+      };
+    }
+
+    return null;
+  };
+
   return {
     mode: "simulated",
-    async createPackage(definition) {
+    async createPackage(input) {
       await wait();
 
-      if (!isSpaceType(definition.spaceType)) {
-        return failure("invalid", 422, "package.invalid_space_type", "Elige el tipo de espacio.");
+      const invalid = validate(input);
+      if (invalid) {
+        return err(invalid);
       }
 
-      if (!isValidCapacity(definition.capacityM2)) {
-        return failure(
-          "invalid",
-          422,
-          "package.invalid_capacity",
-          "La capacidad debe ser un número mayor que 0.",
-        );
-      }
-
-      const created: CreatedPackage = {
-        capacityM2: definition.capacityM2,
+      const created: SimulatedPackage = {
+        capacityM2: input.capacityM2 ?? null,
+        clientName: input.clientName ?? null,
+        eventDate: input.eventDate ?? null,
+        eventType: input.eventType ?? null,
         id: newId(),
-        spaceType: definition.spaceType,
+        items: [],
+        name: input.name.trim(),
+        spaceType: input.spaceType ?? null,
+        spatial: simulatedSpatial(input.capacityM2 ?? null),
+        venue: input.venue ?? null,
+        version: 1,
       };
 
-      save({ ...load(), [created.id]: { ...created, items: [], version: 1 } });
+      save({ ...load(), [created.id]: created });
 
-      return ok(created);
+      return ok(toCreatedPackage(created));
     },
-    async addItem(packageId, moduleId, quantity = 1) {
+    async updateMetadata(packageId, patch) {
       await wait();
 
       const packages = load();
       const current = packages[packageId];
 
       if (!current) {
-        return failure("not_found", 404, "package.not_found", "No encontramos este paquete.");
+        return failure("not_found", 404, "package.not_found", "No encontramos este evento.");
+      }
+
+      let name = current.name;
+      if (patch.name !== undefined) {
+        const valid = validateEventName(patch.name);
+        if (!valid.ok) {
+          return failure("invalid", 422, "package.invalid_name", valid.error);
+        }
+        name = valid.value;
+      }
+
+      const capacityM2 = patch.capacityM2 !== undefined ? patch.capacityM2 : current.capacityM2;
+      const updated: SimulatedPackage = {
+        ...current,
+        capacityM2: capacityM2 ?? null,
+        clientName: patch.clientName !== undefined ? patch.clientName : current.clientName,
+        eventDate: patch.eventDate !== undefined ? patch.eventDate : current.eventDate,
+        eventType: patch.eventType !== undefined ? patch.eventType : current.eventType,
+        name,
+        spaceType: patch.spaceType !== undefined ? patch.spaceType : current.spaceType,
+        spatial: simulatedSpatial(capacityM2 ?? null, current.spatial.requiredM2),
+        venue: patch.venue !== undefined ? patch.venue : current.venue,
+      };
+
+      save({ ...packages, [packageId]: updated });
+
+      return ok(toCreatedPackage(updated));
+    },
+    async addItem(packageId, moduleId, quantity = 1, groupId = null) {
+      await wait();
+
+      const packages = load();
+      const current = packages[packageId];
+
+      if (!current) {
+        return failure("not_found", 404, "package.not_found", "No encontramos este evento.");
       }
 
       if (moduleId.trim() === "") {
@@ -291,7 +465,7 @@ export function createSimulatedPackagesClient(
       const itemIds = Array.from({ length: quantity }, () => newId());
       const updated: SimulatedPackage = {
         ...current,
-        items: [...current.items, ...itemIds.map((itemId) => ({ itemId, moduleId }))],
+        items: [...current.items, ...itemIds.map((itemId) => ({ groupId, itemId, moduleId }))],
         version: current.version + quantity,
       };
 
@@ -306,15 +480,14 @@ export function createSimulatedPackagesClient(
       const current = packages[packageId];
 
       if (!current) {
-        return failure("not_found", 404, "package.not_found", "No encontramos este paquete.");
+        return failure("not_found", 404, "package.not_found", "No encontramos este evento.");
       }
 
       const clonedId = newId();
       const cloned: SimulatedPackage = {
-        capacityM2: current.capacityM2,
+        ...current,
         id: clonedId,
-        items: current.items.map((item) => ({ itemId: newId(), moduleId: item.moduleId })),
-        spaceType: current.spaceType,
+        items: current.items.map((item) => ({ groupId: item.groupId, itemId: newId(), moduleId: item.moduleId })),
         version: 1,
       };
 
@@ -335,11 +508,11 @@ export function createSimulatedPackagesClient(
       const current = packages[packageId];
 
       if (!current) {
-        return failure("not_found", 404, "package.not_found", "No encontramos este paquete.");
+        return failure("not_found", 404, "package.not_found", "No encontramos este evento.");
       }
 
       if (!current.items.some((item) => item.itemId === itemId)) {
-        return failure("not_found", 404, "package.item_not_found", "No encontramos este elemento en el paquete.");
+        return failure("not_found", 404, "package.item_not_found", "No encontramos este elemento en el evento.");
       }
 
       save({
@@ -353,6 +526,49 @@ export function createSimulatedPackagesClient(
 
       return ok(undefined);
     },
+    async moveItem(packageId, itemId, request) {
+      await wait();
+
+      const packages = load();
+      const current = packages[packageId];
+
+      if (!current) {
+        return failure("not_found", 404, "package.not_found", "No encontramos este evento.");
+      }
+
+      if (!current.items.some((item) => item.itemId === itemId)) {
+        return failure("not_found", 404, "package.item_not_found", "No encontramos este elemento en el evento.");
+      }
+
+      if (request.expectedVersion !== undefined && request.expectedVersion !== current.version) {
+        return failure("invalid", 409, "package.version_conflict", "El evento cambió. Vuelve a intentarlo.");
+      }
+
+      save({
+        ...packages,
+        [packageId]: {
+          ...current,
+          items: current.items.map((item) => (item.itemId === itemId ? { ...item, groupId: request.groupId } : item)),
+          version: current.version + 1,
+        },
+      });
+
+      return ok({ itemId, packageVersion: current.version + 1 });
+    },
+  };
+}
+
+function toCreatedPackage(pkg: SimulatedPackage): CreatedPackage {
+  return {
+    capacityM2: pkg.capacityM2,
+    clientName: pkg.clientName,
+    eventDate: pkg.eventDate,
+    eventType: pkg.eventType,
+    id: pkg.id,
+    name: pkg.name,
+    spaceType: pkg.spaceType,
+    spatial: pkg.spatial,
+    venue: pkg.venue,
   };
 }
 

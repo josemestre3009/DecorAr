@@ -6,9 +6,13 @@ import { err, ok, type Result } from "../../shared/domain/result";
 import type {
   CreatedGroupRecord,
   CreatePackageGroupCommand,
+  DeletePackageGroupCommand,
+  MovePackageItemCommand,
   PackageGroupReader,
   PackageGroupRepository,
   PackageStructure,
+  PackageStructureEditorRepository,
+  UpdatePackageGroupCommand,
 } from "../../modules/packages/application/ports/package-group-repository.port";
 import type { PackageModuleAddedEvent } from "../../modules/events/domain/event-contracts";
 
@@ -21,8 +25,11 @@ const KNOWN_CODES: ReadonlyMap<string, string> = new Map([
   ["package.not_found", "No encontramos este paquete."],
   ["package.invalid_group", "El grupo no es válido."],
   ["package.invalid_group_name", "El nombre del grupo debe tener entre 1 y 80 caracteres."],
+  ["package.invalid_update", "Indica un nombre nuevo o un cambio de zona."],
+  ["package.invalid_strategy", "Elige cómo eliminar la zona."],
   ["package.group_not_found", "No encontramos ese grupo en el paquete."],
   ["package.group_depth_exceeded", "Los grupos admiten como máximo 3 niveles."],
+  ["package.group_cycle", "No puedes mover una zona dentro de sí misma."],
   ["package.group_immutable", "No se puede mover un grupo a otra posición."],
   ["package.version_conflict", "El paquete cambió mientras guardabas. Vuelve a intentarlo."],
   ["package.item_not_found", "No encontramos este elemento en el paquete."],
@@ -77,7 +84,9 @@ const toDomainError = (error: RpcError): DomainError => {
  * the service-role client: the RPCs deny anon/authenticated, and the Route
  * Handler already checked the session and package ownership.
  */
-export class SupabasePackageGroupRepository implements PackageGroupReader, PackageGroupRepository {
+export class SupabasePackageGroupRepository
+  implements PackageGroupReader, PackageGroupRepository, PackageStructureEditorRepository
+{
   constructor(private readonly client: SupabaseClient) {}
 
   async getStructure(packageId: string): Promise<Result<PackageStructure, DomainError>> {
@@ -174,6 +183,99 @@ export class SupabasePackageGroupRepository implements PackageGroupReader, Packa
       return ok(data);
     } catch (cause) {
       return err(persistenceError(cause, "Error inesperado al agregar el elemento al grupo"));
+    }
+  }
+
+  async updateGroup(command: UpdatePackageGroupCommand): Promise<Result<number, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("update_package_group", {
+        p_correlation_id: command.correlationId ?? null,
+        p_expected_version: command.expectedVersion,
+        p_group_id: command.groupId,
+        p_name: command.name ?? null,
+        p_package_id: command.packageId,
+        p_parent_group_id: command.parentGroupId ?? null,
+        p_reparent: command.parentGroupId !== undefined,
+        p_user_id: command.userId,
+      });
+
+      if (error) {
+        return err(toDomainError(error));
+      }
+
+      if (!data) {
+        return err(persistenceError(null, "RPC update_package_group returned no data"));
+      }
+
+      const row = data as {
+        groupId: string;
+        name: string;
+        parentGroupId: string | null;
+        depth: number;
+        packageVersion: number;
+      };
+
+      return ok(Number(row.packageVersion));
+    } catch (cause) {
+      return err(persistenceError(cause, "Error inesperado al actualizar el grupo"));
+    }
+  }
+
+  async deleteGroup(command: DeletePackageGroupCommand): Promise<Result<number, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("delete_package_group", {
+        p_correlation_id: command.correlationId ?? null,
+        p_events: command.events,
+        p_expected_version: command.expectedVersion,
+        p_group_id: command.groupId,
+        p_package_id: command.packageId,
+        p_strategy: command.strategy,
+        p_user_id: command.userId,
+      });
+
+      if (error) {
+        return err(toDomainError(error));
+      }
+
+      if (!data) {
+        return err(persistenceError(null, "RPC delete_package_group returned no data"));
+      }
+
+      const row = data as {
+        groupId: string;
+        strategy: "move_to_root" | "delete_contents";
+        movedItemIds: string[];
+        removedItemIds: string[];
+        eventCount: number;
+        packageVersion: number;
+      };
+
+      return ok(Number(row.packageVersion));
+    } catch (cause) {
+      return err(persistenceError(cause, "Error inesperado al eliminar el grupo"));
+    }
+  }
+
+  async moveItem(command: MovePackageItemCommand): Promise<Result<number, DomainError>> {
+    try {
+      const { data, error } = await this.client.rpc("move_package_item", {
+        p_correlation_id: command.correlationId ?? null,
+        p_event: command.event,
+        p_expected_version: command.expectedVersion,
+        p_group_id: command.groupId,
+      });
+
+      if (error) {
+        return err(toDomainError(error));
+      }
+
+      if (typeof data !== "number") {
+        return err(persistenceError(null, "RPC move_package_item returned no version"));
+      }
+
+      return ok(data);
+    } catch (cause) {
+      return err(persistenceError(cause, "Error inesperado al mover el elemento"));
     }
   }
 }

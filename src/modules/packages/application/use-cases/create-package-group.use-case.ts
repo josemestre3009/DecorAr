@@ -70,6 +70,9 @@ export class CreatePackageGroupUseCase {
     if (!tree.ok) {
       return err(tree.error);
     }
+    if (dto.expectedVersion !== undefined && dto.expectedVersion !== tree.value.detail.version) {
+      return err(new DomainError("package.version_conflict", "El evento cambió mientras guardabas. Vuelve a intentarlo."));
+    }
 
     const leaves: { itemId: string; moduleId: string }[] = [];
     for (const rawModuleId of moduleIds) {

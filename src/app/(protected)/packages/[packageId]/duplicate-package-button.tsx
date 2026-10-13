@@ -46,7 +46,7 @@ export function DuplicatePackageButton({ packageId, client }: DuplicatePackageBu
         onClick={handleDuplicate}
         type="button"
       >
-        {isPending ? "Duplicando paquete…" : "Duplicar paquete"}
+        {isPending ? "Duplicando evento…" : "Duplicar evento"}
       </button>
       {errorMessage ? (
         <p className="auth-error" role="alert">

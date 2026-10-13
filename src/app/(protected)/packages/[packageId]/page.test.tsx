@@ -30,11 +30,17 @@ const { loadConfigurator } = await import("./page");
 
 const DETAIL: PackageDetailView = {
   capacityM2: 30,
+  clientName: null,
+  eventDate: null,
+  eventType: null,
   id: "pkg-1",
+  name: "Boda de Ana",
   nodes: [],
   remainingM2: 30,
   spaceType: "casa",
+  spatial: { availableM2: 30, requiredM2: 0, status: "compatible" },
   usedM2: 0,
+  venue: null,
   version: 3,
 };
 
