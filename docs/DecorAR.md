@@ -192,26 +192,11 @@ DECOR-31 cierra lo que DECOR-32 dejó pendiente a propósito: un evento cuyo int
 
 **Reconciliación.** `ReconcileBudgetUseCase` relee el paquete persistido, recalcula con el mismo `calculateBudget` de DECOR-33 y corrige `public.budgets` mediante `reconcile_budget` cuando el total almacenado difiere del recalculado, incluso para la misma `packageVersion` (a diferencia de `process_budget_event`, que sólo avanza con una versión estrictamente mayor). Una segunda reconciliación con el mismo resultado reporta `corrected: false` y no vuelve a escribir.
 
-**Endpoint protegido.** No existe un rol admin en la aplicación, así que `GET/POST /api/internal/recovery` (`src/interfaces/recovery`) se protege con un secreto Bearer (`DECOR_RECOVERY_SECRET`) comparado con `crypto.timingSafeEqual`, pensado para un operador o un cron externo:
-
-```bash
-# Lista eventos pendientes y fallidos
-curl -H "Authorization: Bearer $DECOR_RECOVERY_SECRET" https://.../api/internal/recovery
-
-# Ejecuta una ronda de reintentos
-curl -X POST -H "Authorization: Bearer $DECOR_RECOVERY_SECRET" \
-  "https://.../api/internal/recovery?action=retry"
-
-# Reconcilia los paquetes con un evento failed (o uno explícito con {"packageId": "..."})
-curl -X POST -H "Authorization: Bearer $DECOR_RECOVERY_SECRET" \
-  "https://.../api/internal/recovery?action=reconcile"
-```
-
-Sin `DECOR_RECOVERY_SECRET` configurado, el endpoint responde `503` para cualquier petición en vez de aceptar cualquier secreto o quedar abierto; con un secreto incorrecto o ausente responde `401`.
+**Sin endpoint operativo.** El MVP no expone reintentos ni reconciliación mediante HTTP y no requiere una credencial de recuperación. Los casos de uso y las funciones SQL permanecen como mecanismos internos disponibles para una integración futura.
 
 **correlationId.** `PackageController` lee `x-correlation-id` del request o genera uno con `IdGenerator`, lo pasa a `AddModuleToPackageUseCase`/`RemoveModuleFromPackageUseCase` y de ahí a `outbox.commit`, que lo guarda en la columna nueva. El contrato de evento de DECOR-29 (`schemaVersion: 1`) no cambia: `correlationId` es metadato de la fila de la outbox, no un campo del evento. La respuesta HTTP devuelve el mismo valor en el header `x-correlation-id`, para correlacionar la petición con los logs de sus reintentos.
 
-Guía determinista de fallo y recuperación: (1) la publicación inicial falla → el evento queda `pending`, `attempts = 1`, con su `last_error`; (2) la siguiente ronda de reintentos espera 1s, reclama y publica: si tiene éxito, `published`; si falla, `pending` con `attempts = 2`; (3) se repite con 2s y 4s de espera; (4) si el tercer reintento también falla, el evento pasa a `failed` y se detiene para siempre, sin bucle; (5) un operador reconcilia el `packageId` del evento `failed` vía el endpoint, que relee el paquete y corrige el presupuesto si quedó desalineado.
+Flujo interno de recuperación disponible: (1) la publicación inicial falla → el evento queda `pending`, `attempts = 1`, con su `last_error`; (2) una integración futura podría ejecutar reintentos con esperas de 1s, 2s y 4s; (3) tras el tercer reintento fallido, el evento pasa a `failed`; (4) la reconciliación interna puede releer el paquete y corregir el presupuesto. Ninguno de estos mecanismos tiene disparador HTTP en el MVP.
 
 ### 2.2.7 Vista 3D y realidad aumentada: Bridge y Flyweight
 

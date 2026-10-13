@@ -3,8 +3,6 @@
 ```mermaid
 flowchart LR
     user["Persona usuaria"]
-    operator["Operador o cron"]
-
     subgraph device["Dispositivo movil"]
         browser["Navegador web<br/>React, model-viewer"]
         viewer["Visor AR nativo<br/>Quick Look, Scene Viewer o WebXR"]
@@ -19,7 +17,6 @@ flowchart LR
 
     user --> browser
     browser -->|"HTTPS / HTML / JSON"| app
-    operator -->|"HTTPS con Bearer para recovery"| app
     browser -->|"Auth y Realtime privados"| supabase
     app -->|"PostgREST, RPC y Auth SSR"| supabase
     app -->|"Publicacion server-side"| cloudinary

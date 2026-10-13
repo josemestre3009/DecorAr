@@ -9,7 +9,7 @@ Requisitos: Docker con Compose y acceso a un proyecto Supabase alojado. No se ne
 1. Crear un proyecto en [Supabase](https://supabase.com/dashboard) y copiar URL, publishable key y service role key desde el Dashboard.
 2. Ejecutar en orden los archivos aprobados de `supabase/migrations` mediante el SQL Editor del Dashboard.
 3. Crear una cuenta de Cloudinary y obtener `CLOUDINARY_URL` desde su Dashboard.
-4. Copiar `.env.example` a `.env` y completar las variables. Mantener `SUPABASE_SERVICE_ROLE_KEY`, `CLOUDINARY_URL` y `DECOR_RECOVERY_SECRET` solo en servidor.
+4. Copiar `.env.example` a `.env` y completar las variables. Mantener `SUPABASE_SERVICE_ROLE_KEY` y `CLOUDINARY_URL` solo en servidor.
 5. Construir e iniciar la aplicacion:
 
 ```sh
@@ -67,7 +67,6 @@ npm start
 | `NEXT_PUBLIC_DECOR_PACKAGES_API` | `simulated` o `live` | Publica, build-time |
 | `SUPABASE_SERVICE_ROLE_KEY` | Operaciones administrativas | Secreto server-side |
 | `CLOUDINARY_URL` | Publicacion de GLB, USDZ y posters | Secreto server-side |
-| `DECOR_RECOVERY_SECRET` | Bearer de `/api/internal/recovery` | Secreto server-side |
 | `DECOR_E2E_*` | Pruebas E2E generales | Solo pruebas |
 | `DECOR_E2E_USER_A_*`, `DECOR_E2E_USER_B_*` | Flujo E2E movil multiusuario | Solo pruebas |
 
@@ -122,7 +121,6 @@ Los Route Handlers viven en `src/app/api`; los controladores en `src/interfaces`
 - `/api/modules`: catalogo activo.
 - `/api/packages`: crear y listar paquetes propios.
 - `/api/packages/{id}/items`, `/items/{itemId}`, `/groups`, `/clone`, `/budget`: configuracion, eliminacion, clonacion persistida y presupuesto.
-- `/api/internal/recovery`: consulta, reintento y reconciliacion protegidos por Bearer.
 
 Las respuestas fallidas usan codigos controlados como `auth.unauthenticated`, `package.not_found`, `package.version_conflict` e `internal_error`, mas `x-correlation-id`. `src/infrastructure/logging/json-logger.ts` genera logs JSON y `src/shared/application/sanitize-log-context.ts` censura secretos. La recuperacion usa outbox durable, reintentos e idempotencia; Realtime solo notifica y el cliente resincroniza desde PostgreSQL.
 
@@ -163,7 +161,6 @@ npm run test:e2e:mvp
 | Puerto 3000 ocupado | Definir `APP_PORT`, como documenta `docs/docker.md` |
 | Contenedor no saludable | Revisar `docker compose logs app` y `/api/health` |
 | Respuesta 401 | Verificar sesion y configuracion de Auth/RLS |
-| Recovery responde 503 | Configurar `DECOR_RECOVERY_SECRET` |
 | Datos simulados inesperados | Fijar `NEXT_PUBLIC_DECOR_PACKAGES_API=live` y reconstruir |
 | Activo AR ausente | Verificar URLs publicadas en catalogo y `CLOUDINARY_URL` para republicar |
 
