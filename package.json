@@ -14,6 +14,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:mvp": "playwright test -c playwright.mvp.config.ts",
+    "e2e:seed": "node --env-file-if-exists=.env --env-file-if-exists=.env.local --import tsx scripts/seed-e2e.ts",
     "catalog:scale-glb": "node scripts/reexport-scaled-glb.mjs",
     "catalog:generate-compact-assets": "node scripts/generate-compact-furniture-assets.mjs",
     "catalog:publish-assets": "tsx --env-file=.env --conditions=react-server scripts/publish-catalog-assets.ts"

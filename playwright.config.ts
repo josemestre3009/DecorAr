@@ -10,6 +10,9 @@ const testUrl = externalUrl ?? managedUrl;
 
 export default defineConfig({
   testDir: "./e2e",
+  // La E2E móvil del MVP (DECOR-39) corre contra Docker con su propia
+  // configuración: playwright.mvp.config.ts.
+  testIgnore: "**/mobile-mvp/**",
   // Los escenarios autenticados comparten una cuenta real contra Supabase. En
   // paralelo, varias validaciones de sesión simultáneas hacen que el proveedor
   // limite las peticiones y la comprobación de sesión se vuelva intermitente.
