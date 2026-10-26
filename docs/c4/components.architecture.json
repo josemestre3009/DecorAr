@@ -107,13 +107,13 @@
       ],
       "sources": [
         {
-          "label": "Entrada p?blica",
+          "label": "Entrada publica",
           "path": "src/app/page.tsx",
           "line": 84,
           "end_line": 95
         },
         {
-          "label": "Detecci?n del dispositivo",
+          "label": "Deteccion del dispositivo",
           "path": "src/app/(protected)/packages/_lib/ar-capabilities.ts",
           "line": 11,
           "end_line": 19
@@ -199,13 +199,13 @@
           "end_line": 245
         },
         {
-          "label": "Autorizaci?n",
+          "label": "Autorizacion",
           "path": "src/interfaces/packages/package-controller.ts",
           "line": 444,
           "end_line": 456
         },
         {
-          "label": "Validaci?n y delegaci?n",
+          "label": "Validacion y delegaci?n",
           "path": "src/interfaces/packages/package-controller.ts",
           "line": 475,
           "end_line": 532
@@ -234,7 +234,7 @@
           "end_line": 38
         },
         {
-          "label": "Implementaci?n getUser",
+          "label": "Implementacion getUser",
           "path": "src/infrastructure/supabase/session-gateway.ts",
           "line": 168,
           "end_line": 179
@@ -332,7 +332,7 @@
       ],
       "sources": [
         {
-          "label": "Cambio at?mico y evento",
+          "label": "Cambio atomico y evento",
           "path": "src/modules/packages/application/use-cases/add-module-to-package.use-case.ts",
           "line": 93,
           "end_line": 126
@@ -366,19 +366,19 @@
       ],
       "sources": [
         {
-          "label": "Validaci?n de publicaci?n",
+          "label": "Validacion de publicacion",
           "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
           "line": 95,
           "end_line": 141
         },
         {
-          "label": "Carga y activaci?n",
+          "label": "Carga y activacion",
           "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
           "line": 143,
           "end_line": 222
         },
         {
-          "label": "Lectura del cat?logo activo",
+          "label": "Lectura del catalogo activo",
           "path": "src/modules/catalog/infrastructure/supabase-catalog-repository.ts",
           "line": 29,
           "end_line": 37
@@ -401,7 +401,7 @@
       ],
       "sources": [
         {
-          "label": "Rec?lculo y publicaci?n",
+          "label": "Recalculo y publicacion",
           "path": "src/modules/budget/application/consume-package-changed-event.use-case.ts",
           "line": 64,
           "end_line": 112
@@ -413,7 +413,7 @@
           "end_line": 53
         },
         {
-          "label": "Idempotencia y versi?n",
+          "label": "Idempotencia y version",
           "path": "supabase/migrations/20261008010000_create_idempotent_budget_consumer.sql",
           "line": 68,
           "end_line": 138
@@ -448,7 +448,7 @@
           "end_line": 72
         },
         {
-          "label": "Reclamo at?mico",
+          "label": "Reclamo atomico",
           "path": "supabase/migrations/20261007000000_create_event_outbox.sql",
           "line": 178,
           "end_line": 203
@@ -505,13 +505,13 @@
       ],
       "sources": [
         {
-          "label": "Registro e inicio de sesi?n",
+          "label": "Registro e inicio de sesion",
           "path": "src/infrastructure/supabase/session-gateway.ts",
           "line": 116,
           "end_line": 156
         },
         {
-          "label": "Validaci?n de sesi?n",
+          "label": "Validacion de sesion",
           "path": "src/infrastructure/supabase/session-gateway.ts",
           "line": 168,
           "end_line": 179
@@ -552,7 +552,7 @@
           "end_line": 41
         },
         {
-          "label": "Commit at?mico",
+          "label": "Commit atomico",
           "path": "supabase/migrations/20261007000000_create_event_outbox.sql",
           "line": 77,
           "end_line": 173
@@ -581,13 +581,13 @@
           "end_line": 29
         },
         {
-          "label": "Pol?tica del canal privado",
+          "label": "Politica del canal privado",
           "path": "supabase/migrations/20261008000000_authorize_packages_and_private_channels.sql",
           "line": 43,
           "end_line": 59
         },
         {
-          "label": "Deduplicaci?n y resincronizaci?n",
+          "label": "Deduplicaci?n y resincronizacion",
           "path": "src/app/(protected)/packages/_lib/use-live-budget.ts",
           "line": 126,
           "end_line": 169
@@ -621,7 +621,7 @@
           "end_line": 71
         },
         {
-          "label": "Orquestaci?n de publicaci?n",
+          "label": "Orquestacion de publicacion",
           "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
           "line": 143,
           "end_line": 212
@@ -656,7 +656,7 @@
           "end_line": 157
         },
         {
-          "label": "Cableado en la p?gina",
+          "label": "Cableado en la pagina",
           "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
           "line": 137,
           "end_line": 161
@@ -758,14 +758,14 @@
       "id": "ui-ar",
       "from": "ui",
       "to": "ar",
-      "label": "DTO de cat?logo + capacidades",
+      "label": "DTO de catalogo + capacidades",
       "labelDy": 24
     },
     {
       "id": "ar-viewer",
       "from": "ar",
       "to": "viewer",
-      "label": "devuelve configuraci?n al UI",
+      "label": "devuelve configuracion al UI",
       "variant": "emphasis"
     },
     {
