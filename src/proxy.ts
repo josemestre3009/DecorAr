@@ -8,7 +8,7 @@ const LOGIN_PATH = "/login";
 // Se declara lo público, no lo protegido: una página nueva nace protegida y sólo
 // queda accesible sin sesión si alguien la añade aquí a propósito. La lista
 // complementaria, `/api`, se trata aparte porque no la redirige este archivo.
-const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"];
+const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup", "/docs/components.html"];
 
 // El healthcheck del contenedor (DECOR-37) no lleva sesión ni debe depender de
 // que Supabase esté configurado o responda: se atiende sin crear el cliente.
