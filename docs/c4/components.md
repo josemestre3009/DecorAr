@@ -69,12 +69,12 @@ flowchart TB
     controllers -->|"4. Autorizar recurso"| access
     session -->|"Usuario autenticado"| access
     access -->|"Consulta propietario"| dataGateway
-    access -->|"5. Acceso permitido"| composition
+    composition -->|"Inyecta autorización"| access
 
     composition -->|"Ejecuta caso de uso"| packages
     composition -->|"Lista módulos"| catalog
     composition -->|"Consulta total"| budget
-    composition -->|"Prepara experiencia"| ar
+    ui -->|"DTO de catálogo + capacidades"| ar
 
     packages -->|"Guarda por RPC"| dataGateway
     catalog -->|"Lee catálogo activo"| dataGateway
@@ -84,15 +84,14 @@ flowchart TB
     packages -->|"Cambio confirmado"| budget
     packages -->|"Evento de dominio"| events
     events -->|"Persiste/reclama outbox"| eventGateway
-    budget -->|"budget.recalculated"| eventGateway
     eventGateway -->|"RPC de outbox"| supabaseDb
     eventGateway -->|"Broadcast privado"| realtime
+    budget -->|"budget.recalculated directo"| realtime
     realtime -.->|"6. Notifica cambio"| ui
 
     catalog -->|"Publica activo"| assetGateway
     assetGateway -->|"Carga archivos"| cloudinary
-    catalog -->|"URLs del activo"| ar
-    ar -->|"7. Abre experiencia"| viewer
+    ar -->|"Devuelve configuración al UI"| viewer
 
     classDef person fill:#7c3aed,color:#ffffff,stroke:#5b21b6,stroke-width:2px;
     classDef presentationStyle fill:#dbeafe,color:#172554,stroke:#2563eb,stroke-width:2px;
@@ -125,7 +124,7 @@ flowchart TB
 4. El **Composition Root** proporciona el caso de uso y sus adaptadores.
 5. El módulo aplica sus reglas; el gateway correspondiente traduce la operación hacia Supabase o Cloudinary.
 6. Los cambios de Packages recalculan Budget y generan eventos durables.
-7. Realtime notifica a la interfaz; AR abre el visor compatible cuando la persona lo solicita.
+7. Realtime notifica a la interfaz; la UI entrega el DTO del catálogo y las capacidades a AR, que devuelve la configuración del visor compatible.
 
 Flujo resumido:
 
@@ -139,9 +138,10 @@ Usuario → Interfaz → Controlador → SessionGateway → Autorización
 ```text
 Packages → Budget: un cambio confirmado provoca el recálculo del total.
 Packages → Events: el cambio deja un evento durable en el outbox.
-Events → Realtime: el publicador envía el evento al canal privado del paquete.
+Events → Realtime: el publicador envía eventos de paquete al canal privado.
+Budget → Realtime: publica `budget.recalculated` directamente, fuera del outbox.
 Realtime → Interfaz: la pantalla recibe la notificación y actualiza el presupuesto.
-Catalog → AR: entrega las URLs y datos del activo que debe visualizarse.
+Interfaz → AR: entrega el DTO del catálogo y las capacidades detectadas.
 ```
 
 ## Responsabilidades
@@ -165,7 +165,8 @@ Catalog → AR: entrega las URLs y datos del activo que debe visualizarse.
 - `SessionGateway` autentica. El control de acceso autoriza cada recurso.
 - Los casos de uso dependen de gateways, no directamente de Supabase o Cloudinary.
 - Supabase RLS añade una segunda barrera de seguridad.
-- Los cambios de paquetes actualizan Presupuesto internamente; Realtime solo notifica a la interfaz.
+- Los cambios de paquetes actualizan Presupuesto internamente; `budget.recalculated` se publica directamente a Realtime y la interfaz resincroniza ante huecos de versión.
+- El visor usa `ar-scale="fixed"`; una escala física 1:1 correcta depende de las unidades y escala del activo publicado.
 - Los eventos reales son `package.module.added`, `package.module.removed`, `package.module.moved` y `budget.recalculated`.
 
 ## Ubicación en el código

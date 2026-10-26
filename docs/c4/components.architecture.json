@@ -10,7 +10,7 @@
       "url": "https://github.com/josemestre3009/DecorAr.git",
       "provider": "github",
       "link_mode": "web",
-      "revision": "2652cfe7f42262b4f028dfdb4560ed4573594e12"
+      "revision": "983acb0ba0383624fd8997485671d63102e30fa9"
     },
     "views": [
       {
@@ -107,9 +107,16 @@
       ],
       "sources": [
         {
-          "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
-          "line": 38,
-          "end_line": 53
+          "label": "Entrada p?blica",
+          "path": "src/app/page.tsx",
+          "line": 84,
+          "end_line": 95
+        },
+        {
+          "label": "Detecci?n del dispositivo",
+          "path": "src/app/(protected)/packages/_lib/ar-capabilities.ts",
+          "line": 11,
+          "end_line": 19
         }
       ]
     },
@@ -129,9 +136,22 @@
       ],
       "sources": [
         {
+          "label": "Server Component",
+          "path": "src/app/(protected)/packages/page.tsx",
+          "line": 39,
+          "end_line": 45
+        },
+        {
+          "label": "Client Component",
           "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
           "line": 38,
           "end_line": 87
+        },
+        {
+          "label": "Configurador servidor",
+          "path": "src/app/(protected)/packages/[packageId]/page.tsx",
+          "line": 42,
+          "end_line": 60
         }
       ]
     },
@@ -151,6 +171,7 @@
       ],
       "sources": [
         {
+          "label": "Entrada HTTP",
           "path": "src/app/api/packages/[packageId]/items/route.ts",
           "line": 9,
           "end_line": 25
@@ -172,9 +193,22 @@
       ],
       "sources": [
         {
+          "label": "Dependencias",
           "path": "src/interfaces/packages/package-controller.ts",
-          "line": 228,
-          "end_line": 266
+          "line": 240,
+          "end_line": 245
+        },
+        {
+          "label": "Autorizaci?n",
+          "path": "src/interfaces/packages/package-controller.ts",
+          "line": 444,
+          "end_line": 456
+        },
+        {
+          "label": "Validaci?n y delegaci?n",
+          "path": "src/interfaces/packages/package-controller.ts",
+          "line": 475,
+          "end_line": 532
         }
       ]
     },
@@ -194,9 +228,22 @@
       ],
       "sources": [
         {
+          "label": "Contrato",
+          "path": "src/shared/application/ports.ts",
+          "line": 33,
+          "end_line": 38
+        },
+        {
+          "label": "Implementaci?n getUser",
           "path": "src/infrastructure/supabase/session-gateway.ts",
-          "line": 114,
-          "end_line": 142
+          "line": 168,
+          "end_line": 179
+        },
+        {
+          "label": "Cableado",
+          "path": "src/composition/server.ts",
+          "line": 140,
+          "end_line": 157
         }
       ]
     },
@@ -216,9 +263,22 @@
       ],
       "sources": [
         {
+          "label": "Regla de propietario",
+          "path": "src/modules/packages/application/authorize-package-access.use-case.ts",
+          "line": 19,
+          "end_line": 43
+        },
+        {
+          "label": "Mapeo HTTP 401/404",
+          "path": "src/interfaces/packages/package-access.ts",
+          "line": 13,
+          "end_line": 37
+        },
+        {
+          "label": "Cableado",
           "path": "src/composition/server.ts",
-          "line": 75,
-          "end_line": 89
+          "line": 152,
+          "end_line": 157
         }
       ]
     },
@@ -237,9 +297,22 @@
       ],
       "sources": [
         {
+          "label": "Seguridad",
           "path": "src/composition/server.ts",
           "line": 140,
-          "end_line": 177
+          "end_line": 157
+        },
+        {
+          "label": "Casos de uso y controlador",
+          "path": "src/composition/server.ts",
+          "line": 178,
+          "end_line": 256
+        },
+        {
+          "label": "Consultas y presupuesto",
+          "path": "src/composition/server.ts",
+          "line": 337,
+          "end_line": 349
         }
       ]
     },
@@ -259,14 +332,22 @@
       ],
       "sources": [
         {
-          "path": "src/modules/packages/application/use-cases/add-module-to-package.use-case.ts",
-          "line": 12,
-          "end_line": 20
-        },
-        {
+          "label": "Cambio at?mico y evento",
           "path": "src/modules/packages/application/use-cases/add-module-to-package.use-case.ts",
           "line": 93,
           "end_line": 126
+        },
+        {
+          "label": "Composite de grupos",
+          "path": "src/modules/packages/application/use-cases/create-package-group.use-case.ts",
+          "line": 108,
+          "end_line": 139
+        },
+        {
+          "label": "Plantillas HTTP",
+          "path": "src/interfaces/templates/event-template-controller.ts",
+          "line": 120,
+          "end_line": 158
         }
       ]
     },
@@ -285,14 +366,22 @@
       ],
       "sources": [
         {
+          "label": "Validaci?n de publicaci?n",
           "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
-          "line": 37,
-          "end_line": 46
+          "line": 95,
+          "end_line": 141
         },
         {
+          "label": "Carga y activaci?n",
           "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
           "line": 143,
-          "end_line": 212
+          "end_line": 222
+        },
+        {
+          "label": "Lectura del cat?logo activo",
+          "path": "src/modules/catalog/infrastructure/supabase-catalog-repository.ts",
+          "line": 29,
+          "end_line": 37
         }
       ]
     },
@@ -312,14 +401,22 @@
       ],
       "sources": [
         {
-          "path": "src/modules/budget/application/consume-package-changed-event.use-case.ts",
-          "line": 24,
-          "end_line": 39
-        },
-        {
+          "label": "Rec?lculo y publicaci?n",
           "path": "src/modules/budget/application/consume-package-changed-event.use-case.ts",
           "line": 64,
           "end_line": 112
+        },
+        {
+          "label": "Persistencia RPC",
+          "path": "src/modules/budget/infrastructure/supabase-budget-consumer.ts",
+          "line": 37,
+          "end_line": 53
+        },
+        {
+          "label": "Idempotencia y versi?n",
+          "path": "supabase/migrations/20261008010000_create_idempotent_budget_consumer.sql",
+          "line": 68,
+          "end_line": 138
         }
       ]
     },
@@ -327,7 +424,7 @@
       "id": "outbox",
       "type": "messagebus",
       "label": "Outbox y publicación",
-      "sublabel": "Entrega durable y Broadcast privado",
+      "sublabel": "Entrega durable de eventos de paquete",
       "tag": "At-least-once",
       "pos": [
         810,
@@ -339,14 +436,22 @@
       ],
       "sources": [
         {
-          "path": "src/modules/events/application/drain-outbox.use-case.ts",
-          "line": 22,
-          "end_line": 33
-        },
-        {
+          "label": "Drenaje y reintento",
           "path": "src/modules/events/application/drain-outbox.use-case.ts",
           "line": 43,
           "end_line": 67
+        },
+        {
+          "label": "Persistencia durable",
+          "path": "supabase/migrations/20261007000000_create_event_outbox.sql",
+          "line": 43,
+          "end_line": 72
+        },
+        {
+          "label": "Reclamo at?mico",
+          "path": "supabase/migrations/20261007000000_create_event_outbox.sql",
+          "line": 178,
+          "end_line": 203
         }
       ]
     },
@@ -366,14 +471,22 @@
       ],
       "sources": [
         {
-          "path": "src/modules/ar/application/use-cases/preparar-vista-ar.use-case.ts",
-          "line": 28,
-          "end_line": 38
+          "label": "Bridge",
+          "path": "src/modules/ar/domain/elemento-ar.ts",
+          "line": 17,
+          "end_line": 49
         },
         {
-          "path": "src/modules/ar/application/use-cases/preparar-vista-ar.use-case.ts",
-          "line": 41,
-          "end_line": 67
+          "label": "Flyweight por assetId@version",
+          "path": "src/modules/ar/domain/fabrica-activos-3d.ts",
+          "line": 24,
+          "end_line": 51
+        },
+        {
+          "label": "Contrato y escala fija",
+          "path": "src/modules/ar/domain/renderizador-ar.ts",
+          "line": 44,
+          "end_line": 63
         }
       ]
     },
@@ -392,9 +505,22 @@
       ],
       "sources": [
         {
+          "label": "Registro e inicio de sesi?n",
           "path": "src/infrastructure/supabase/session-gateway.ts",
-          "line": 137,
-          "end_line": 155
+          "line": 116,
+          "end_line": 156
+        },
+        {
+          "label": "Validaci?n de sesi?n",
+          "path": "src/infrastructure/supabase/session-gateway.ts",
+          "line": 168,
+          "end_line": 179
+        },
+        {
+          "label": "Cliente SSR con cookies",
+          "path": "src/infrastructure/supabase/server.ts",
+          "line": 22,
+          "end_line": 47
         }
       ]
     },
@@ -414,14 +540,22 @@
       ],
       "sources": [
         {
+          "label": "RPC de presupuesto",
           "path": "src/modules/budget/infrastructure/supabase-budget-consumer.ts",
           "line": 37,
           "end_line": 53
         },
         {
-          "path": "src/composition/server.ts",
-          "line": 159,
-          "end_line": 168
+          "label": "RLS por propietario",
+          "path": "supabase/migrations/20261008000000_authorize_packages_and_private_channels.sql",
+          "line": 18,
+          "end_line": 41
+        },
+        {
+          "label": "Commit at?mico",
+          "path": "supabase/migrations/20261007000000_create_event_outbox.sql",
+          "line": 77,
+          "end_line": 173
         }
       ]
     },
@@ -441,9 +575,22 @@
       ],
       "sources": [
         {
+          "label": "Publicaci?n Broadcast privada",
           "path": "src/modules/events/infrastructure/supabase-broadcast-event-publisher.ts",
           "line": 8,
           "end_line": 29
+        },
+        {
+          "label": "Pol?tica del canal privado",
+          "path": "supabase/migrations/20261008000000_authorize_packages_and_private_channels.sql",
+          "line": 43,
+          "end_line": 59
+        },
+        {
+          "label": "Deduplicaci?n y resincronizaci?n",
+          "path": "src/app/(protected)/packages/_lib/use-live-budget.ts",
+          "line": 126,
+          "end_line": 169
         }
       ]
     },
@@ -462,9 +609,22 @@
       ],
       "sources": [
         {
+          "label": "Contrato de almacenamiento",
+          "path": "src/modules/catalog/application/ports/asset-storage.port.ts",
+          "line": 4,
+          "end_line": 24
+        },
+        {
+          "label": "Adaptador Cloudinary",
+          "path": "src/modules/catalog/infrastructure/cloudinary-asset-storage.ts",
+          "line": 32,
+          "end_line": 71
+        },
+        {
+          "label": "Orquestaci?n de publicaci?n",
           "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
           "line": 143,
-          "end_line": 190
+          "end_line": 212
         }
       ]
     },
@@ -473,7 +633,7 @@
       "type": "external",
       "label": "Visor AR",
       "sublabel": "Quick Look · Scene Viewer · WebXR",
-      "tag": "Escala real 1:1",
+      "tag": "Escala fija; 1:1 depende del activo",
       "pos": [
         10,
         750
@@ -484,6 +644,19 @@
       ],
       "sources": [
         {
+          "label": "Atributos model-viewer",
+          "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/model-viewer-client.tsx",
+          "line": 56,
+          "end_line": 69
+        },
+        {
+          "label": "Runtime y eventos",
+          "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/model-viewer-client.tsx",
+          "line": 103,
+          "end_line": 157
+        },
+        {
+          "label": "Cableado en la p?gina",
           "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
           "line": 137,
           "end_line": 161
@@ -585,20 +758,14 @@
       "id": "ui-ar",
       "from": "ui",
       "to": "ar",
-      "label": "capacidades + módulo",
+      "label": "DTO de cat?logo + capacidades",
       "labelDy": 24
-    },
-    {
-      "id": "catalog-ar",
-      "from": "catalog",
-      "to": "ar",
-      "label": "URLs y dimensiones"
     },
     {
       "id": "ar-viewer",
       "from": "ar",
       "to": "viewer",
-      "label": "configura visor",
+      "label": "devuelve configuraci?n al UI",
       "variant": "emphasis"
     },
     {
