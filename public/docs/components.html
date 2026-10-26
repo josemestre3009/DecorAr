@@ -15078,5 +15078,76 @@ OTHER DEALINGS IN THE FONT SOFTWARE.
       }
     });
   </script>
+  <style>
+    #source-hover-card {
+      position: fixed; z-index: 1000; width: min(430px, calc(100vw - 24px));
+      padding: 12px; border: 1px solid #cbd5e1; border-radius: 10px;
+      background: #fff; color: #0f172a; box-shadow: 0 16px 40px rgba(15, 23, 42, .24);
+      font: 12px/1.4 system-ui, sans-serif; pointer-events: auto;
+    }
+    #source-hover-card[hidden] { display: none; }
+    #source-hover-card strong { display: block; margin-bottom: 7px; font-size: 13px; }
+    #source-hover-card a { display: block; padding: 6px 0; color: #1d4ed8; text-decoration: none; overflow-wrap: anywhere; }
+    #source-hover-card a + a { border-top: 1px solid #e2e8f0; }
+    #source-hover-card a:hover, #source-hover-card a:focus-visible { text-decoration: underline; }
+    #source-hover-card span { display: block; color: #475569; }
+    @media (hover: none), (pointer: coarse) { #source-hover-card { display: none !important; } }
+  </style>
+  <div id="source-hover-card" hidden role="tooltip"></div>
+  <script>
+    (function () {
+      var card = document.getElementById('source-hover-card');
+      var svg = document.querySelector('.diagram-container > svg');
+      var hideTimer;
+      if (!card || !svg || !window.Archify || !Archify.sourceEvidence) return;
+
+      function hideSoon() {
+        clearTimeout(hideTimer);
+        hideTimer = setTimeout(function () { card.hidden = true; }, 140);
+      }
+      function place(event) {
+        var x = Math.min(event.clientX + 14, window.innerWidth - card.offsetWidth - 12);
+        var y = Math.min(event.clientY + 14, window.innerHeight - card.offsetHeight - 12);
+        card.style.left = Math.max(12, x) + 'px';
+        card.style.top = Math.max(12, y) + 'px';
+      }
+      function show(node, event) {
+        var sources = Archify.sourceEvidence.node(node.getAttribute('data-node-id'));
+        if (!sources.length) return;
+        clearTimeout(hideTimer);
+        card.textContent = '';
+        var title = document.createElement('strong');
+        title.textContent = node.getAttribute('data-node-label') + ' · evidencia en código';
+        card.appendChild(title);
+        sources.forEach(function (source) {
+          var link = document.createElement('a');
+          var purpose = document.createElement('b');
+          var path = document.createElement('span');
+          purpose.textContent = source.label || 'Evidencia';
+          path.textContent = source.path + ':L' + source.line + (source.endLine ? '-L' + source.endLine : '');
+          link.href = source.href;
+          link.target = '_blank';
+          link.rel = 'noopener noreferrer';
+          link.appendChild(purpose);
+          link.appendChild(path);
+          card.appendChild(link);
+        });
+        card.hidden = false;
+        place(event);
+      }
+      svg.addEventListener('pointerover', function (event) {
+        var node = event.target.closest('[data-node-id]');
+        if (node) show(node, event);
+      });
+      svg.addEventListener('pointermove', function (event) {
+        if (!card.hidden && event.target.closest('[data-node-id]')) place(event);
+      });
+      svg.addEventListener('pointerout', function (event) {
+        if (event.target.closest('[data-node-id]')) hideSoon();
+      });
+      card.addEventListener('pointerenter', function () { clearTimeout(hideTimer); });
+      card.addEventListener('pointerleave', hideSoon);
+    }());
+  </script>
 </body>
 </html>
