@@ -4,7 +4,7 @@
   "meta": {
     "title": "DecorAR — diseño detallado de componentes",
     "locale": "es",
-    "output": "docs/c4/components.html",
+    "output": "public/docs/components.html",
     "quality_profile": "standard",
     "repository": {
       "url": "https://github.com/josemestre3009/DecorAr.git",
