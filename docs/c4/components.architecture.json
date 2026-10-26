@@ -1,0 +1,703 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "DecorAR — diseño detallado de componentes",
+    "locale": "es",
+    "output": "docs/c4/components.html",
+    "quality_profile": "standard",
+    "repository": {
+      "url": "https://github.com/josemestre3009/DecorAr.git",
+      "provider": "github",
+      "link_mode": "web",
+      "revision": "2652cfe7f42262b4f028dfdb4560ed4573594e12"
+    },
+    "views": [
+      {
+        "id": "flujo-principal",
+        "label": "Configurar un evento",
+        "focus": [
+          "persona",
+          "ui",
+          "api",
+          "controllers",
+          "packages",
+          "postgres"
+        ],
+        "note": "Recorrido HTTP desde la interfaz hasta la escritura atómica del paquete."
+      },
+      {
+        "id": "seguridad",
+        "label": "Seguridad por capas",
+        "focus": [
+          "api",
+          "session",
+          "access",
+          "auth",
+          "postgres"
+        ],
+        "note": "Sesión validada, autorización por propiedad y RLS como defensa adicional."
+      },
+      {
+        "id": "presupuesto-vivo",
+        "label": "Presupuesto en vivo",
+        "focus": [
+          "packages",
+          "budget",
+          "outbox",
+          "postgres",
+          "realtime",
+          "ui"
+        ],
+        "note": "Recalculo idempotente y notificación privada después del cambio confirmado."
+      },
+      {
+        "id": "experiencia-ar",
+        "label": "Experiencia AR",
+        "focus": [
+          "ui",
+          "catalog",
+          "ar",
+          "cloudinary",
+          "viewer"
+        ],
+        "note": "El catálogo aporta activos; Bridge elige visor y Flyweight reutiliza el 3D."
+      }
+    ],
+    "legend": {
+      "mode": "all",
+      "entries": {
+        "frontend": {
+          "label": "Interfaz"
+        },
+        "backend": {
+          "label": "Aplicación y negocio"
+        },
+        "database": {
+          "label": "Persistencia"
+        },
+        "cloud": {
+          "label": "Servicio cloud"
+        },
+        "security": {
+          "label": "Seguridad"
+        },
+        "messagebus": {
+          "label": "Eventos"
+        },
+        "external": {
+          "label": "Actor o visor externo"
+        }
+      }
+    }
+  },
+  "components": [
+    {
+      "id": "persona",
+      "type": "external",
+      "label": "Persona usuaria",
+      "sublabel": "Navegador móvil o escritorio",
+      "pos": [
+        10,
+        350
+      ],
+      "size": [
+        150,
+        68
+      ],
+      "sources": [
+        {
+          "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
+          "line": 38,
+          "end_line": 53
+        }
+      ]
+    },
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Interfaz web",
+      "sublabel": "Server y Client Components · src/app",
+      "tag": "Next.js 16 + React 19",
+      "pos": [
+        210,
+        350
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
+          "line": 38,
+          "end_line": 87
+        }
+      ]
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Route Handlers",
+      "sublabel": "Adaptan HTTP y errores · src/app/api",
+      "tag": "JSON + correlation ID",
+      "pos": [
+        410,
+        350
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/app/api/packages/[packageId]/items/route.ts",
+          "line": 9,
+          "end_line": 25
+        }
+      ]
+    },
+    {
+      "id": "controllers",
+      "type": "backend",
+      "label": "Controladores",
+      "sublabel": "Validación HTTP y delegación · src/interfaces",
+      "pos": [
+        610,
+        350
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/interfaces/packages/package-controller.ts",
+          "line": 228,
+          "end_line": 266
+        }
+      ]
+    },
+    {
+      "id": "session",
+      "type": "security",
+      "label": "SessionGateway",
+      "sublabel": "Identidad mediante sesión SSR",
+      "tag": "getUser()",
+      "pos": [
+        410,
+        100
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "src/infrastructure/supabase/session-gateway.ts",
+          "line": 114,
+          "end_line": 142
+        }
+      ]
+    },
+    {
+      "id": "access",
+      "type": "security",
+      "label": "Autorización",
+      "sublabel": "Comprueba sesión y propietario",
+      "tag": "401 / 404 indistinguible",
+      "pos": [
+        610,
+        100
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "src/composition/server.ts",
+          "line": 75,
+          "end_line": 89
+        }
+      ]
+    },
+    {
+      "id": "composition",
+      "type": "backend",
+      "label": "Composition Root",
+      "sublabel": "Cableado server-only de puertos y adaptadores",
+      "pos": [
+        810,
+        350
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/composition/server.ts",
+          "line": 140,
+          "end_line": 177
+        }
+      ]
+    },
+    {
+      "id": "packages",
+      "type": "backend",
+      "label": "Packages y plantillas",
+      "sublabel": "Eventos, zonas, módulos y plantillas",
+      "tag": "Builder · Composite · Prototype",
+      "pos": [
+        610,
+        550
+      ],
+      "size": [
+        170,
+        78
+      ],
+      "sources": [
+        {
+          "path": "src/modules/packages/application/use-cases/add-module-to-package.use-case.ts",
+          "line": 12,
+          "end_line": 20
+        },
+        {
+          "path": "src/modules/packages/application/use-cases/add-module-to-package.use-case.ts",
+          "line": 93,
+          "end_line": 126
+        }
+      ]
+    },
+    {
+      "id": "catalog",
+      "type": "backend",
+      "label": "Catálogo",
+      "sublabel": "Metadatos, precios y activos 3D activos",
+      "pos": [
+        410,
+        550
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
+          "line": 37,
+          "end_line": 46
+        },
+        {
+          "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
+          "line": 143,
+          "end_line": 212
+        }
+      ]
+    },
+    {
+      "id": "budget",
+      "type": "backend",
+      "label": "Presupuesto",
+      "sublabel": "Relee el paquete y confirma el total",
+      "tag": "Idempotente por eventId + versión",
+      "pos": [
+        610,
+        750
+      ],
+      "size": [
+        170,
+        78
+      ],
+      "sources": [
+        {
+          "path": "src/modules/budget/application/consume-package-changed-event.use-case.ts",
+          "line": 24,
+          "end_line": 39
+        },
+        {
+          "path": "src/modules/budget/application/consume-package-changed-event.use-case.ts",
+          "line": 64,
+          "end_line": 112
+        }
+      ]
+    },
+    {
+      "id": "outbox",
+      "type": "messagebus",
+      "label": "Outbox y publicación",
+      "sublabel": "Entrega durable y Broadcast privado",
+      "tag": "At-least-once",
+      "pos": [
+        810,
+        550
+      ],
+      "size": [
+        170,
+        74
+      ],
+      "sources": [
+        {
+          "path": "src/modules/events/application/drain-outbox.use-case.ts",
+          "line": 22,
+          "end_line": 33
+        },
+        {
+          "path": "src/modules/events/application/drain-outbox.use-case.ts",
+          "line": 43,
+          "end_line": 67
+        }
+      ]
+    },
+    {
+      "id": "ar",
+      "type": "backend",
+      "label": "Realidad aumentada",
+      "sublabel": "Activo compartido y visor por capacidades",
+      "tag": "Bridge + Flyweight",
+      "pos": [
+        210,
+        550
+      ],
+      "size": [
+        170,
+        78
+      ],
+      "sources": [
+        {
+          "path": "src/modules/ar/application/use-cases/preparar-vista-ar.use-case.ts",
+          "line": 28,
+          "end_line": 38
+        },
+        {
+          "path": "src/modules/ar/application/use-cases/preparar-vista-ar.use-case.ts",
+          "line": 41,
+          "end_line": 67
+        }
+      ]
+    },
+    {
+      "id": "auth",
+      "type": "cloud",
+      "label": "Supabase Auth",
+      "sublabel": "Usuarios y validación de sesión",
+      "pos": [
+        10,
+        100
+      ],
+      "size": [
+        170,
+        68
+      ],
+      "sources": [
+        {
+          "path": "src/infrastructure/supabase/session-gateway.ts",
+          "line": 137,
+          "end_line": 155
+        }
+      ]
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "Supabase PostgreSQL",
+      "sublabel": "PostgREST · RPC atómicas · RLS",
+      "tag": "Fuente de verdad",
+      "pos": [
+        810,
+        950
+      ],
+      "size": [
+        170,
+        74
+      ],
+      "sources": [
+        {
+          "path": "src/modules/budget/infrastructure/supabase-budget-consumer.ts",
+          "line": 37,
+          "end_line": 53
+        },
+        {
+          "path": "src/composition/server.ts",
+          "line": 159,
+          "end_line": 168
+        }
+      ]
+    },
+    {
+      "id": "realtime",
+      "type": "messagebus",
+      "label": "Supabase Realtime",
+      "sublabel": "Canal privado package:{id}",
+      "tag": "Broadcast, no postgres_changes",
+      "pos": [
+        410,
+        950
+      ],
+      "size": [
+        170,
+        74
+      ],
+      "sources": [
+        {
+          "path": "src/modules/events/infrastructure/supabase-broadcast-event-publisher.ts",
+          "line": 8,
+          "end_line": 29
+        }
+      ]
+    },
+    {
+      "id": "cloudinary",
+      "type": "cloud",
+      "label": "Cloudinary",
+      "sublabel": "GLB · USDZ · poster versionados",
+      "pos": [
+        210,
+        750
+      ],
+      "size": [
+        170,
+        72
+      ],
+      "sources": [
+        {
+          "path": "src/modules/catalog/application/use-cases/publish-and-activate-module.use-case.ts",
+          "line": 143,
+          "end_line": 190
+        }
+      ]
+    },
+    {
+      "id": "viewer",
+      "type": "external",
+      "label": "Visor AR",
+      "sublabel": "Quick Look · Scene Viewer · WebXR",
+      "tag": "Escala real 1:1",
+      "pos": [
+        10,
+        750
+      ],
+      "size": [
+        170,
+        74
+      ],
+      "sources": [
+        {
+          "path": "src/app/(protected)/packages/[packageId]/modules/[moduleId]/module-viewer.tsx",
+          "line": 137,
+          "end_line": 161
+        }
+      ]
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "region",
+      "label": "Monolito modular DecorAR · Next.js",
+      "wraps": [
+        "ui",
+        "api",
+        "controllers",
+        "session",
+        "access",
+        "composition",
+        "packages",
+        "catalog",
+        "budget",
+        "outbox",
+        "ar"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "id": "persona-ui",
+      "from": "persona",
+      "to": "ui",
+      "label": "navega y configura",
+      "variant": "emphasis"
+    },
+    {
+      "id": "ui-api",
+      "from": "ui",
+      "to": "api",
+      "label": "HTTP JSON",
+      "variant": "emphasis"
+    },
+    {
+      "id": "api-controller",
+      "from": "api",
+      "to": "controllers",
+      "variant": "emphasis"
+    },
+    {
+      "id": "controller-session",
+      "from": "controllers",
+      "to": "session",
+      "label": "usuario actual",
+      "variant": "security"
+    },
+    {
+      "id": "session-auth",
+      "from": "session",
+      "to": "auth",
+      "label": "getUser()",
+      "variant": "security"
+    },
+    {
+      "id": "controller-access",
+      "from": "controllers",
+      "to": "access",
+      "label": "autoriza recurso",
+      "variant": "security"
+    },
+    {
+      "id": "controller-composition",
+      "from": "controllers",
+      "to": "composition",
+      "variant": "emphasis",
+      "labelDy": 24
+    },
+    {
+      "id": "composition-packages",
+      "from": "composition",
+      "to": "packages"
+    },
+    {
+      "id": "composition-catalog",
+      "from": "composition",
+      "to": "catalog"
+    },
+    {
+      "id": "composition-budget",
+      "from": "composition",
+      "to": "budget"
+    },
+    {
+      "id": "composition-outbox",
+      "from": "composition",
+      "to": "outbox",
+      "labelDy": 24
+    },
+    {
+      "id": "ui-ar",
+      "from": "ui",
+      "to": "ar",
+      "label": "capacidades + módulo",
+      "labelDy": 24
+    },
+    {
+      "id": "catalog-ar",
+      "from": "catalog",
+      "to": "ar",
+      "label": "URLs y dimensiones"
+    },
+    {
+      "id": "ar-viewer",
+      "from": "ar",
+      "to": "viewer",
+      "label": "configura visor",
+      "variant": "emphasis"
+    },
+    {
+      "id": "catalog-cloudinary",
+      "from": "catalog",
+      "to": "cloudinary"
+    },
+    {
+      "id": "packages-postgres",
+      "from": "packages",
+      "to": "postgres",
+      "variant": "emphasis"
+    },
+    {
+      "id": "packages-budget",
+      "from": "packages",
+      "to": "budget",
+      "label": "consume cambio confirmado",
+      "variant": "dashed",
+      "labelDy": 24
+    },
+    {
+      "id": "packages-outbox",
+      "from": "packages",
+      "to": "outbox",
+      "label": "evento de dominio",
+      "variant": "dashed"
+    },
+    {
+      "id": "budget-postgres",
+      "from": "budget",
+      "to": "postgres",
+      "label": "process_budget_event"
+    },
+    {
+      "id": "budget-realtime",
+      "from": "budget",
+      "to": "realtime",
+      "variant": "dashed"
+    },
+    {
+      "id": "outbox-postgres",
+      "from": "outbox",
+      "to": "postgres",
+      "label": "reclama y marca outbox",
+      "labelDy": 24
+    },
+    {
+      "id": "outbox-realtime",
+      "from": "outbox",
+      "to": "realtime",
+      "label": "Broadcast privado",
+      "variant": "dashed"
+    },
+    {
+      "id": "realtime-ui",
+      "from": "realtime",
+      "to": "ui",
+      "label": "notifica; UI resincroniza",
+      "variant": "dashed",
+      "labelDy": 24
+    }
+  ],
+  "cards": [
+    {
+      "dot": "violet",
+      "title": "Cómo leer el diseño",
+      "items": [
+        "Las flechas sólidas representan llamadas directas; las discontinuas, eventos o notificaciones.",
+        "Los módulos son límites lógicos dentro de un único despliegue Next.js, no microservicios.",
+        "Cada nodo permite abrir evidencia del código fijada al commit mostrado."
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Seguridad en tres barreras",
+      "items": [
+        "Route Handler y SessionGateway validan la identidad.",
+        "Autorización compara al usuario con el propietario y oculta recursos ajenos con 404.",
+        "PostgreSQL RLS y canales privados añaden defensa en profundidad."
+      ]
+    },
+    {
+      "dot": "emerald",
+      "title": "Consistencia del presupuesto",
+      "items": [
+        "Packages confirma el cambio y registra el evento en la misma operación persistente.",
+        "Budget relee el paquete; no confía en precios dentro del evento.",
+        "process_budget_event deduplica por eventId y evita regresar a una versión anterior."
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Experiencia AR",
+      "items": [
+        "Flyweight comparte el activo por assetId y versión.",
+        "Bridge selecciona Quick Look, Scene Viewer, WebXR o modo sin AR.",
+        "Cloudinary conserva GLB, USDZ y poster; el visor muestra escala real 1:1."
+      ]
+    }
+  ]
+}
