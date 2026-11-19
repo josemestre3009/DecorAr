@@ -57,6 +57,10 @@ const BUSINESS_TABLE_TOKENS = new Set([
   "events",
   "evento",
   "eventos",
+  "quote",
+  "quotes",
+  "cotizacion",
+  "cotizaciones",
 ]);
 
 const BUILTIN_FROM_RECEIVERS = new Set([
