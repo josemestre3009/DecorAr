@@ -35,12 +35,12 @@ El runtime implementa `populateTarget(count)`. Exige estrictamente que la retíc
 ### 4. Diagnóstico y métricas en vivo
 El overlay en DOM muestra FPS calculados por ventana temporal de 1 segundo, uso de memoria JS heap si `performance.memory` está presente (Chrome/Android), y estado de eventos. Permite copiar el reporte estructurado en formato JSON para facilitar la recolección de evidencia en pruebas físicas.
 
+### 5. Limpieza rigurosa de recursos WebGL
+Al terminar la sesión XR o desmontar el componente, el runtime cancela el hit-test, detiene el animation loop, recorre y destruye geometrías y materiales (`geometry.dispose()`, `material.dispose()`), remueve el canvas del DOM y finaliza la sesión XR.
+
 ### 6. Ubicación del adaptador Three.js y tensión con la arquitectura
 Las reglas de negocio (`evaluarEscalaReal`, `calcularPosicionesDisposicion`, `resetearEscena`) viven en el dominio. El runtime se divide en `webxr-validation-{models,metrics,session,runtime}.ts`.
 
 Three.js permanece, por decisión del spike, en la capa de presentación cliente de la ruta, porque `scripts/scan-architecture.ts` prohíbe que los componentes `'use client'` importen `infrastructure` (excepto `supabase/browser`). Esto choca con el README de `ar`, que describe `infrastructure` como "integración con plataformas AR": el lugar natural del adaptador sería `src/modules/ar/infrastructure`.
 
 **Propuesta para DECOR-48** (a discutir con Jose; no se aplica aquí): reubicar el adaptador en `src/modules/ar/infrastructure` con un puerto en el dominio/aplicación y añadir una excepción acotada en el scan. No se modifica `scripts/scan-architecture.ts` en este cambio.
-
-### 5. Limpieza rigurosa de recursos WebGL
-Al terminar la sesión XR o desmontar el componente, el runtime cancela el hit-test, detiene el animation loop, recorre y destruye geometrías y materiales (`geometry.dispose()`, `material.dispose()`), remueve el canvas del DOM y finaliza la sesión XR.

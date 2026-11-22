@@ -22,7 +22,8 @@
 ## 3. Pruebas E2E (`e2e/webxr-validation.spec.ts`)
 
 - [x] 3.1 Crear test Playwright que verifica protección de sesión, degradación en navegador sin WebXR, ajuste a viewport de 360 px y foco visible. (Archivo creado; ver 3.2 para su ejecución.)
-- [ ] 3.2 Instalar el navegador chromium de Playwright (`npx playwright install chromium`) y ejecutar `e2e/webxr-validation.spec.ts`. NO ejecutado: falta el navegador.
+- [ ] 3.2 Ejecutar `e2e/webxr-validation.spec.ts`. `npx playwright install chromium` falla (descarga desde cdn.playwright.dev); se usa la config local no versionada `playwright.local.config.ts` (`channel: "chrome"`): `npx playwright test e2e/webxr-validation.spec.ts -c playwright.local.config.ts`. Estado (2026-11-22): 1 de 2 tests ejecutados y verdes con Chrome local; el 2º ('degrada sin WebXR, cabe a 360 px y conserva foco visible') bloqueado por credenciales E2E (HTTP 400 en login de Supabase; `e2e/auth.spec.ts` falla igual).
+  - [ ] 3.2.1 Proveer una cuenta E2E válida en `DECOR_E2E_EMAIL`/`DECOR_E2E_PASSWORD` y reejecutar el comando anterior.
 
 ## 4. Verificación, documentación y protocolo de resultados
 
@@ -37,6 +38,6 @@
 - [ ] 4.3 Ejecución de pruebas físicas en dispositivos Android reales con ARCore (1/5/10/20 objetos, FPS, memoria, hit-test) y registro de métricas en la matriz. **BLOQUEADO**: el POCO X6 Pro de Rafael no figura en la lista oficial de ARCore y no hay otro dispositivo compatible disponible. Emuladores, granjas e IWER solo validan ciclo de vida, no FPS/memoria/hit-test reales.
 - [ ] 4.4 Decisión técnica final (continuar / recortar / solo 3D) sobre la viabilidad de WebXR multiobjeto para DECOR-46. **BLOQUEADO** por 4.3.
 - [ ] 4.5 Adjuntar evidencia en Plane (capturas/video + tabla de la matriz) cuando exista 4.3.
-- [ ] 4.6 Comentar en Plane el estado actual y el bloqueo (dispositivo no compatible con ARCore, E2E pendiente de instalar chromium).
+- [x] 4.6 Comentar en Plane el estado actual y el bloqueo (dispositivo no compatible con ARCore, E2E pendiente de instalar chromium). Publicado el 2026-11-21 con estado Blocked.
 - [ ] 4.7 Verificar si algún modelo del catálogo lleva huesos (`SkinnedMesh`); si es así, usar `SkeletonUtils.clone` en lugar de `clone(true)`. Riesgo abierto, no verificable desde el repo.
 - [ ] 4.8 Comprobar que los GLB de Cloudinary respondan con CORS.

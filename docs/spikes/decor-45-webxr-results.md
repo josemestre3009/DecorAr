@@ -131,3 +131,12 @@ Emuladores, granjas de dispositivos e IWER solo validan el ciclo de vida de la s
 
 - **Pendiente**:
   - Aún no se han ejecutado las mediciones físicas en dispositivos Android reales.
+
+## Límites verificados de las pruebas
+
+Medido el 2026-11-22.
+
+1. **Playwright**: `npx playwright install chromium` falla dos veces (timeout de 30 s y luego `Download failure, code=1` con `PLAYWRIGHT_DOWNLOAD_CONNECTION_TIMEOUT=300000`) al descargar de cdn.playwright.dev (Chrome for Testing 153.0.8010.12); la conexión TCP 443 al CDN abre. Solución: config LOCAL no versionada `playwright.local.config.ts` (excluida vía `.git/info/exclude`) que reutiliza `playwright.config.ts` con `channel: "chrome"` y reporter list. No se modificó `playwright.config.ts`. Comando: `npx playwright test e2e/webxr-validation.spec.ts -c playwright.local.config.ts`.
+2. **Resultado E2E con Chrome local**: test 1 (la validación WebXR exige sesión) PASA. Test 2 (degrada sin WebXR, cabe a 360 px y conserva foco visible) NO pasa: requiere `DECOR_E2E_EMAIL`/`DECOR_E2E_PASSWORD` y el login queda en `/login`. Las credenciales `DECOR_E2E_USER_A/B` del `.env` local devuelven HTTP 400 en `POST /auth/v1/token?grant_type=password` de Supabase (la API key publishable es válida). `e2e/auth.spec.ts` falla igual en 2 tests de sesión real (12 pasan, 1 skip): el fallo es de la cuenta E2E del entorno, no del código de DECOR-45. No se crearon usuarios ni se tocó Supabase. Para cerrar: proveer una cuenta E2E válida y reejecutar el comando anterior.
+3. **`.env` local**: el valor de `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` lleva un comentario inline pegado con `#` que los parsers manuales leen mal. Mover el comentario a su propia línea.
+4. **Límite de emulación**: Chrome 158 de escritorio (canal chrome, contexto seguro `https://example.com`) expone `navigator.xr` pero `isSessionSupported('immersive-ar')` = false (e `immersive-vr` = false). No puede iniciarse una sesión immersive-ar en escritorio: FPS, memoria, hit-test y escala reales exigen un Android con ARCore (4.3/4.4 siguen bloqueadas). Los tests unitarios con `navigator.xr` simulado (205 en 13 archivos) cubren solo ciclo de vida.
