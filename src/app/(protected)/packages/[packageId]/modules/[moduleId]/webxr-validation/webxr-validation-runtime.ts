@@ -114,7 +114,33 @@ export async function startWebXRValidationRuntime(
       ) ?? options.primaryModule,
   });
 
-  const activeHandle = await startXRSession({
+  const threeObjects = new Map<number, THREE.Object3D>();
+  let activeHandle: XRSessionHandle | null = null;
+  let selectListener: EventListener | null = null;
+  let selectStartListener: EventListener | null = null;
+  let selectEndListener: EventListener | null = null;
+
+  function cleanup() {
+    if (ended) return;
+    ended = true;
+
+    if (activeHandle) {
+      const { session } = activeHandle;
+      if (selectListener) session.removeEventListener("select", selectListener);
+      if (selectStartListener) session.removeEventListener("selectstart", selectStartListener);
+      if (selectEndListener) session.removeEventListener("selectend", selectEndListener);
+    }
+
+    for (const obj of threeObjects.values()) scene.remove(obj);
+    threeObjects.clear();
+    models.dispose();
+
+    void activeHandle?.close();
+    resetScene();
+    options.onEnd(sessionFailed);
+  }
+
+  activeHandle = await startXRSession({
     container: options.container,
     onEnded: () => cleanup(),
     onFailure: (message) => {
@@ -127,8 +153,10 @@ export async function startWebXRValidationRuntime(
     models.dispose();
     throw error;
   });
-  handle = activeHandle;
-  const { localSpace, session } = activeHandle;
+  if (ended) throw new Error("La sesión WebXR terminó durante el arranque.");
+  const active = activeHandle;
+  handle = active;
+  const { localSpace, session } = active;
 
   const initialActivo = options.fabrica.obtener(options.primaryModule);
   if (!initialActivo.ok) {
@@ -136,7 +164,9 @@ export async function startWebXRValidationRuntime(
   } else {
     try {
       await models.load(initialActivo.value, options.primaryModule);
+      if (ended) throw new Error("La sesión WebXR terminó durante el arranque.");
     } catch (error) {
+      if (ended) throw new Error("La sesión WebXR terminó durante el arranque.");
       recordFailure(`Fallo cargando GLB inicial: ${describe(error)}`);
     }
   }
@@ -148,7 +178,6 @@ export async function startWebXRValidationRuntime(
   }
   if (catalogActivos.length === 0 && initialActivo.ok) catalogActivos.push(initialActivo.value);
 
-  const threeObjects = new Map<number, THREE.Object3D>();
   const raycaster = new THREE.Raycaster();
   const activeSources = new Set<XRInputSource>();
   let gestureStartPoints: readonly [Point, Point] | null = null;
@@ -261,7 +290,7 @@ export async function startWebXRValidationRuntime(
       }
     }
 
-    const position = activeHandle.reticlePosition();
+    const position = active.reticlePosition();
     if (!position) return;
     const point = { x: position.x, y: position.y, z: position.z };
 
@@ -282,16 +311,16 @@ export async function startWebXRValidationRuntime(
     await syncThreeObjects();
   }
 
-  const selectListener = (event: Event) => {
+  selectListener = (event: Event) => {
     void onSelect(event as XRInputSourceEvent);
   };
-  const onSelectStart = (event: Event) => {
+  selectStartListener = (event: Event) => {
     const { inputSource } = event as XRInputSourceEvent;
     activeSources.add(inputSource);
     lastEvent = `selectstart:${inputSource.targetRayMode}`;
     report();
   };
-  const onSelectEnd = (event: Event) => {
+  selectEndListener = (event: Event) => {
     const { inputSource } = event as XRInputSourceEvent;
     activeSources.delete(inputSource);
     gestureStartPoints = null;
@@ -300,30 +329,13 @@ export async function startWebXRValidationRuntime(
   };
 
   session.addEventListener("select", selectListener);
-  session.addEventListener("selectstart", onSelectStart);
-  session.addEventListener("selectend", onSelectEnd);
+  session.addEventListener("selectstart", selectStartListener);
+  session.addEventListener("selectend", selectEndListener);
 
-  activeHandle.run(camera, (time, frame) => {
+  active.run(camera, (time, frame) => {
     if (frame) updateGesture(frame);
     if (fps.recordFrame(time)) report();
   });
-
-  function cleanup() {
-    if (ended) return;
-    ended = true;
-
-    session.removeEventListener("select", selectListener);
-    session.removeEventListener("selectstart", onSelectStart);
-    session.removeEventListener("selectend", onSelectEnd);
-
-    for (const obj of threeObjects.values()) scene.remove(obj);
-    threeObjects.clear();
-    models.dispose();
-
-    void activeHandle.close();
-    resetScene();
-    options.onEnd(sessionFailed);
-  }
 
   report();
 
@@ -338,16 +350,16 @@ export async function startWebXRValidationRuntime(
       report();
     },
     async end() {
-      if (!ended) await activeHandle.end();
+      if (!ended) await active.end();
     },
     exportDiagnostics() {
-      return serializeDiagnostics(snapshotDiagnostics(activeHandle));
+      return serializeDiagnostics(snapshotDiagnostics(active));
     },
     populateTarget(count) {
       targetCount = count;
       lastEvent = `populate-target:${count}`;
 
-      const center = activeHandle.reticlePosition();
+      const center = active.reticlePosition();
       if (!center) {
         recordFailure("No se puede poblar: apunta al piso hasta que la retícula esté visible.");
         return;

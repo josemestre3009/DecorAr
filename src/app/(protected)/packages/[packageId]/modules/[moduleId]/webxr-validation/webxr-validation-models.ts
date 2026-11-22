@@ -104,7 +104,10 @@ export function createModelLibrary({ resolveMeta, onWarning }: ModelLibraryOptio
       const existing = promises.get(activo.clave);
       if (existing) return existing;
 
-      const promise = fetchModel(activo, moduleMeta);
+      const promise = fetchModel(activo, moduleMeta).catch((error: unknown) => {
+        promises.delete(activo.clave);
+        throw error;
+      });
       promises.set(activo.clave, promise);
       return promise;
     },

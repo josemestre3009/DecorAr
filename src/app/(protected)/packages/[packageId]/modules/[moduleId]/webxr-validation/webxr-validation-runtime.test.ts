@@ -8,6 +8,7 @@ import {
 } from "./webxr-validation-runtime";
 
 const mocks = vi.hoisted(() => ({
+  loadFailures: 0,
   gate: null as Promise<void> | null,
   renderers: [] as Array<{
     dispose: ReturnType<typeof vi.fn>;
@@ -51,6 +52,10 @@ vi.mock("three/addons/loaders/GLTFLoader.js", () => ({
   GLTFLoader: class {
     loadAsync = vi.fn().mockImplementation(async () => {
       if (mocks.gate) await mocks.gate;
+      if (mocks.loadFailures > 0) {
+        mocks.loadFailures -= 1;
+        throw new Error("Fallo transitorio");
+      }
       const mesh = new THREE.Mesh(
         new THREE.BoxGeometry(2, 0.94, 1.19),
         new THREE.MeshBasicMaterial({ color: 0xffffff }),
@@ -166,6 +171,7 @@ describe("webxr-validation-runtime", () => {
   beforeEach(() => {
     mocks.renderers.length = 0;
     mocks.gate = null;
+    mocks.loadFailures = 0;
   });
 
   afterEach(() => {
@@ -343,6 +349,38 @@ describe("webxr-validation-runtime", () => {
     expect(cloneSpy.mock.calls.length).toBe(clonesAtEnd);
     expect(onDiagnostics.mock.calls.length).toBe(reportsAtEnd);
   });
-});
 
+  it("cancela el arranque limpiamente si la sesión termina durante la carga inicial", async () => {
+    let release: () => void = () => {};
+    mocks.gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const mock = createMockXRSession();
+    vi.stubGlobal("navigator", {
+      userAgent: "test-agent",
+      xr: { requestSession: vi.fn().mockResolvedValue(mock.session) },
+    });
+    const container = document.createElement("div");
+    const onEnd = vi.fn();
+    const starting = startWebXRValidationRuntime({
+      availableModules: [MOCK_MODULE],
+      container,
+      fabrica: new FabricaActivos3D(),
+      onDiagnostics: vi.fn(),
+      onEnd,
+      overlayRoot: document.createElement("div"),
+      primaryModule: MOCK_MODULE,
+      targetCount: 1,
+    });
+
+    await vi.waitFor(() => expect(container.querySelector("canvas")).not.toBeNull());
+    expect(() => mock.emit("end")).not.toThrow();
+    release();
+
+    await expect(starting).rejects.toThrow("terminó durante el arranque");
+    expect(onEnd).toHaveBeenCalledWith(false);
+    expect(container.children.length).toBe(0);
+    expect(mock.listeners.get("select")?.size ?? 0).toBe(0);
+  });
+});
 
