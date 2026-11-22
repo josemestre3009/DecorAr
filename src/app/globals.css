@@ -1719,9 +1719,43 @@ body:has(.catalog-page) {
   margin-bottom: 0.5rem;
 }
 
+
+/* --- DECOR-45: validación WebXR multiobjeto ------------------------------ */
+
+.webxr-target-selector {
+  display: grid;
+  gap: 0.5rem;
+  margin: 0.5rem 0;
+}
+
+.webxr-target-selector label {
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.webxr-target-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.webxr-target-buttons .secondary-button.active {
+  background: var(--ink);
+  color: var(--lime);
+}
+
+.webxr-export-action {
+  display: flex;
+  margin-top: 0.5rem;
+}
+
 @media (max-width: 480px) {
   .zone-field input,
   .zone-field select {
     font-size: 1rem;
+  }
+
+  .webxr-target-buttons button {
+    flex: 1 1 40%;
   }
 }
