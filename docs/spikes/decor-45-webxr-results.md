@@ -140,3 +140,16 @@ Medido el 2026-11-22.
 2. **Resultado E2E con Chrome local**: test 1 (la validación WebXR exige sesión) PASA. Test 2 (degrada sin WebXR, cabe a 360 px y conserva foco visible) NO pasa: requiere `DECOR_E2E_EMAIL`/`DECOR_E2E_PASSWORD` y el login queda en `/login`. Las credenciales `DECOR_E2E_USER_A/B` del `.env` local devuelven HTTP 400 en `POST /auth/v1/token?grant_type=password` de Supabase (la API key publishable es válida). `e2e/auth.spec.ts` falla igual en 2 tests de sesión real (12 pasan, 1 skip): el fallo es de la cuenta E2E del entorno, no del código de DECOR-45. No se crearon usuarios ni se tocó Supabase. Para cerrar: proveer una cuenta E2E válida y reejecutar el comando anterior.
 3. **`.env` local**: el valor de `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` lleva un comentario inline pegado con `#` que los parsers manuales leen mal. Mover el comentario a su propia línea.
 4. **Límite de emulación**: Chrome 158 de escritorio (canal chrome, contexto seguro `https://example.com`) expone `navigator.xr` pero `isSessionSupported('immersive-ar')` = false (e `immersive-vr` = false). No puede iniciarse una sesión immersive-ar en escritorio: FPS, memoria, hit-test y escala reales exigen un Android con ARCore (4.3/4.4 siguen bloqueadas). Los tests unitarios con `navigator.xr` simulado (205 en 13 archivos) cubren solo ciclo de vida.
+
+## Prueba f?sica 1: Galaxy S26 Ultra (2026-11-23), resultado negativo
+
+- **Dispositivo y navegador:** Galaxy S26 Ultra, Samsung Internet 31 (Chromium 148), Android. Evidencia: video de la prueba (no versionado) y capturas del panel.
+- **Preview probado:** despliegue de Vercel de la rama, con el c?digo anterior a `c1b868a`.
+- **Lo que funcion?:** la sesi?n `immersive-ar` inici? y concedi? `local`, `viewer`, `hit-test`, `dom-overlay` y `local-floor`. El DOM overlay qued? activo. FPS 91 actual, 57 m?nimo y 74 promedio con 0 objetos.
+- **Lo que fall?:** nunca apareci? la ret?cula ni ning?n objeto (`objetos en escena 0`, `calls 0`, `tri 0`), y la c?mara se ve?a a ratos. No hubo fallos registrados. Tras `add-mode` no lleg? ning?n evento `select`.
+- **Causas encontradas en el c?digo (lectura y verificaci?n en el repo, no en dispositivo):**
+  1. El hit-test y `getPose` usaban el espacio `local` mientras Three renderiza en `local-floor`.
+  2. `beforexrselect` se cancelaba sobre todo el overlay de pantalla completa, as? que cada toque se descartaba.
+  3. El panel de diagn?stico cubr?a la c?mara y `select` sin ret?cula sal?a en silencio.
+- **Correcci?n:** `c1b868a`. Unifica el espacio de referencia, cancela `beforexrselect` solo en controles, hace el overlay transparente y compacto y a?ade contadores (frames con hit-test, pose, ret?cula, `select`) al diagn?stico.
+- **Pendiente:** repetir la prueba con el preview nuevo, apuntando al piso a 1-2 m y moviendo el tel?fono 5-10 s, y comparar con Chrome estable. No se puede afirmar que ya funcione hasta entonces. Las matrices de 1/5/10/20 objetos siguen vac?as.
