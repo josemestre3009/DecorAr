@@ -1,9 +1,23 @@
 import * as THREE from "three";
 
+export type XRSessionStats = Readonly<{
+  framesTotal: number;
+  framesWithHitResult: number;
+  framesWithPose: number;
+  reticleVisible: boolean;
+  reticleHeight: number;
+  referenceSpaceType: string;
+  beforeXRSelectCancelled: number;
+}>;
+
+export const OVERLAY_CONTROL_SELECTOR =
+  "button, summary, input, select, a, [data-webxr-control]";
+
 export type XRSessionHandle = Readonly<{
   session: XRSession;
   renderer: THREE.WebGLRenderer;
-  localSpace: XRReferenceSpace;
+  referenceSpace(): XRReferenceSpace | null;
+  stats(): XRSessionStats;
   run(
     camera: THREE.Camera,
     onFrame: (time: number, frame: XRFrame | undefined) => void,
@@ -38,6 +52,18 @@ export async function startXRSession(options: XRSessionOptions): Promise<XRSessi
   let closed = false;
   let hitTestSource: XRHitTestSource | null = null;
   let renderer: THREE.WebGLRenderer | null = null;
+  const referenceSpaceType: XRReferenceSpaceType = Array.from(
+    session.enabledFeatures ?? [],
+  ).includes("local-floor")
+    ? "local-floor"
+    : "local";
+  const counters = {
+    beforeXRSelectCancelled: 0,
+    framesTotal: 0,
+    framesWithHitResult: 0,
+    framesWithPose: 0,
+    reticleHeight: 0,
+  };
 
   const reticleGeometry = new THREE.RingGeometry(0.12, 0.16, 32).rotateX(-Math.PI / 2);
   const reticleMaterial = new THREE.MeshBasicMaterial({ color: 0xb8ff5a });
@@ -45,7 +71,13 @@ export async function startXRSession(options: XRSessionOptions): Promise<XRSessi
   reticle.matrixAutoUpdate = false;
   reticle.visible = false;
 
-  const preventSelect = (event: Event) => event.preventDefault();
+  const preventSelect = (event: Event) => {
+    const target = event.target;
+    if (!(target instanceof Element) || !overlayRoot.contains(target)) return;
+    if (!target.closest(OVERLAY_CONTROL_SELECTOR)) return;
+    event.preventDefault();
+    counters.beforeXRSelectCancelled += 1;
+  };
   const onSessionEnd = () => {
     ended = true;
     if (ready) options.onEnded();
@@ -99,11 +131,11 @@ export async function startXRSession(options: XRSessionOptions): Promise<XRSessi
       container.clientHeight || window.innerHeight,
     );
     container.append(activeRenderer.domElement);
+    activeRenderer.xr.setReferenceSpaceType(referenceSpaceType);
     await activeRenderer.xr.setSession(session);
 
     scene.add(reticle);
 
-    const localSpace = await session.requestReferenceSpace("local");
     const viewerSpace = await session.requestReferenceSpace("viewer");
     const source = await session.requestHitTestSource?.({ space: viewerSpace });
     if (!source) throw new Error("El navegador no entregó hit-test.");
@@ -115,7 +147,12 @@ export async function startXRSession(options: XRSessionOptions): Promise<XRSessi
       async end() {
         if (!ended) await session.end();
       },
-      localSpace,
+      referenceSpace: () => activeRenderer.xr.getReferenceSpace(),
+      stats: () => ({
+        ...counters,
+        referenceSpaceType,
+        reticleVisible: reticle.visible,
+      }),
       reticlePosition() {
         return reticle.visible
           ? new THREE.Vector3().setFromMatrixPosition(reticle.matrix)
@@ -125,9 +162,21 @@ export async function startXRSession(options: XRSessionOptions): Promise<XRSessi
       run(camera, onFrame) {
         activeRenderer.setAnimationLoop((time, frame) => {
           if (frame) {
-            const pose = frame.getHitTestResults(source)[0]?.getPose(localSpace);
-            reticle.visible = Boolean(pose);
-            if (pose) reticle.matrix.fromArray(pose.transform.matrix);
+            counters.framesTotal += 1;
+            const space = activeRenderer.xr.getReferenceSpace();
+            if (!space) {
+              reticle.visible = false;
+            } else {
+              const results = frame.getHitTestResults(source);
+              if (results.length > 0) counters.framesWithHitResult += 1;
+              const pose = results[0]?.getPose(space);
+              reticle.visible = Boolean(pose);
+              if (pose) {
+                counters.framesWithPose += 1;
+                counters.reticleHeight = pose.transform.position.y;
+                reticle.matrix.fromArray(pose.transform.matrix);
+              }
+            }
           }
           onFrame(time, frame);
           activeRenderer.render(scene, camera);

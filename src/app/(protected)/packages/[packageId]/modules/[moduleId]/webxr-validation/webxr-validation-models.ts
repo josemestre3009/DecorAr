@@ -26,7 +26,10 @@ export class ModelLibraryDisposedError extends Error {
 export type ModelLibrary = Readonly<{
   load(activo: Activo3DCompartido, moduleMeta?: WebXRValidationModule): Promise<THREE.Object3D>;
   dispose(): void;
+  status(): Readonly<Record<string, AssetLoadStatus>>;
 }>;
+
+export type AssetLoadStatus = "pendiente" | "cargado" | "fallido";
 
 type ModelLibraryOptions = Readonly<{
   resolveMeta(activo: Activo3DCompartido): WebXRValidationModule;
@@ -54,6 +57,7 @@ export function createModelLibrary({ resolveMeta, onWarning }: ModelLibraryOptio
   const loaded = new Map<string, THREE.Object3D>();
   const loader = new GLTFLoader();
   let disposed = false;
+  const statuses = new Map<string, AssetLoadStatus>();
 
   function checkScale(activo: Activo3DCompartido, root: THREE.Object3D, meta: WebXRValidationModule) {
     const size = new THREE.Box3().setFromObject(root).getSize(new THREE.Vector3());
@@ -89,6 +93,7 @@ export function createModelLibrary({ resolveMeta, onWarning }: ModelLibraryOptio
     });
 
     loaded.set(activo.clave, root);
+    statuses.set(activo.clave, "cargado");
     return root;
   }
 
@@ -99,12 +104,15 @@ export function createModelLibrary({ resolveMeta, onWarning }: ModelLibraryOptio
       loaded.clear();
       promises.clear();
     },
+    status: () => Object.fromEntries(statuses),
     load(activo, moduleMeta) {
       if (disposed) return Promise.reject(new ModelLibraryDisposedError());
       const existing = promises.get(activo.clave);
       if (existing) return existing;
 
+      statuses.set(activo.clave, "pendiente");
       const promise = fetchModel(activo, moduleMeta).catch((error: unknown) => {
+        if (!disposed) statuses.set(activo.clave, "fallido");
         promises.delete(activo.clave);
         throw error;
       });

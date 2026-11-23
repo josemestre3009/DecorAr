@@ -1,4 +1,4 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import type { ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -246,6 +246,72 @@ describe("WebXRValidationView (ciclo de vida y degradación)", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("HTTPS");
       expect(startRuntime).not.toHaveBeenCalled();
+    });
+
+    it("en sesión muestra el panel compacto: diagnóstico colapsado y texto de add-mode", async () => {
+      const runtime = createRuntime();
+      let onDiagnostics: (d: unknown) => void = () => {};
+      const startRuntime = vi.fn().mockImplementation(async (options) => {
+        onDiagnostics = options.onDiagnostics;
+        return runtime;
+      });
+      await startSession(startRuntime);
+      await screen.findByRole("button", { name: "Terminar sesión" });
+
+      const summary = screen.getByText("Diagnóstico");
+      const details = summary.closest("details");
+      expect(details).not.toBeNull();
+      expect(details).not.toHaveAttribute("open");
+      expect(screen.getByRole("button", { name: "1 objeto" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "+ Añadir (retícula)" })).toBeInTheDocument();
+
+      act(() => {
+        onDiagnostics({
+          activosFlyweight: 0,
+          beforexrselectCancelados: 0,
+          domOverlay: true,
+          estadoActivos: { "mesa@1": "cargado" },
+          failures: "ninguno",
+          fpsAverage: 0,
+          fpsCurrent: 0,
+          fpsMin: 0,
+          framesConPose: 0,
+          framesConResultadoHitTest: 0,
+          framesTotales: 3,
+          grantedFeatures: "hit-test",
+          lastEvent: "add-mode",
+          memory: "n/d",
+          objectCount: 0,
+          renderInfo: { calls: 0, geometries: 0, textures: 0, triangles: 0 },
+          reticleAltura: 0,
+          reticleVisible: false,
+          sceneChildren: 2,
+          select: 0,
+          selectstart: 0,
+          targetCount: 1,
+          tipoEspacioReferencia: "local-floor",
+        });
+      });
+
+      expect(screen.getByRole("button", { name: "Toca la pantalla para colocar" })).toBeInTheDocument();
+      expect(screen.getByText("mesa@1: cargado")).toBeInTheDocument();
+    });
+
+    it("muestra ayuda si no hay retícula tras unos segundos", async () => {
+      vi.useFakeTimers({ shouldAdvanceTime: true });
+      try {
+        await startSession(vi.fn().mockResolvedValue(createRuntime()));
+        await screen.findByRole("button", { name: "Terminar sesión" });
+        expect(screen.queryByText(/Mueve el teléfono lentamente/)).not.toBeInTheDocument();
+
+        await act(async () => {
+          await vi.advanceTimersByTimeAsync(4500);
+        });
+
+        expect(screen.getByText(/Mueve el teléfono lentamente/)).toBeInTheDocument();
+      } finally {
+        vi.useRealTimers();
+      }
     });
 
     it("muestra el User Agent en el panel", async () => {

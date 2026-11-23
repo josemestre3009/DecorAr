@@ -13,8 +13,15 @@ const mocks = vi.hoisted(() => ({
   renderers: [] as Array<{
     dispose: ReturnType<typeof vi.fn>;
     setAnimationLoop: ReturnType<typeof vi.fn>;
-    xr: { setSession: ReturnType<typeof vi.fn> };
+    xr: {
+      getReferenceSpace: ReturnType<typeof vi.fn>;
+      setReferenceSpaceType: ReturnType<typeof vi.fn>;
+      setSession: ReturnType<typeof vi.fn>;
+    };
   }>,
+  callOrder: [] as string[],
+  localFloorSpace: { name: "local-floor" } as object,
+  referenceSpace: null as object | null,
 }));
 
 vi.mock("three", async (importOriginal) => {
@@ -22,7 +29,12 @@ vi.mock("three", async (importOriginal) => {
 
   class MockWebGLRenderer {
     domElement: HTMLCanvasElement;
-    xr: { enabled: boolean; setSession: ReturnType<typeof vi.fn> };
+    xr: {
+      enabled: boolean;
+      getReferenceSpace: ReturnType<typeof vi.fn>;
+      setReferenceSpaceType: ReturnType<typeof vi.fn>;
+      setSession: ReturnType<typeof vi.fn>;
+    };
     info: {
       memory: { geometries: number; textures: number };
       render: { calls: number; triangles: number };
@@ -30,7 +42,16 @@ vi.mock("three", async (importOriginal) => {
 
     constructor() {
       this.domElement = document.createElement("canvas");
-      this.xr = { enabled: true, setSession: vi.fn().mockResolvedValue(undefined) };
+      this.xr = {
+        enabled: true,
+        getReferenceSpace: vi.fn(() => mocks.referenceSpace),
+        setReferenceSpaceType: vi.fn(() => {
+          mocks.callOrder.push("setReferenceSpaceType");
+        }),
+        setSession: vi.fn(async () => {
+          mocks.callOrder.push("setSession");
+        }),
+      };
       this.info = {
         memory: { geometries: 1, textures: 1 },
         render: { calls: 1, triangles: 100 },
@@ -88,6 +109,8 @@ const SECOND_MODULE: WebXRValidationModule = {
   name: "Silla",
 };
 
+const LOCAL_SPACE = { name: "local" };
+
 function createMockXRSession() {
   const listeners = new Map<string, Set<(e: unknown) => void>>();
   const hitTestSource = { cancel: vi.fn() };
@@ -98,7 +121,7 @@ function createMockXRSession() {
       listeners.get(event)?.add(cb);
     }),
     domOverlayState: { type: "screen" },
-    enabledFeatures: ["hit-test", "dom-overlay"],
+    enabledFeatures: ["hit-test", "dom-overlay", "local-floor"],
     end: vi.fn().mockImplementation(async () => {
       for (const cb of [...(listeners.get("end") ?? [])]) cb({});
     }),
@@ -106,7 +129,7 @@ function createMockXRSession() {
       listeners.get(event)?.delete(cb);
     }),
     requestHitTestSource: vi.fn().mockResolvedValue(hitTestSource),
-    requestReferenceSpace: vi.fn().mockResolvedValue({}),
+    requestReferenceSpace: vi.fn().mockResolvedValue(LOCAL_SPACE),
   };
 
   const emit = (event: string, payload: unknown = {}) => {
@@ -147,9 +170,15 @@ function showReticle(renderer: (typeof mocks.renderers)[number]) {
   const frame = {
     getHitTestResults: () => [
       {
-        getPose: () => ({
-          transform: { matrix: new THREE.Matrix4().makeTranslation(1, 0, -1).toArray() },
-        }),
+        getPose: (space: object) =>
+          space === mocks.localFloorSpace
+            ? {
+                transform: {
+                  matrix: new THREE.Matrix4().makeTranslation(1, 0.126, -1).toArray(),
+                  position: { x: 1, y: 0.126, z: -1 },
+                },
+              }
+            : null,
       },
     ],
     getPose: () => null,
@@ -172,6 +201,8 @@ describe("webxr-validation-runtime", () => {
     mocks.renderers.length = 0;
     mocks.gate = null;
     mocks.loadFailures = 0;
+    mocks.callOrder.length = 0;
+    mocks.referenceSpace = mocks.localFloorSpace;
   });
 
   afterEach(() => {
@@ -313,17 +344,88 @@ describe("webxr-validation-runtime", () => {
     expect(onEnd).toHaveBeenCalledWith(true);
   });
 
-  it("beforexrselect sobre el overlay se cancela mientras la sesión está activa", async () => {
-    const { overlayRoot, runtime } = await startRuntime();
+  it("beforexrselect se cancela solo en controles y no en el root, y deja de cancelar al terminar", async () => {
+    const overlayRoot = document.createElement("div");
+    const button = document.createElement("button");
+    overlayRoot.append(button);
+    const { runtime } = await startRuntime({ overlayRoot });
 
-    const during = new Event("beforexrselect", { cancelable: true });
-    overlayRoot.dispatchEvent(during);
-    expect(during.defaultPrevented).toBe(true);
+    const onButton = new Event("beforexrselect", { bubbles: true, cancelable: true });
+    button.dispatchEvent(onButton);
+    expect(onButton.defaultPrevented).toBe(true);
+
+    const onRoot = new Event("beforexrselect", { bubbles: true, cancelable: true });
+    overlayRoot.dispatchEvent(onRoot);
+    expect(onRoot.defaultPrevented).toBe(false);
+
+    expect(JSON.parse(runtime.exportDiagnostics()).beforexrselectCancelados).toBe(1);
 
     await runtime.end();
-    const after = new Event("beforexrselect", { cancelable: true });
-    overlayRoot.dispatchEvent(after);
+    const after = new Event("beforexrselect", { bubbles: true, cancelable: true });
+    button.dispatchEvent(after);
     expect(after.defaultPrevented).toBe(false);
+  });
+
+  it("fija local-floor antes de setSession y usa el espacio del renderer (no uno paralelo)", async () => {
+    const { mock, renderer } = await startRuntime();
+
+    expect(renderer.xr.setReferenceSpaceType).toHaveBeenCalledWith("local-floor");
+    expect(mocks.callOrder).toEqual(["setReferenceSpaceType", "setSession"]);
+    const requested = mock.session.requestReferenceSpace.mock.calls.map((c: unknown[]) => c[0]);
+    expect(requested).not.toContain("local");
+  });
+
+  it("la retícula y getPose usan el espacio de renderer.xr; sin espacio no hay retícula pero cuenta el frame", async () => {
+    const { onDiagnostics, renderer, runtime } = await startRuntime();
+
+    mocks.referenceSpace = null;
+    showReticle(renderer);
+    let parsed = JSON.parse(runtime.exportDiagnostics());
+    expect(parsed.framesTotales).toBe(1);
+    expect(parsed.framesConPose).toBe(0);
+    expect(parsed.reticleVisible).toBe(false);
+
+    mocks.referenceSpace = mocks.localFloorSpace;
+    showReticle(renderer);
+    parsed = JSON.parse(runtime.exportDiagnostics());
+    expect(parsed.framesTotales).toBe(2);
+    expect(parsed.framesConResultadoHitTest).toBe(1);
+    expect(parsed.framesConPose).toBe(1);
+    expect(parsed.reticleVisible).toBe(true);
+    expect(parsed.reticleAltura).toBe(0.13);
+    expect(parsed.tipoEspacioReferencia).toBe("local-floor");
+    expect(parsed.sceneChildren).toBeGreaterThan(0);
+    expect(onDiagnostics).toHaveBeenCalled();
+  });
+
+  it("select usa el espacio de renderer.xr para getPose", async () => {
+    const { mock, renderer } = await startRuntime();
+    showReticle(renderer);
+    const getPose = vi.fn(() => null);
+
+    mock.emit("select", { frame: { getPose }, inputSource: selectEvent.inputSource });
+
+    expect(getPose).toHaveBeenCalledWith(selectEvent.inputSource.targetRaySpace, mocks.localFloorSpace);
+  });
+
+  it("select sin retícula registra un fallo visible y cuenta los eventos", async () => {
+    const { mock, onDiagnostics } = await startRuntime();
+
+    mock.emit("selectstart", selectEvent);
+    mock.emit("select", selectEvent);
+
+    const diagnostics = lastDiagnostics(onDiagnostics);
+    expect(diagnostics.failures).toContain("Toque ignorado: la retícula no está visible");
+    expect(diagnostics.select).toBe(1);
+    expect(diagnostics.selectstart).toBe(1);
+  });
+
+  it("el estado de carga por activo aparece en el diagnóstico", async () => {
+    const { runtime } = await startRuntime();
+
+    expect(JSON.parse(runtime.exportDiagnostics()).estadoActivos).toEqual({
+      "mesa@v1": "cargado",
+    });
   });
 
   it("una carga GLB en vuelo tras cleanup no crea instancias", async () => {

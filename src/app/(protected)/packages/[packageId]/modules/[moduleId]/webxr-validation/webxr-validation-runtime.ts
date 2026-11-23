@@ -68,6 +68,7 @@ export async function startWebXRValidationRuntime(
   let handle: XRSessionHandle | null = null;
   const failureList: string[] = [];
   const fps = createFpsMeter();
+  const inputCounters = { select: 0, selectstart: 0 };
 
   const initialScene = resetearEscena(LIMITE_INSTANCIAS_POR_DEFECTO);
   if (!initialScene.ok) throw initialScene.error;
@@ -82,12 +83,16 @@ export async function startWebXRValidationRuntime(
     return buildDiagnostics({
       failures: failureList,
       fabrica: options.fabrica,
+      assetStatus: models.status(),
       fps: fps.snapshot(),
+      inputCounters,
       lastEvent,
       objectCount: sceneState.instancias.length,
       renderer: active.renderer,
+      sceneChildren: scene.children.length,
       session: active.session,
       targetCount,
+      xrStats: active.stats(),
     });
   }
 
@@ -156,7 +161,7 @@ export async function startWebXRValidationRuntime(
   if (ended) throw new Error("La sesión WebXR terminó durante el arranque.");
   const active = activeHandle;
   handle = active;
-  const { localSpace, session } = active;
+  const { session } = active;
 
   const initialActivo = options.fabrica.obtener(options.primaryModule);
   if (!initialActivo.ok) {
@@ -233,7 +238,9 @@ export async function startWebXRValidationRuntime(
   }
 
   function inputPoint(source: XRInputSource, frame: XRFrame): Point | null {
-    const pose = frame.getPose(source.targetRaySpace, localSpace);
+    const space = active.referenceSpace();
+    if (!space) return null;
+    const pose = frame.getPose(source.targetRaySpace, space);
     if (!pose) return null;
     return { x: pose.transform.position.x, y: 0, z: pose.transform.position.z };
   }
@@ -273,8 +280,10 @@ export async function startWebXRValidationRuntime(
   }
 
   async function onSelect(event: XRInputSourceEvent) {
+    inputCounters.select += 1;
     lastEvent = `select:${event.inputSource.targetRayMode}`;
-    const pose = event.frame.getPose(event.inputSource.targetRaySpace, localSpace);
+    const space = active.referenceSpace();
+    const pose = space ? event.frame.getPose(event.inputSource.targetRaySpace, space) : null;
     if (pose) {
       const matrix = new THREE.Matrix4().fromArray(pose.transform.matrix);
       raycaster.ray.origin.setFromMatrixPosition(matrix);
@@ -291,7 +300,12 @@ export async function startWebXRValidationRuntime(
     }
 
     const position = active.reticlePosition();
-    if (!position) return;
+    if (!position) {
+      recordFailure(
+        "Toque ignorado: la retícula no está visible; apunta al piso y mueve el teléfono",
+      );
+      return;
+    }
     const point = { x: position.x, y: position.y, z: position.z };
 
     if (sceneState.idSeleccionado === null || sceneState.instancias.length === 0) {
@@ -317,6 +331,7 @@ export async function startWebXRValidationRuntime(
   selectStartListener = (event: Event) => {
     const { inputSource } = event as XRInputSourceEvent;
     activeSources.add(inputSource);
+    inputCounters.selectstart += 1;
     lastEvent = `selectstart:${inputSource.targetRayMode}`;
     report();
   };

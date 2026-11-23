@@ -27,6 +27,17 @@ type WebXRValidationViewProps = Readonly<{
 
 const EMPTY_DIAGNOSTICS: WebXRValidationDiagnostics = {
   activosFlyweight: 0,
+  beforexrselectCancelados: 0,
+  estadoActivos: {},
+  framesConPose: 0,
+  framesConResultadoHitTest: 0,
+  framesTotales: 0,
+  reticleAltura: 0,
+  reticleVisible: false,
+  sceneChildren: 0,
+  select: 0,
+  selectstart: 0,
+  tipoEspacioReferencia: "ninguno",
   domOverlay: false,
   failures: "ninguno",
   fpsAverage: 0,
@@ -60,6 +71,7 @@ export function WebXRValidationView({
   const [platform, setPlatform] = useState("pendiente");
   const [selectedTargetCount, setSelectedTargetCount] = useState<number>(1);
   const [copied, setCopied] = useState(false);
+  const [showReticleHelp, setShowReticleHelp] = useState(false);
 
   const stageRef = useRef<HTMLDivElement>(null);
   const overlayRef = useRef<HTMLDivElement>(null);
@@ -194,6 +206,18 @@ export function WebXRValidationView({
     }
   }
 
+  const running = status === "running";
+  const addMode = running && diagnostics.lastEvent === "add-mode";
+
+  useEffect(() => {
+    if (!running || diagnostics.reticleVisible) return;
+    const timer = setTimeout(() => setShowReticleHelp(true), 4000);
+    return () => {
+      clearTimeout(timer);
+      setShowReticleHelp(false);
+    };
+  }, [running, diagnostics.reticleVisible]);
+
   async function copyDiagnostics() {
     if (!runtimeRef.current) return;
     const json = runtimeRef.current.exportDiagnostics();
@@ -218,6 +242,91 @@ export function WebXRValidationView({
 
   const individualViewerHref = `/packages/${encodeURIComponent(packageId)}/modules/${encodeURIComponent(moduleId)}`;
   const busy = status === "checking" || status === "starting";
+
+  const diagnosticsList = (
+  <dl aria-label="Panel de diagnóstico WebXR" className="webxr-diagnostics">
+    <div>
+      <dt>User Agent</dt>
+      <dd>{platform}</dd>
+    </div>
+    <div>
+      <dt>Funciones concedidas</dt>
+      <dd>{diagnostics.grantedFeatures}</dd>
+    </div>
+    <div>
+      <dt>DOM overlay</dt>
+      <dd>{diagnostics.domOverlay ? "activo" : "no disponible"}</dd>
+    </div>
+    <div>
+      <dt>Objetos en escena</dt>
+      <dd>{diagnostics.objectCount} (objetivo: {selectedTargetCount})</dd>
+    </div>
+    <div>
+      <dt>FPS (actual / mín / prom)</dt>
+      <dd>
+        {diagnostics.fpsCurrent > 0
+          ? `${diagnostics.fpsCurrent} / ${diagnostics.fpsMin} / ${diagnostics.fpsAverage}`
+          : "calculando…"}
+      </dd>
+    </div>
+    <div>
+      <dt>Memoria estimada</dt>
+      <dd>{diagnostics.memory}</dd>
+    </div>
+    <div>
+      <dt>Activos Flyweight</dt>
+      <dd>{diagnostics.activosFlyweight}</dd>
+    </div>
+    <div>
+      <dt>Renderer info</dt>
+      <dd>
+        geom: {diagnostics.renderInfo.geometries} | tex: {diagnostics.renderInfo.textures} | calls: {diagnostics.renderInfo.calls} | tri: {diagnostics.renderInfo.triangles}
+      </dd>
+    </div>
+    <div>
+      <dt>Frames (total / con resultado / con pose)</dt>
+      <dd>
+        {diagnostics.framesTotales} / {diagnostics.framesConResultadoHitTest} / {diagnostics.framesConPose}
+      </dd>
+    </div>
+    <div>
+      <dt>Retícula</dt>
+      <dd>
+        {diagnostics.reticleVisible ? "visible" : "no visible"} (altura: {diagnostics.reticleAltura.toFixed(2)} m)
+      </dd>
+    </div>
+    <div>
+      <dt>Espacio de referencia</dt>
+      <dd>{diagnostics.tipoEspacioReferencia}</dd>
+    </div>
+    <div>
+      <dt>Eventos (beforexrselect cancelados / selectstart / select)</dt>
+      <dd>
+        {diagnostics.beforexrselectCancelados} / {diagnostics.selectstart} / {diagnostics.select}
+      </dd>
+    </div>
+    <div>
+      <dt>Carga de activos</dt>
+      <dd>
+        {Object.entries(diagnostics.estadoActivos)
+          .map(([key, value]) => `${key}: ${value}`)
+          .join(", ") || "ninguno"}
+      </dd>
+    </div>
+    <div>
+      <dt>scene.children</dt>
+      <dd>{diagnostics.sceneChildren}</dd>
+    </div>
+    <div>
+      <dt>Fallos registrados</dt>
+      <dd>{diagnostics.failures}</dd>
+    </div>
+    <div>
+      <dt>Último evento</dt>
+      <dd>{diagnostics.lastEvent}</dd>
+    </div>
+  </dl>
+  );
 
   return (
     <section aria-busy={busy} aria-labelledby="validation-title" className="webxr-spike">
@@ -257,8 +366,11 @@ export function WebXRValidationView({
 
       <div className="webxr-stage" data-testid="webxr-validation-stage" ref={stageRef} />
 
-      <div className="webxr-overlay" ref={overlayRef}>
-        <div className="webxr-actions">
+      <div
+        className={running ? "webxr-overlay webxr-overlay-running" : "webxr-overlay"}
+        ref={overlayRef}
+      >
+        <div className="webxr-actions" data-webxr-control>
           {status === "ready" || status === "error" ? (
             <button
               className="auth-submit"
@@ -279,7 +391,7 @@ export function WebXRValidationView({
                 onClick={() => runtimeRef.current?.add()}
                 type="button"
               >
-                + Añadir (retícula)
+                {addMode ? "Toca la pantalla para colocar" : "+ Añadir (retícula)"}
               </button>
               <button
                 aria-label="Girar 15 grados a la izquierda"
@@ -315,7 +427,7 @@ export function WebXRValidationView({
           ) : null}
         </div>
 
-        <div className="webxr-target-selector">
+        <div className="webxr-target-selector" data-webxr-control>
           <label htmlFor="target-count-select">Cantidad objetivo de prueba:</label>
           <div className="webxr-target-buttons" id="target-count-select">
             {[1, 5, 10, 20].map((count) => (
@@ -333,62 +445,26 @@ export function WebXRValidationView({
           </div>
         </div>
 
-        <dl aria-label="Panel de diagnóstico WebXR" className="webxr-diagnostics">
-          <div>
-            <dt>User Agent</dt>
-            <dd>{platform}</dd>
-          </div>
-          <div>
-            <dt>Funciones concedidas</dt>
-            <dd>{diagnostics.grantedFeatures}</dd>
-          </div>
-          <div>
-            <dt>DOM overlay</dt>
-            <dd>{diagnostics.domOverlay ? "activo" : "no disponible"}</dd>
-          </div>
-          <div>
-            <dt>Objetos en escena</dt>
-            <dd>{diagnostics.objectCount} (objetivo: {selectedTargetCount})</dd>
-          </div>
-          <div>
-            <dt>FPS (actual / mín / prom)</dt>
-            <dd>
-              {diagnostics.fpsCurrent > 0
-                ? `${diagnostics.fpsCurrent} / ${diagnostics.fpsMin} / ${diagnostics.fpsAverage}`
-                : "calculando…"}
-            </dd>
-          </div>
-          <div>
-            <dt>Memoria estimada</dt>
-            <dd>{diagnostics.memory}</dd>
-          </div>
-          <div>
-            <dt>Activos Flyweight</dt>
-            <dd>{diagnostics.activosFlyweight}</dd>
-          </div>
-          <div>
-            <dt>Renderer info</dt>
-            <dd>
-              geom: {diagnostics.renderInfo.geometries} | tex: {diagnostics.renderInfo.textures} | calls: {diagnostics.renderInfo.calls} | tri: {diagnostics.renderInfo.triangles}
-            </dd>
-          </div>
-          <div>
-            <dt>Fallos registrados</dt>
-            <dd>{diagnostics.failures}</dd>
-          </div>
-          <div>
-            <dt>Último evento</dt>
-            <dd>{diagnostics.lastEvent}</dd>
-          </div>
-        </dl>
-
-        {status === "running" ? (
-          <div className="webxr-export-action">
-            <button className="secondary-button" onClick={copyDiagnostics} type="button">
-              {copied ? "¡Diagnóstico copiado!" : "Copiar diagnóstico JSON"}
-            </button>
-          </div>
-        ) : null}
+        {running ? (
+          <>
+            {showReticleHelp ? (
+              <p className="webxr-help" data-webxr-control role="status">
+                Mueve el teléfono lentamente apuntando al piso con buena luz
+              </p>
+            ) : null}
+            <details className="webxr-details" data-webxr-control>
+              <summary>Diagnóstico</summary>
+              {diagnosticsList}
+              <div className="webxr-export-action">
+                <button className="secondary-button" onClick={copyDiagnostics} type="button">
+                  {copied ? "¡Diagnóstico copiado!" : "Copiar diagnóstico JSON"}
+                </button>
+              </div>
+            </details>
+          </>
+        ) : (
+          diagnosticsList
+        )}
       </div>
     </section>
   );

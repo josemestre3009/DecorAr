@@ -2,6 +2,8 @@ import type * as THREE from "three";
 
 import type { FabricaActivos3D } from "@/modules/ar/domain/fabrica-activos-3d";
 
+import type { XRSessionStats } from "./webxr-validation-session";
+
 export type WebXRValidationDiagnostics = Readonly<{
   domOverlay: boolean;
   fpsCurrent: number;
@@ -14,6 +16,17 @@ export type WebXRValidationDiagnostics = Readonly<{
   lastEvent: string;
   failures: string;
   activosFlyweight: number;
+  framesTotales: number;
+  framesConResultadoHitTest: number;
+  framesConPose: number;
+  reticleVisible: boolean;
+  reticleAltura: number;
+  tipoEspacioReferencia: string;
+  beforexrselectCancelados: number;
+  selectstart: number;
+  select: number;
+  estadoActivos: Readonly<Record<string, string>>;
+  sceneChildren: number;
   renderInfo: Readonly<{
     geometries: number;
     textures: number;
@@ -38,6 +51,10 @@ type DiagnosticsInput = Readonly<{
   targetCount: number;
   objectCount: number;
   fps: FpsSnapshot;
+  xrStats: XRSessionStats;
+  inputCounters: Readonly<{ selectstart: number; select: number }>;
+  assetStatus: Readonly<Record<string, string>>;
+  sceneChildren: number;
 }>;
 
 export function createFpsMeter(startedAt: number = performance.now()): FpsMeter {
@@ -89,9 +106,14 @@ export function buildDiagnostics(input: DiagnosticsInput): WebXRValidationDiagno
   const { renderer, session } = input;
   return {
     activosFlyweight: input.fabrica.activosCreados,
+    beforexrselectCancelados: input.xrStats.beforeXRSelectCancelled,
     domOverlay: session.domOverlayState?.type !== undefined,
+    estadoActivos: input.assetStatus,
     failures: input.failures.length > 0 ? input.failures.join(" | ") : "ninguno",
     fpsAverage: input.fps.fpsAverage,
+    framesConPose: input.xrStats.framesWithPose,
+    framesConResultadoHitTest: input.xrStats.framesWithHitResult,
+    framesTotales: input.xrStats.framesTotal,
     fpsCurrent: input.fps.fpsCurrent,
     fpsMin: input.fps.fpsMin,
     grantedFeatures: Array.from(session.enabledFeatures ?? []).join(", ") || "hit-test",
@@ -104,7 +126,13 @@ export function buildDiagnostics(input: DiagnosticsInput): WebXRValidationDiagno
       textures: renderer.info.memory.textures,
       triangles: renderer.info.render.triangles,
     },
+    reticleAltura: Math.round(input.xrStats.reticleHeight * 100) / 100,
+    reticleVisible: input.xrStats.reticleVisible,
+    sceneChildren: input.sceneChildren,
+    select: input.inputCounters.select,
+    selectstart: input.inputCounters.selectstart,
     targetCount: input.targetCount,
+    tipoEspacioReferencia: input.xrStats.referenceSpaceType,
   };
 }
 

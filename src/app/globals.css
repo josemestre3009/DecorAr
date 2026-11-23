@@ -1759,3 +1759,77 @@ body:has(.catalog-page) {
     flex: 1 1 40%;
   }
 }
+
+/* Overlay DOM de la sesión AR: transparente para que 'select' llegue a WebXR. */
+.webxr-overlay {
+  background: transparent;
+  pointer-events: none;
+}
+
+.webxr-overlay .webxr-actions,
+.webxr-overlay .webxr-target-selector,
+.webxr-overlay .webxr-details,
+.webxr-overlay .webxr-help,
+.webxr-overlay .webxr-diagnostics,
+.webxr-overlay button {
+  pointer-events: auto;
+}
+
+.webxr-overlay-running {
+  display: grid;
+  gap: 0.35rem;
+  inset: 0;
+  align-content: end;
+  padding: 0.5rem;
+}
+
+.webxr-overlay-running .webxr-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.webxr-overlay-running .webxr-actions button,
+.webxr-overlay-running .webxr-target-buttons button {
+  font-size: 0.8rem;
+  min-height: 2.5rem;
+  padding: 0.35rem 0.6rem;
+}
+
+.webxr-overlay-running .webxr-target-selector {
+  margin: 0;
+}
+
+.webxr-overlay-running .webxr-target-selector label {
+  display: none;
+}
+
+.webxr-help {
+  background: color-mix(in srgb, var(--ink) 80%, transparent);
+  border-radius: 0.5rem;
+  color: #fff;
+  font-size: 0.85rem;
+  margin: 0;
+  padding: 0.4rem 0.6rem;
+}
+
+.webxr-details {
+  background: color-mix(in srgb, var(--ink) 85%, transparent);
+  border-radius: 0.5rem;
+  color: #fff;
+  font-size: 0.8rem;
+  max-height: 45vh;
+  overflow: auto;
+  padding: 0.35rem 0.6rem;
+}
+
+.webxr-details summary {
+  cursor: pointer;
+  font-weight: 700;
+}
+
+.webxr-details summary:focus-visible,
+.webxr-overlay button:focus-visible {
+  outline: 3px solid var(--lime);
+  outline-offset: 2px;
+}
