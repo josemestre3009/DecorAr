@@ -57,6 +57,14 @@ import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/u
 import { ObtenerEscenaUseCase } from "@/modules/ar/application/use-cases/obtener-escena.use-case";
 import { GuardarEscenaUseCase } from "@/modules/ar/application/use-cases/guardar-escena.use-case";
 import { SupabaseEscenaRepository } from "@/modules/ar/infrastructure/supabase-escena-repository";
+import { QuoteController } from "@/interfaces/quotes/quote-controller";
+import { ChangeQuoteStatusUseCase } from "@/modules/quotes/application/use-cases/change-quote-status.use-case";
+import { CreateQuoteVersionUseCase } from "@/modules/quotes/application/use-cases/create-quote-version.use-case";
+import { CreateQuoteUseCase } from "@/modules/quotes/application/use-cases/create-quote.use-case";
+import { ListQuotesUseCase } from "@/modules/quotes/application/use-cases/list-quotes.use-case";
+import { SupabaseQuoteReader } from "@/modules/quotes/infrastructure/supabase-quote-reader";
+import { SupabaseQuoteRepository } from "@/modules/quotes/infrastructure/supabase-quote-repository";
+import { SupabaseQuoteSourceReader } from "@/modules/quotes/infrastructure/supabase-quote-source-reader";
 
 import { createAuthUseCases } from "@/shared/application/auth";
 import type { Clock, IdGenerator } from "@/shared/application/ports";
@@ -334,6 +342,48 @@ export async function createEventTemplateController(
     instantiateEvent: new InstantiateEventFromTemplateUseCase(eventTemplateRepository),
     listEventTemplates: new ListOwnedEventTemplatesUseCase(eventTemplateReader),
     renameEventTemplate: new RenameEventTemplateUseCase(eventTemplateRepository),
+    sessionGateway,
+  });
+}
+
+/**
+ * Controller factory for versioned quote Route Handlers (DECOR-50). Identity,
+ * the package/quote ownership checks and the quote reads use the session
+ * client, so RLS also applies. The package snapshot is read with service_role
+ * (like the budget snapshot: the catalog policy only exposes active modules)
+ * after `checkPackageAccess`, filtered by owner; the atomic writes run with
+ * service_role because the RPCs deny anon/authenticated and repeat the owner
+ * check inside the transaction.
+ */
+export async function createQuoteController(
+  options: SessionClientOptions = {},
+): Promise<QuoteController> {
+  const pendingHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(pendingHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const sessionGateway = createSessionGateway(sessionClient);
+  const adminClient = createAdminClient();
+  const quoteReader = new SupabaseQuoteReader(sessionClient);
+  const quoteRepository = new SupabaseQuoteRepository(adminClient);
+  const quoteSource = new SupabaseQuoteSourceReader(adminClient);
+
+  return new QuoteController({
+    authorizePackageAccess: new AuthorizePackageAccessUseCase(
+      sessionGateway,
+      createPackageOwnerReader(sessionClient),
+    ),
+    changeQuoteStatus: new ChangeQuoteStatusUseCase(quoteRepository),
+    createQuote: new CreateQuoteUseCase(quoteSource, quoteRepository, systemClock),
+    createQuoteVersion: new CreateQuoteVersionUseCase(quoteSource, quoteRepository, systemClock),
+    defaultHeaders: pendingHeaders,
+    listQuotes: new ListQuotesUseCase(quoteReader),
+    quoteReader,
     sessionGateway,
   });
 }

@@ -19,6 +19,11 @@ BEGIN;
 DELETE FROM private.processed_events;
 DELETE FROM private.domain_events;
 
+-- 1b. Limpieza de cotizaciones versionadas (DECOR-50). Las líneas se borran
+-- en cascada con su cotización; el contador vive en el esquema privado.
+DELETE FROM public.quotes;
+DELETE FROM private.quote_counters;
+
 -- 2. Limpieza de presupuestos persistidos
 DELETE FROM public.budgets;
 
