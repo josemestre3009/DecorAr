@@ -18,6 +18,7 @@ const PGLITE_TESTS = [
   "supabase/migrations/create-idempotent-budget-consumer.test.ts",
   "supabase/migrations/create-package-groups.test.ts",
   "supabase/migrations/decor-44-event-templates.test.ts",
+  "supabase/migrations/decor-50-quotes.test.ts",
   "supabase/migrations/edit-decorative-groups.test.ts",
 ];
 
