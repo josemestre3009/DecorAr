@@ -16,6 +16,7 @@ import { SupabaseEventTemplateRepository } from "@/infrastructure/supabase/supab
 import { CatalogController } from "@/interfaces/catalog/catalog-controller";
 import { EventTemplateController } from "@/interfaces/templates/event-template-controller";
 import { PackageController } from "@/interfaces/packages/package-controller";
+import { SceneController } from "@/interfaces/ar/scene-controller";
 import { type AssetStoragePort } from "@/modules/catalog/application/ports/asset-storage.port";
 import { type CatalogActivationPort } from "@/modules/catalog/application/ports/catalog-activation.port";
 import { type CatalogRepository } from "@/modules/catalog/application/ports/catalog-repository.port";
@@ -53,6 +54,9 @@ import { ListOwnedEventTemplatesUseCase } from "@/modules/packages/application/u
 import { RenameEventTemplateUseCase } from "@/modules/packages/application/use-cases/rename-event-template.use-case";
 import { UpdatePackageMetadataUseCase } from "@/modules/packages/application/use-cases/update-package-metadata.use-case";
 import { RemoveModuleFromPackageUseCase } from "@/modules/packages/application/use-cases/remove-module-from-package.use-case";
+import { ObtenerEscenaUseCase } from "@/modules/ar/application/use-cases/obtener-escena.use-case";
+import { GuardarEscenaUseCase } from "@/modules/ar/application/use-cases/guardar-escena.use-case";
+import { SupabaseEscenaRepository } from "@/modules/ar/infrastructure/supabase-escena-repository";
 import { QuoteController } from "@/interfaces/quotes/quote-controller";
 import { ChangeQuoteStatusUseCase } from "@/modules/quotes/application/use-cases/change-quote-status.use-case";
 import { CreateQuoteVersionUseCase } from "@/modules/quotes/application/use-cases/create-quote-version.use-case";
@@ -261,6 +265,44 @@ export async function createPackageController(
       updatePackageGroupUseCase,
       updatePackageMetadataUseCase,
     },
+  );
+}
+
+/**
+ * Controller factory for the scene endpoint (DECOR-46). Same authorization
+ * pattern as `createPackageController`: the session client checks ownership
+ * (RLS applies), the service-role client runs `save_package_scene`. Does not
+ * build `drainOutbox` or `PackageChangeConsumer`: saving a scene never emits
+ * an outbox event or touches the budget.
+ */
+export async function createSceneController(
+  options: SessionClientOptions = {},
+): Promise<SceneController> {
+  const pendingHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(pendingHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const sessionGateway = createSessionGateway(sessionClient);
+  const packageOwnerReader = createPackageOwnerReader(sessionClient);
+  const authorizePackageAccess = new AuthorizePackageAccessUseCase(
+    sessionGateway,
+    packageOwnerReader,
+  );
+
+  const escenaRepository = new SupabaseEscenaRepository(createAdminClient());
+  const obtenerEscenaUseCase = new ObtenerEscenaUseCase(escenaRepository);
+  const guardarEscenaUseCase = new GuardarEscenaUseCase(escenaRepository);
+
+  return new SceneController(
+    authorizePackageAccess,
+    obtenerEscenaUseCase,
+    guardarEscenaUseCase,
+    pendingHeaders,
   );
 }
 
