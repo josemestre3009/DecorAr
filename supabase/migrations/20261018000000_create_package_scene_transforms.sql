@@ -145,7 +145,8 @@ BEGIN
   FOR UPDATE;
 
   IF p_expected_version IS NOT NULL AND v_version <> p_expected_version THEN
-    RAISE EXCEPTION 'scene.version_conflict';
+    RAISE EXCEPTION 'scene.version_conflict'
+      USING DETAIL = v_version::text;
   END IF;
 
   SELECT count(*) INTO v_count FROM pg_catalog.jsonb_array_elements(p_transforms);

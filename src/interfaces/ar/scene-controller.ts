@@ -183,8 +183,14 @@ export class SceneController {
 
       if (!result.ok) {
         const { code, message } = result.error;
+        const currentSceneVersion = result.error.metadata.currentSceneVersion;
         return Response.json(
-          { error: { code, message } },
+          {
+            error: { code, message },
+            ...(code === "scene.version_conflict" && typeof currentSceneVersion === "number"
+              ? { currentSceneVersion }
+              : {}),
+          },
           { headers: responseHeaders, status: sceneErrorStatus(code) },
         );
       }

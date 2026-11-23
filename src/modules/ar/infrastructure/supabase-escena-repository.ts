@@ -19,7 +19,7 @@ const KNOWN_CODES: ReadonlyMap<string, string> = new Map([
 /** Postgres `invalid_text_representation`: un uuid mal formado llegó a la consulta. */
 const INVALID_TEXT_REPRESENTATION = "22P02";
 
-type RpcError = { readonly code?: string; readonly message: string };
+type RpcError = { readonly code?: string; readonly details?: string; readonly message: string };
 
 const persistenceError = (cause: unknown, fallback: string): DomainError =>
   new DomainError(
@@ -33,7 +33,17 @@ const persistenceError = (cause: unknown, fallback: string): DomainError =>
 const toDomainError = (error: RpcError): DomainError => {
   const knownMessage = KNOWN_CODES.get(error.message);
   if (knownMessage) {
-    return new DomainError(error.message, knownMessage, { cause: error });
+    const currentSceneVersion = error.message === "scene.version_conflict"
+      ? Number(error.details)
+      : Number.NaN;
+    return new DomainError(
+      error.message,
+      knownMessage,
+      { cause: error },
+      Number.isSafeInteger(currentSceneVersion) && currentSceneVersion >= 0
+        ? { currentSceneVersion }
+        : {},
+    );
   }
 
   if (error.code === INVALID_TEXT_REPRESENTATION) {

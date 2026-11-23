@@ -207,7 +207,14 @@ describe("SceneController.handlePut", () => {
   it("devuelve 409 ante conflicto de versión de escena", async () => {
     const { controller, guardarEscenaUseCase } = createMocks();
     guardarEscenaUseCase.execute.mockResolvedValue(
-      err(new DomainError("scene.version_conflict", "La escena cambió mientras guardabas.")),
+      err(
+        new DomainError(
+          "scene.version_conflict",
+          "La escena cambió mientras guardabas.",
+          undefined,
+          { currentSceneVersion: 3 },
+        ),
+      ),
     );
 
     const response = await controller.handlePut(
@@ -216,6 +223,13 @@ describe("SceneController.handlePut", () => {
     );
 
     expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      currentSceneVersion: 3,
+      error: {
+        code: "scene.version_conflict",
+        message: "La escena cambió mientras guardabas.",
+      },
+    });
   });
 
   it("devuelve 422 ante un límite de dominio excedido", async () => {

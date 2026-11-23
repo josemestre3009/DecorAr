@@ -54,7 +54,10 @@ describe("SupabaseEscenaRepository.guardar", () => {
   });
 
   it("los códigos conocidos llevan un mensaje en español, no el código crudo", async () => {
-    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: "scene.version_conflict" } });
+    const rpc = vi.fn().mockResolvedValue({
+      data: null,
+      error: { details: "4", message: "scene.version_conflict" },
+    });
 
     const result = await new SupabaseEscenaRepository(clientWithRpc(rpc)).guardar(command);
 
@@ -62,6 +65,7 @@ describe("SupabaseEscenaRepository.guardar", () => {
     if (!result.ok) {
       expect(result.error.code).toBe("scene.version_conflict");
       expect(result.error.message).toBe("La escena cambió mientras guardabas. Vuelve a intentarlo.");
+      expect(result.error.metadata).toEqual({ currentSceneVersion: 4 });
     }
   });
 });
