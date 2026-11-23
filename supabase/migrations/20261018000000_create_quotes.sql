@@ -297,6 +297,11 @@ DECLARE
   v_provided_count integer;
   v_mismatch boolean;
   v_lines_total bigint;
+  v_discount_cop bigint;
+  v_taxable_base_cop bigint;
+  v_tax_cop bigint;
+  v_total_cop bigint;
+  v_deposit_cop bigint;
 BEGIN
   IF p_quote IS NULL OR pg_catalog.jsonb_typeof(p_quote) <> 'object' THEN
     RAISE EXCEPTION 'quote.invalid_body';
@@ -369,6 +374,33 @@ BEGIN
     RAISE EXCEPTION 'quote.invalid_totals';
   END IF;
 
+  IF (p_quote ->> 'discountRateBp')::integer NOT BETWEEN 0 AND 10000
+    OR (p_quote ->> 'taxRateBp')::integer NOT BETWEEN 0 AND 10000
+    OR (p_quote ->> 'depositRateBp')::integer NOT BETWEEN 0 AND 10000
+  THEN
+    RAISE EXCEPTION 'chk_quotes_rates';
+  END IF;
+
+  v_discount_cop := pg_catalog.trunc(
+    (v_lines_total::numeric * (p_quote ->> 'discountRateBp')::integer + 5000) / 10000
+  )::bigint;
+  v_taxable_base_cop := v_lines_total - v_discount_cop;
+  v_tax_cop := pg_catalog.trunc(
+    (v_taxable_base_cop::numeric * (p_quote ->> 'taxRateBp')::integer + 5000) / 10000
+  )::bigint;
+  v_total_cop := v_taxable_base_cop + v_tax_cop;
+  v_deposit_cop := pg_catalog.trunc(
+    (v_total_cop::numeric * (p_quote ->> 'depositRateBp')::integer + 5000) / 10000
+  )::bigint;
+
+  IF (p_quote ->> 'discountCop')::bigint <> v_discount_cop
+    OR (p_quote ->> 'taxCop')::bigint <> v_tax_cop
+    OR (p_quote ->> 'totalCop')::bigint <> v_total_cop
+    OR (p_quote ->> 'depositCop')::bigint <> v_deposit_cop
+  THEN
+    RAISE EXCEPTION 'quote.invalid_totals';
+  END IF;
+
   INSERT INTO public.quotes (
     owner_id, package_id, source_package_version, quote_number, version, status,
     client_name, event_name, event_date, venue, event_type,
@@ -387,10 +419,10 @@ BEGIN
     (p_quote ->> 'taxRateBp')::integer,
     (p_quote ->> 'depositRateBp')::integer,
     (p_quote ->> 'subtotalCop')::bigint,
-    (p_quote ->> 'discountCop')::bigint,
-    (p_quote ->> 'taxCop')::bigint,
-    (p_quote ->> 'totalCop')::bigint,
-    (p_quote ->> 'depositCop')::bigint
+    v_discount_cop,
+    v_tax_cop,
+    v_total_cop,
+    v_deposit_cop
   )
   RETURNING id INTO v_quote_id;
 

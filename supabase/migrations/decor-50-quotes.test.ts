@@ -359,6 +359,16 @@ describe("DECOR-50: cotizaciones versionadas", () => {
       await expect(createQuote(packageId, USER_A, payload(snapshot))).rejects.toThrow("quote.snapshot_mismatch");
     });
 
+    it("calcula tasas sin desbordar el producto intermedio de bigint", async () => {
+      const amount = Number.MAX_SAFE_INTEGER;
+      const result = await db.query<{ rounded: string }>(
+        `SELECT trunc(($1::bigint::numeric * $2::integer + 5000) / 10000)::bigint::text AS rounded`,
+        [amount, 10_000],
+      );
+
+      expect(result.rows[0].rounded).toBe(amount.toString());
+    });
+
     it("subtotal que no es la suma de las líneas", async () => {
       const packageId = await seedEvent();
       await expect(
@@ -369,7 +379,18 @@ describe("DECOR-50: cotizaciones versionadas", () => {
     it("total que no cuadra con subtotal, descuento e impuesto", async () => {
       const packageId = await seedEvent();
       await expect(createQuote(packageId, USER_A, payload(snapshotOf(), { depositCop: 0, totalCop: 1 }))).rejects.toThrow(
-        "chk_quotes_total_arithmetic",
+        "quote.invalid_totals",
+      );
+    });
+
+    it.each([
+      ["descuento", { discountCop: 0, taxCop: 101_745, totalCop: 636_745, depositCop: 318_373 }],
+      ["impuesto", { taxCop: 0, totalCop: 481_500, depositCop: 240_750 }],
+      ["anticipo", { depositCop: 0 }],
+    ])("montos derivados que no coinciden con la tasa: %s", async (_label, totals) => {
+      const packageId = await seedEvent();
+      await expect(createQuote(packageId, USER_A, payload(snapshotOf(), totals))).rejects.toThrow(
+        "quote.invalid_totals",
       );
     });
 
