@@ -12,6 +12,7 @@ import { countUnitsByModule, type ConfiguratorBudget } from "../_lib/configurato
 import { resolvePackagesMode } from "../_lib/packages-client";
 import { buildZoneTree, flattenZones } from "../_lib/zone-tree";
 import { BudgetTotal } from "./budget-total";
+import { CreateQuoteForm } from "./create-quote-form";
 import { DuplicatePackageButton } from "./duplicate-package-button";
 import { EventMetadataEditor } from "./event-metadata-editor";
 import { EventSummary } from "./event-summary";
@@ -138,6 +139,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
           </div>
           <EventMetadataEditor detail={detail} packageId={packageId} />
           <SaveTemplateButton eventName={detail.name} packageId={packageId} />
+          <CreateQuoteForm clientName={detail.clientName} packageId={packageId} />
           <PackageContents
             nodes={detail.nodes}
             packageId={packageId}
