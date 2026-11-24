@@ -160,7 +160,7 @@ BEGIN
   SELECT q.status, q.valid_until INTO v_status, v_valid_until
   FROM public.quotes AS q
   WHERE q.id = p_quote_id AND q.owner_id = p_owner_id
-  FOR SHARE;
+  FOR UPDATE;
 
   IF NOT FOUND THEN
     RAISE EXCEPTION 'quote.not_found';

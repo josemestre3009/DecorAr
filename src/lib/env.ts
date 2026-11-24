@@ -44,8 +44,14 @@ export function getCloudinaryEnv() {
 
 /** Enlace público de cotizaciones (DECOR-53): base de la URL y secreto del HMAC del token. */
 export function getShareLinkEnv() {
+  const secret = requireEnv("DECOR_SHARE_LINK_SECRET");
+
+  if (Buffer.byteLength(secret, "utf8") < 32) {
+    throw new Error("DECOR_SHARE_LINK_SECRET must be at least 32 bytes");
+  }
+
   return {
     publicAppUrl: requireEnv("DECOR_PUBLIC_APP_URL"),
-    secret: requireEnv("DECOR_SHARE_LINK_SECRET"),
+    secret,
   };
 }
