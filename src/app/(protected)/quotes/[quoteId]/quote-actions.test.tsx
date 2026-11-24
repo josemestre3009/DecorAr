@@ -52,7 +52,11 @@ describe("QuoteActions (DECOR-51)", () => {
     render(<QuoteActions client={fakeClient(createQuoteVersion)} quote={QUOTE_FIXTURE} today="2026-12-05" />);
 
     fireEvent.click(screen.getByRole("button", { name: "Actualizar cotización" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("Elige una vigencia desde hoy en adelante.");
+    const alert = await screen.findByRole("alert");
+    const validUntil = screen.getByLabelText(/Nueva vigencia/);
+    expect(alert).toHaveTextContent("Elige una vigencia desde hoy en adelante.");
+    expect(validUntil).toHaveAttribute("aria-invalid", "true");
+    expect(validUntil).toHaveAttribute("aria-describedby", alert.id);
     expect(createQuoteVersion).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByLabelText(/Nueva vigencia/), { target: { value: "2026-12-20" } });

@@ -29,6 +29,7 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
   const expired = quote.validUntil < minDate;
   const [validUntil, setValidUntil] = useState(expired ? "" : quote.validUntil);
   const [pending, setPending] = useState(false);
+  const [validUntilError, setValidUntilError] = useState<string>();
   const [error, setError] = useState<string>();
 
   async function handleUpdate(event: FormEvent<HTMLFormElement>) {
@@ -36,10 +37,11 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
     if (pending || !quote.packageId) return;
 
     if (!validUntil || validUntil < minDate) {
-      setError("Elige una vigencia desde hoy en adelante.");
+      setValidUntilError("Elige una vigencia desde hoy en adelante.");
       return;
     }
 
+    setValidUntilError(undefined);
     setError(undefined);
     setPending(true);
 
@@ -89,6 +91,8 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
                   Nueva vigencia (la actual ya pasó)
                 </label>
                 <input
+                  aria-describedby={validUntilError ? "quote-valid-until-error" : undefined}
+                  aria-invalid={validUntilError ? true : undefined}
                   className="auth-input"
                   id="quote-new-valid-until"
                   min={minDate}
@@ -97,6 +101,11 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
                   type="date"
                   value={validUntil}
                 />
+                {validUntilError ? (
+                  <p className="auth-error" id="quote-valid-until-error" role="alert">
+                    {validUntilError}
+                  </p>
+                ) : null}
               </div>
             ) : null}
             <button aria-busy={pending} className="auth-submit quote-action" disabled={pending} type="submit">
