@@ -5,11 +5,15 @@ import { useEffect, useState } from "react";
 import { canShareQuote } from "@/modules/quotes/domain/quote-share-link";
 import type { QuoteStatus } from "@/modules/quotes/domain/quote-status";
 
+import { buildQuoteShareMessage, type QuoteShareSummary } from "../_lib/quote-share-message";
 import { createHttpQuotesClient, type QuotesClient, type QuoteShareLink } from "../_lib/quotes-client";
+import { WhatsAppShareActions } from "./whatsapp-share-actions";
 
 type ShareLinkSectionProps = {
   readonly quoteId: string;
   readonly status: QuoteStatus;
+  /** Datos del mensaje para compartir por WhatsApp (DECOR-54). */
+  readonly summary: QuoteShareSummary;
   /** Inyectable para las pruebas. */
   readonly client?: Pick<QuotesClient, "getShareLink" | "createShareLink" | "revokeShareLink">;
 };
@@ -17,8 +21,10 @@ type ShareLinkSectionProps = {
 /**
  * Enlace público del cliente (DECOR-53): crear/copiar/revocar. Solo visible
  * con una cotización enviada o aceptada; el servidor vuelve a validarlo.
+ * Con un enlace activo, además ofrece compartirlo por WhatsApp o con el menú
+ * nativo del dispositivo (DECOR-54).
  */
-export function ShareLinkSection({ quoteId, status, client }: ShareLinkSectionProps) {
+export function ShareLinkSection({ quoteId, status, summary, client }: ShareLinkSectionProps) {
   const quotes = client ?? createHttpQuotesClient();
   const [link, setLink] = useState<QuoteShareLink | null>(null);
   const [loaded, setLoaded] = useState(false);
@@ -63,6 +69,7 @@ export function ShareLinkSection({ quoteId, status, client }: ShareLinkSectionPr
   async function handleCopy() {
     if (!link) return;
 
+    setError(undefined);
     try {
       await navigator.clipboard.writeText(link.url);
       setCopied(true);
@@ -107,6 +114,11 @@ export function ShareLinkSection({ quoteId, status, client }: ShareLinkSectionPr
             >
               {copied ? "Copiado" : "Copiar enlace"}
             </button>
+            <WhatsAppShareActions
+              disabled={pending}
+              message={buildQuoteShareMessage(summary, link.url)}
+              onError={setError}
+            />
             <button
               aria-busy={pending}
               className="secondary-button quote-action"

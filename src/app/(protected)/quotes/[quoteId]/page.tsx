@@ -89,7 +89,17 @@ export default async function QuotePage({ params }: QuotePageProps) {
       {quote ? (
         <>
           <QuotePreview quote={quote} />
-          <ShareLinkSection quoteId={quote.id} status={quote.status} />
+          <ShareLinkSection
+            quoteId={quote.id}
+            status={quote.status}
+            summary={{
+              clientName: quote.client.name,
+              number: quote.number,
+              totalCop: quote.totals.totalCop,
+              validUntil: quote.validUntil,
+              version: quote.version,
+            }}
+          />
           <QuoteActions quote={quote} />
         </>
       ) : null}
