@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "@google/model-viewer": "^4.3.1",
+    "@react-pdf/renderer": "4.9.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.117.2",
     "cloudinary": "^2.11.0",
@@ -52,5 +53,14 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "vitest": "^5.0.2"
+  },
+  "overrides": {
+    "@react-pdf/font": "4.1.2",
+    "@react-pdf/image": "3.1.2",
+    "@react-pdf/layout": "5.2.0",
+    "@react-pdf/render": "4.7.0",
+    "@react-pdf/stylesheet": "6.3.2",
+    "@react-pdf/textkit": "7.0.1",
+    "@react-pdf/types": "2.14.0"
   }
 }

@@ -1884,6 +1884,7 @@ body:has(.catalog-page) {
   display: inline-flex;
   justify-content: center;
   min-height: 44px;
+  text-decoration: none;
 }
 
 .quote-form-grid {
