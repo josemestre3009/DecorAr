@@ -89,6 +89,14 @@ describe("QuoteActions (DECOR-51)", () => {
     expect(screen.getByText(/ya no existe/)).toBeInTheDocument();
   });
 
+  it("descarga el PDF de esta versión desde el servidor (DECOR-52)", () => {
+    render(<QuoteActions client={fakeClient(vi.fn())} quote={{ ...QUOTE_FIXTURE, packageId: null }} today={TODAY} />);
+
+    const link = screen.getByRole("link", { name: "Descargar PDF" });
+    expect(link).toHaveAttribute("href", `/api/quotes/${QUOTE_FIXTURE.id}/pdf`);
+    expect(link).toHaveAttribute("download");
+  });
+
   it("imprimir abre el diálogo del navegador", () => {
     const print = vi.spyOn(window, "print").mockImplementation(() => {});
     render(<QuoteActions client={fakeClient(vi.fn())} quote={QUOTE_FIXTURE} today={TODAY} />);

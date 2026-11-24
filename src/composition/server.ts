@@ -69,6 +69,7 @@ import { GetSharedQuoteUseCase } from "@/modules/quotes/application/use-cases/ge
 import { ListQuotesUseCase } from "@/modules/quotes/application/use-cases/list-quotes.use-case";
 import { RevokeQuoteShareLinkUseCase } from "@/modules/quotes/application/use-cases/revoke-quote-share-link.use-case";
 import { HmacShareTokenSigner } from "@/modules/quotes/infrastructure/hmac-share-token-signer";
+import { ReactPdfQuoteRenderer } from "@/modules/quotes/infrastructure/pdf/react-pdf-quote-renderer";
 import { SupabaseQuoteReader } from "@/modules/quotes/infrastructure/supabase-quote-reader";
 import { SupabaseQuoteRepository } from "@/modules/quotes/infrastructure/supabase-quote-repository";
 import {
@@ -358,6 +359,9 @@ export async function createEventTemplateController(
   });
 }
 
+/** Un solo renderer por proceso: el logo se lee una vez (DECOR-52). */
+const quotePdfRenderer = new ReactPdfQuoteRenderer();
+
 /**
  * Controller factory for versioned quote Route Handlers (DECOR-50). Identity,
  * the package/quote ownership checks and the quote reads use the session
@@ -395,6 +399,7 @@ export async function createQuoteController(
     createQuoteVersion: new CreateQuoteVersionUseCase(quoteSource, quoteRepository, systemClock),
     defaultHeaders: pendingHeaders,
     listQuotes: new ListQuotesUseCase(quoteReader),
+    pdfRenderer: quotePdfRenderer,
     quoteReader,
     sessionGateway,
   });

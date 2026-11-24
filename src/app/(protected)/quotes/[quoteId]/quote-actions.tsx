@@ -19,7 +19,8 @@ type QuoteActionsProps = {
 
 /**
  * Acciones de la vista previa (DECOR-51): volver a editar el evento, crear una
- * versión nueva con los cambios del evento (mismos términos) e imprimir.
+ * versión nueva con los cambios del evento (mismos términos), descargar el
+ * PDF de esta versión (DECOR-52) e imprimir.
  * Ninguna versión anterior se modifica: "Actualizar" crea otra (DECOR-50).
  */
 export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
@@ -125,6 +126,14 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
           {error}
         </p>
       ) : null}
+
+      <a
+        className="auth-submit quote-action"
+        download
+        href={`/api/quotes/${encodeURIComponent(quote.id)}/pdf`}
+      >
+        Descargar PDF
+      </a>
 
       <button className="secondary-button quote-action" onClick={() => window.print()} type="button">
         Imprimir
