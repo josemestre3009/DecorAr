@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
+import type { QuotePdfRenderer } from "../../modules/quotes/application/ports/quote-pdf-renderer.port";
 import type { QuoteReader } from "../../modules/quotes/application/ports/quote-repository.port";
+import { quoteFileName } from "../../modules/quotes/application/quote-document";
 import type { ChangeQuoteStatusUseCase } from "../../modules/quotes/application/use-cases/change-quote-status.use-case";
 import type { CreateQuoteVersionUseCase } from "../../modules/quotes/application/use-cases/create-quote-version.use-case";
 import type { CreateQuoteUseCase } from "../../modules/quotes/application/use-cases/create-quote.use-case";
@@ -21,6 +23,7 @@ export type QuoteControllerDependencies = {
   readonly createQuote: Pick<CreateQuoteUseCase, "execute">;
   readonly createQuoteVersion: Pick<CreateQuoteVersionUseCase, "execute">;
   readonly changeQuoteStatus: Pick<ChangeQuoteStatusUseCase, "execute">;
+  readonly pdfRenderer: QuotePdfRenderer;
   readonly defaultHeaders?: Record<string, string>;
 };
 
@@ -181,6 +184,35 @@ export class QuoteController {
       return Response.json(access.quote, { headers: this.headers(correlationId) });
     } catch (cause) {
       console.error(`[QuoteController.get] Error inesperado (${correlationId}):`, cause);
+      return this.internalError(correlationId);
+    }
+  }
+
+  /**
+   * `GET /api/quotes/{quoteId}/pdf` (DECOR-52): PDF de la versión guardada.
+   * Misma verificación que `handleGet` (401 sin sesión, 404 si es ajena o no
+   * existe); el contenido sale sólo del `QuoteDto` congelado.
+   */
+  async handleGetPdf(request: Request, quoteId: string): Promise<Response> {
+    const correlationId = correlationIdFor(request);
+    try {
+      const access = await this.access(correlationId, quoteId);
+      if (!access.ok) return access.response;
+
+      const pdf = await this.deps.pdfRenderer.render(access.quote);
+
+      return new Response(pdf as BodyInit, {
+        headers: {
+          ...this.headers(correlationId),
+          "cache-control": "private, no-store",
+          "content-disposition": `attachment; filename="${quoteFileName(access.quote)}"`,
+          "content-length": String(pdf.byteLength),
+          "content-type": "application/pdf",
+          "x-content-type-options": "nosniff",
+        },
+      });
+    } catch (cause) {
+      console.error(`[QuoteController.getPdf] Error inesperado (${correlationId}):`, cause);
       return this.internalError(correlationId);
     }
   }

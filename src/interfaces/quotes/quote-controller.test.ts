@@ -189,6 +189,53 @@ describe("QuoteController escrituras sobre una cotización", () => {
   });
 });
 
+describe("QuoteController.handleGetPdf (DECOR-52)", () => {
+  const PDF = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+
+  it("200: PDF de la versión guardada, descargable y sin caché", async () => {
+    const render = vi.fn().mockResolvedValue(PDF);
+    const { controller, deps } = build({ pdfRenderer: { render } });
+
+    const response = await controller.handleGetPdf(
+      new Request("http://localhost/x", { headers: { "x-correlation-id": "corr-1" } }),
+      QUOTE_ID,
+    );
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("content-type")).toBe("application/pdf");
+    expect(response.headers.get("content-disposition")).toBe('attachment; filename="cotizacion-1-v1.pdf"');
+    expect(response.headers.get("cache-control")).toBe("private, no-store");
+    expect(response.headers.get("content-length")).toBe("5");
+    expect(response.headers.get("x-correlation-id")).toBe("corr-1");
+    expect(new Uint8Array(await response.arrayBuffer())).toEqual(PDF);
+    expect(deps.quoteReader.getQuote).toHaveBeenCalledWith(QUOTE_ID, USER.id);
+    expect(render).toHaveBeenCalledWith(QUOTE);
+  });
+
+  it("401 sin sesión y 404 si es ajena o el id es inválido, sin generar el PDF", async () => {
+    const render = vi.fn();
+    const anonymous = build({ pdfRenderer: { render }, sessionGateway: { currentUser: vi.fn().mockResolvedValue(null) } });
+    const foreign = build({ pdfRenderer: { render }, quoteReader: { getQuote: vi.fn().mockResolvedValue(ok(null)) } });
+
+    expect((await anonymous.controller.handleGetPdf(new Request("http://localhost/x"), QUOTE_ID)).status).toBe(401);
+    expect((await foreign.controller.handleGetPdf(new Request("http://localhost/x"), QUOTE_ID)).status).toBe(404);
+    expect((await foreign.controller.handleGetPdf(new Request("http://localhost/x"), "no-es-uuid")).status).toBe(404);
+    expect(render).not.toHaveBeenCalled();
+  });
+
+  it("500 sin detalles si falla el render", async () => {
+    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const { controller } = build({ pdfRenderer: { render: vi.fn().mockRejectedValue(new Error("font")) } });
+
+    const response = await controller.handleGetPdf(new Request("http://localhost/x"), QUOTE_ID);
+    const body = await response.json();
+
+    expect(response.status).toBe(500);
+    expect(body).toEqual({ error: { code: "internal_error", message: "No pudimos completar la operación." } });
+    spy.mockRestore();
+  });
+});
+
 describe("quoteErrorStatus", () => {
   it.each([
     ["auth.unauthenticated", 401],
