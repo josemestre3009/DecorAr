@@ -14,6 +14,9 @@
 /** Moneda única de DecorAR. */
 export const QUOTE_CURRENCY = "COP" as const;
 
+/** Zona horaria comercial de DecorAR: la vigencia se compara con la fecha local. */
+export const QUOTE_TIME_ZONE = "America/Bogota";
+
 /** 100 % expresado en puntos básicos. */
 export const BASIS_POINTS_100 = 10_000;
 

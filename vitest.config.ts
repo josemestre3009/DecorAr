@@ -20,6 +20,7 @@ const PGLITE_TESTS = [
   "supabase/migrations/create-package-scene-transforms.test.ts",
   "supabase/migrations/decor-44-event-templates.test.ts",
   "supabase/migrations/decor-50-quotes.test.ts",
+  "supabase/migrations/decor-53-share-links.test.ts",
   "supabase/migrations/edit-decorative-groups.test.ts",
 ];
 

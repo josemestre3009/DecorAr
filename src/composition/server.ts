@@ -58,19 +58,30 @@ import { ObtenerEscenaUseCase } from "@/modules/ar/application/use-cases/obtener
 import { GuardarEscenaUseCase } from "@/modules/ar/application/use-cases/guardar-escena.use-case";
 import { SupabaseEscenaRepository } from "@/modules/ar/infrastructure/supabase-escena-repository";
 import { QuoteController } from "@/interfaces/quotes/quote-controller";
+import { QuoteShareLinkController } from "@/interfaces/quotes/quote-share-link-controller";
 import { ChangeQuoteStatusUseCase } from "@/modules/quotes/application/use-cases/change-quote-status.use-case";
+import { CreateQuoteShareLinkUseCase } from "@/modules/quotes/application/use-cases/create-quote-share-link.use-case";
 import { CreateQuoteVersionUseCase } from "@/modules/quotes/application/use-cases/create-quote-version.use-case";
 import { CreateQuoteUseCase } from "@/modules/quotes/application/use-cases/create-quote.use-case";
+import { GetQuoteShareLinkUseCase } from "@/modules/quotes/application/use-cases/get-quote-share-link.use-case";
 import { GetQuoteUseCase } from "@/modules/quotes/application/use-cases/get-quote.use-case";
+import { GetSharedQuoteUseCase } from "@/modules/quotes/application/use-cases/get-shared-quote.use-case";
 import { ListQuotesUseCase } from "@/modules/quotes/application/use-cases/list-quotes.use-case";
+import { RevokeQuoteShareLinkUseCase } from "@/modules/quotes/application/use-cases/revoke-quote-share-link.use-case";
+import { HmacShareTokenSigner } from "@/modules/quotes/infrastructure/hmac-share-token-signer";
 import { ReactPdfQuoteRenderer } from "@/modules/quotes/infrastructure/pdf/react-pdf-quote-renderer";
 import { SupabaseQuoteReader } from "@/modules/quotes/infrastructure/supabase-quote-reader";
 import { SupabaseQuoteRepository } from "@/modules/quotes/infrastructure/supabase-quote-repository";
+import {
+  SupabaseQuoteShareLinkRepository,
+  SupabaseSharedQuoteReader,
+} from "@/modules/quotes/infrastructure/supabase-quote-share-link-repository";
 import { SupabaseQuoteSourceReader } from "@/modules/quotes/infrastructure/supabase-quote-source-reader";
 
 import { createAuthUseCases } from "@/shared/application/auth";
 import type { Clock, IdGenerator } from "@/shared/application/ports";
 import { err, ok } from "@/shared/domain/result";
+import { getShareLinkEnv } from "@/lib/env";
 
 const systemClock: Clock = { now: () => new Date() };
 const uuidGenerator: IdGenerator = { generate: () => randomUUID() };
@@ -407,6 +418,62 @@ export async function createQuoteQueryDependencies(options: SessionClientOptions
       createSessionGateway(sessionClient),
       new SupabaseQuoteReader(sessionClient),
     ),
+  };
+}
+
+/**
+ * Controller factory for the quote share-link Route Handlers (DECOR-53).
+ * Identity and quote ownership use the session client (RLS applies); the
+ * share-link RPCs run with service_role because they deny
+ * anon/authenticated and repeat the owner check inside the transaction. The
+ * signer is the only place the HMAC secret is read.
+ */
+export async function createQuoteShareLinkController(
+  options: SessionClientOptions = {},
+): Promise<QuoteShareLinkController> {
+  const pendingHeaders: Record<string, string> = {};
+  const sessionClient = await createClient({
+    ...options,
+    onHeaders: (headers) => {
+      Object.assign(pendingHeaders, headers);
+      options.onHeaders?.(headers);
+    },
+  });
+
+  const { publicAppUrl, secret } = getShareLinkEnv();
+  const signer = new HmacShareTokenSigner(secret);
+  const adminClient = createAdminClient();
+  const shareLinkRepository = new SupabaseQuoteShareLinkRepository(adminClient);
+
+  return new QuoteShareLinkController({
+    createQuoteShareLink: new CreateQuoteShareLinkUseCase(
+      shareLinkRepository,
+      signer,
+      uuidGenerator,
+      systemClock,
+    ),
+    defaultHeaders: pendingHeaders,
+    getQuoteShareLink: new GetQuoteShareLinkUseCase(shareLinkRepository, signer),
+    publicAppUrl,
+    quoteReader: new SupabaseQuoteReader(sessionClient),
+    revokeQuoteShareLink: new RevokeQuoteShareLinkUseCase(shareLinkRepository),
+    sessionGateway: createSessionGateway(sessionClient),
+  });
+}
+
+/**
+ * Lectura pública de una cotización compartida (DECOR-53): lo que lee la
+ * página `/c/{token}`. Sin cliente de sesión: el visitante no tiene sesión,
+ * así que el único camino es `get_shared_quote` con service_role, que ya
+ * filtra por vigencia, revocación y estado de la cotización.
+ */
+export function createSharedQuoteQueryDependencies() {
+  const { secret } = getShareLinkEnv();
+  const signer = new HmacShareTokenSigner(secret);
+  const sharedQuoteReader = new SupabaseSharedQuoteReader(createAdminClient());
+
+  return {
+    getSharedQuote: new GetSharedQuoteUseCase(sharedQuoteReader, signer),
   };
 }
 

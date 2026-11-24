@@ -30,9 +30,20 @@ export type QuoteTermsRequest = {
 /** Lo que la interfaz necesita de la respuesta: el id para navegar a la vista previa. */
 export type CreatedQuote = { readonly id: string; readonly version: number };
 
+/** Enlace público de una cotización (DECOR-53), tal como lo expone la API. */
+export type QuoteShareLink = {
+  readonly id: string;
+  readonly url: string;
+  readonly expiresAt: string;
+  readonly revokedAt: string | null;
+};
+
 export type QuotesClient = {
   createQuote(packageId: string, terms: QuoteTermsRequest): Promise<Result<CreatedQuote, ApiFailure>>;
   createQuoteVersion(quoteId: string, terms: QuoteTermsRequest): Promise<Result<CreatedQuote, ApiFailure>>;
+  getShareLink(quoteId: string): Promise<Result<QuoteShareLink | null, ApiFailure>>;
+  createShareLink(quoteId: string): Promise<Result<QuoteShareLink, ApiFailure>>;
+  revokeShareLink(quoteId: string): Promise<Result<void, ApiFailure>>;
 };
 
 function isCreatedQuote(value: unknown): value is CreatedQuote {
@@ -79,11 +90,98 @@ async function postTerms(
   return isCreatedQuote(body) ? ok({ id: body.id, version: body.version }) : err(unexpectedResponseFailure(201));
 }
 
+function isQuoteShareLink(value: unknown): value is QuoteShareLink {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "id" in value &&
+    typeof value.id === "string" &&
+    "url" in value &&
+    typeof value.url === "string" &&
+    "expiresAt" in value &&
+    typeof value.expiresAt === "string"
+  );
+}
+
+function shareLinkUrl(quoteId: string): string {
+  return `/api/quotes/${encodeURIComponent(quoteId)}/share-link`;
+}
+
+async function readJsonBody(response: Response): Promise<Result<unknown, ApiFailure>> {
+  try {
+    return ok(await response.json());
+  } catch {
+    return err(unexpectedResponseFailure(response.status));
+  }
+}
+
+async function getShareLink(
+  fetcher: typeof fetch,
+  quoteId: string,
+): Promise<Result<QuoteShareLink | null, ApiFailure>> {
+  let response: Response;
+
+  try {
+    response = await fetcher(shareLinkUrl(quoteId), { headers: { Accept: "application/json" } });
+  } catch {
+    return err(networkFailure());
+  }
+
+  if (!response.ok) return err(await readApiError(response));
+
+  const body = await readJsonBody(response);
+  if (!body.ok) return body;
+
+  const { link } = body.value as { link?: unknown };
+  if (link === null || link === undefined) return ok(null);
+
+  return isQuoteShareLink(link) ? ok(link) : err(unexpectedResponseFailure(response.status));
+}
+
+async function createShareLink(
+  fetcher: typeof fetch,
+  quoteId: string,
+): Promise<Result<QuoteShareLink, ApiFailure>> {
+  let response: Response;
+
+  try {
+    response = await fetcher(shareLinkUrl(quoteId), { method: "POST" });
+  } catch {
+    return err(networkFailure());
+  }
+
+  if (response.status !== 201) {
+    return err(response.ok ? unexpectedResponseFailure(response.status) : await readApiError(response));
+  }
+
+  const body = await readJsonBody(response);
+  if (!body.ok) return body;
+
+  return isQuoteShareLink(body.value) ? ok(body.value) : err(unexpectedResponseFailure(201));
+}
+
+async function revokeShareLink(fetcher: typeof fetch, quoteId: string): Promise<Result<void, ApiFailure>> {
+  let response: Response;
+
+  try {
+    response = await fetcher(shareLinkUrl(quoteId), { method: "DELETE" });
+  } catch {
+    return err(networkFailure());
+  }
+
+  if (!response.ok) return err(await readApiError(response));
+
+  return ok(undefined);
+}
+
 export function createHttpQuotesClient(fetcher: typeof fetch = fetch): QuotesClient {
   return {
     createQuote: (packageId, terms) =>
       postTerms(fetcher, `/api/packages/${encodeURIComponent(packageId)}/quotes`, terms),
     createQuoteVersion: (quoteId, terms) =>
       postTerms(fetcher, `/api/quotes/${encodeURIComponent(quoteId)}/versions`, terms),
+    createShareLink: (quoteId) => createShareLink(fetcher, quoteId),
+    getShareLink: (quoteId) => getShareLink(fetcher, quoteId),
+    revokeShareLink: (quoteId) => revokeShareLink(fetcher, quoteId),
   };
 }

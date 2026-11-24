@@ -4,6 +4,7 @@ import {
   getAdminSupabaseEnv,
   getCloudinaryEnv,
   getPublicSupabaseEnv,
+  getShareLinkEnv,
   requireEnv,
 } from "./env";
 
@@ -64,6 +65,15 @@ describe("environment validation", () => {
 
     expect(() => getCloudinaryEnv()).toThrow(
       "Missing required environment variable: CLOUDINARY_URL",
+    );
+  });
+
+  it("rechaza un secreto débil para enlaces públicos", () => {
+    process.env.DECOR_PUBLIC_APP_URL = "https://example.com";
+    process.env.DECOR_SHARE_LINK_SECRET = "predecible";
+
+    expect(() => getShareLinkEnv()).toThrow(
+      "DECOR_SHARE_LINK_SECRET must be at least 32 bytes",
     );
   });
 });
