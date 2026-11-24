@@ -6,14 +6,18 @@ Cotizaciones versionadas con precios congelados (DECOR-50). Cada versión es una
   - `calculateQuote`: líneas y totales con aritmética entera en COP. Las tasas van en puntos básicos (1 % = 100). Redondea al peso con la mitad hacia arriba. Orden: descuento sobre el subtotal, impuesto sobre la base y anticipo sobre el total.
   - `validarTerminosCotizacion`: vigencia (ISO, no pasada en America/Bogota), tasas, condiciones y cliente opcional.
   - Máquina de estados: `draft → sent | expired` y `sent → accepted | expired`. `accepted` y `expired` son finales.
+  - `canShareQuote` / `resolveShareExpiry` (DECOR-53): solo `sent`/`accepted` se puede compartir; la vigencia de un enlace nunca supera el fin del día (America/Bogota) de `validUntil`.
 - `application`:
   - Casos de uso: `CreateQuoteUseCase` (versión 1), `CreateQuoteVersionUseCase` (mismo número, versión siguiente, releyendo el evento actual), `ChangeQuoteStatusUseCase` y `ListQuotesUseCase`.
-  - Puertos: `QuoteSourceReader`, `QuoteRepository` y `QuoteReader`.
-  - `QuoteDto` es el contrato que consumen vista previa (DECOR-51), PDF (DECOR-52) y enlace público (DECOR-53).
+  - Casos de uso del enlace público (DECOR-53): `CreateQuoteShareLinkUseCase` (idempotente), `GetQuoteShareLinkUseCase`, `RevokeQuoteShareLinkUseCase` y `GetSharedQuoteUseCase` (lectura sin sesión).
+  - Puertos: `QuoteSourceReader`, `QuoteRepository`, `QuoteReader`, `QuoteShareLinkRepository`, `SharedQuoteReader` y `ShareTokenSigner`.
+  - `QuoteDto` es el contrato que consumen vista previa (DECOR-51) y PDF (DECOR-52). `PublicQuoteDto` es el mismo contrato reducido que consume el enlace público (DECOR-53): sin `id`, `packageId`, `status` ni `moduleId` por línea.
 - `infrastructure` (server-only):
   - `SupabaseQuoteReader`: cliente de sesión, con RLS del dueño.
   - `SupabaseQuoteSourceReader`: service_role, porque el catálogo solo expone módulos activos. Filtra por dueño y agrupa `package_items` por módulo, ya que hay una fila por unidad.
   - `SupabaseQuoteRepository`: RPC con service_role.
+  - `HmacShareTokenSigner` (DECOR-53): `token = HMAC-SHA256(DECOR_SHARE_LINK_SECRET, linkId)`, determinista; la base de datos solo guarda `sha256(token)`.
+  - `SupabaseQuoteShareLinkRepository` / `SupabaseSharedQuoteReader` (DECOR-53): RPC con service_role.
 
 `quotes` no importa `packages`: lee el evento por su propio puerto, igual que `budget`.
 
@@ -46,3 +50,13 @@ Los montos que envíe el cliente se ignoran.
 | 409 | El evento cambió mientras se cotizaba (`quote.package_version_conflict`, `quote.snapshot_mismatch`) |
 | 422 | Regla de negocio violada |
 | 500 | Error interno, sin detalle |
+
+## Enlace público (DECOR-53)
+
+Permite a un cliente sin sesión consultar una cotización `sent` o `accepted`.
+
+- **Migración** (`20261019000000_create_quote_share_links.sql`): `private.quote_share_links` (token nunca guardado, solo `sha256(token)`), índice único parcial `(quote_id) WHERE revoked_at IS NULL`, disparador que revoca el enlace de la versión anterior al crear una nueva, y RPC `service_role`: `create_quote_share_link` (idempotente), `get_quote_share_link`, `revoke_quote_share_link` y `get_shared_quote` (nunca lanza error: un token inválido, vencido, revocado o de una cotización no compartible devuelve `NULL`).
+- **API** (`src/interfaces/quotes/quote-share-link-controller.ts`): `POST/GET/DELETE /api/quotes/{quoteId}/share-link`, autenticada, mismo patrón 401/404 que el resto de cotizaciones.
+- **Página pública**: `src/app/(public)/c/[token]/page.tsx`, sin sesión, `notFound()` uniforme ante cualquier motivo de rechazo. `src/proxy.ts` añade `/c` a las rutas públicas con `Cache-Control: no-store` y `Referrer-Policy: no-referrer`.
+- **Configuración**: `DECOR_PUBLIC_APP_URL` (origen de la URL compartida) y `DECOR_SHARE_LINK_SECRET` (secreto del HMAC; rotarlo invalida todos los enlaces activos a la vez).
+- El PDF de la página pública usa `window.print()` mientras no exista una ruta de descarga propia (DECOR-52).

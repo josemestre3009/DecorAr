@@ -77,3 +77,46 @@ export type ChangeQuoteStatusDto = {
   readonly quote: QuoteDto;
   readonly status: unknown;
 };
+
+/**
+ * Enlace público de una cotización (DECOR-53). El token nunca forma parte de
+ * este DTO: el caso de uso lo entrega aparte, una sola vez, justo al crearlo.
+ */
+export type QuoteShareLinkDto = {
+  readonly id: string;
+  readonly quoteId: string;
+  readonly expiresAt: string;
+  readonly createdAt: string;
+  readonly revokedAt: string | null;
+};
+
+/** Lo que el cliente de la UI del propietario recibe al crear el enlace. */
+export type CreatedQuoteShareLinkDto = QuoteShareLinkDto & { readonly token: string };
+
+/**
+ * Cotización vista por un visitante sin sesión a través de un enlace público
+ * (DECOR-53): mismos datos de cliente, evento, condiciones, tasas, totales y
+ * líneas que `QuoteDto`, sin `id`, `packageId`, `sourcePackageVersion`,
+ * `status`, `moduleId` por línea ni marcas de tiempo internas.
+ */
+export type PublicQuoteDto = {
+  readonly number: number;
+  readonly version: number;
+  readonly currency: typeof QUOTE_CURRENCY;
+  readonly client: { readonly name: string | null };
+  readonly event: {
+    readonly name: string;
+    readonly date: string | null;
+    readonly venue: string | null;
+    readonly type: string | null;
+  };
+  readonly validUntil: string;
+  readonly conditions: string | null;
+  readonly terms: {
+    readonly discountRateBp: number;
+    readonly taxRateBp: number;
+    readonly depositRateBp: number;
+  };
+  readonly totals: QuoteTotals;
+  readonly lines: readonly Omit<QuoteLineDto, "moduleId">[];
+};

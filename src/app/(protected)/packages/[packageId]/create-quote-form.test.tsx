@@ -13,6 +13,9 @@ vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }
 const fakeClient = (createQuote: QuotesClient["createQuote"]): QuotesClient => ({
   createQuote,
   createQuoteVersion: vi.fn(),
+  createShareLink: vi.fn(),
+  getShareLink: vi.fn(),
+  revokeShareLink: vi.fn(),
 });
 
 const TODAY = "2026-11-23";

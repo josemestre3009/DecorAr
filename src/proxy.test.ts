@@ -164,4 +164,18 @@ describe("proxy de sesión", () => {
 
     expect(response.headers.get("location")).toBe("http://localhost:3000/login");
   });
+
+  it("deja pasar el enlace público de cotizaciones sin sesión (DECOR-53)", async () => {
+    const response = await proxy(request("/c/token-de-ejemplo"));
+
+    expect(response.status).toBe(200);
+    expect(response.headers.get("location")).toBeNull();
+  });
+
+  it("aplica Cache-Control: no-store y Referrer-Policy: no-referrer al enlace público", async () => {
+    const response = await proxy(request("/c/token-de-ejemplo"));
+
+    expect(response.headers.get("Cache-Control")).toBe("no-store");
+    expect(response.headers.get("Referrer-Policy")).toBe("no-referrer");
+  });
 });

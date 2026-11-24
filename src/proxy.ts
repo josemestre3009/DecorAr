@@ -8,7 +8,17 @@ const LOGIN_PATH = "/login";
 // Se declara lo público, no lo protegido: una página nueva nace protegida y sólo
 // queda accesible sin sesión si alguien la añade aquí a propósito. La lista
 // complementaria, `/api`, se trata aparte porque no la redirige este archivo.
-const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup", "/docs/components.html"];
+// `/c` es el enlace público de cotizaciones (DECOR-53): su propio token hace
+// de credencial, así que no exige sesión.
+const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup", "/docs/components.html", "/c"];
+
+// El token nunca debe quedar en una caché intermedia ni viajar en el header
+// Referer de un salto posterior (DECOR-53).
+const SHARE_LINK_PREFIX = "/c/";
+const SHARE_LINK_HEADERS: Record<string, string> = {
+  "Cache-Control": "no-store",
+  "Referrer-Policy": "no-referrer",
+};
 
 // El healthcheck del contenedor (DECOR-37) no lleva sesión ni debe depender de
 // que Supabase esté configurado o responda: se atiende sin crear el cliente.
@@ -74,6 +84,10 @@ export async function proxy(request: NextRequest) {
   const { data } = await supabase.auth.getClaims();
   const isAuthenticated = Boolean(data?.claims?.sub);
   const { pathname } = request.nextUrl;
+
+  if (pathname.startsWith(SHARE_LINK_PREFIX)) {
+    return applyHeaders(response, { ...pendingHeaders, ...SHARE_LINK_HEADERS });
+  }
 
   if (isAuthenticated || isApiRoute(pathname) || isPublicPage(pathname)) {
     return applyHeaders(response, pendingHeaders);

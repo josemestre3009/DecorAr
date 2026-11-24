@@ -14,6 +14,7 @@ import { RefreshButton } from "../../packages/[packageId]/refresh-button";
 import { quoteTitle } from "../_lib/quote-format";
 import { QuoteActions } from "./quote-actions";
 import { QuotePreview } from "./quote-preview";
+import { ShareLinkSection } from "./share-link-section";
 
 export const metadata: Metadata = {
   title: "Cotización · DecorAR",
@@ -88,6 +89,7 @@ export default async function QuotePage({ params }: QuotePageProps) {
       {quote ? (
         <>
           <QuotePreview quote={quote} />
+          <ShareLinkSection quoteId={quote.id} status={quote.status} />
           <QuoteActions quote={quote} />
         </>
       ) : null}

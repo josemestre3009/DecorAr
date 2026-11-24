@@ -1,10 +1,40 @@
-import type { QuoteDto } from "@/modules/quotes/application/dtos/quote.dto";
+import type { QuoteLineDto } from "@/modules/quotes/application/dtos/quote.dto";
+import type { QuoteTotals } from "@/modules/quotes/domain/quote";
+import type { QuoteStatus } from "@/modules/quotes/domain/quote-status";
 
 import { formatCop, formatEventDate } from "../../packages/_lib/format";
 import { formatRateBp, quoteStatusLabel, quoteTitle } from "../_lib/quote-format";
 
+/**
+ * Lo mínimo que la vista previa necesita. `QuoteDto` (propietario, DECOR-51)
+ * y `PublicQuoteDto` (enlace público, DECOR-53) la satisfacen ambos por
+ * tipado estructural: el primero trae `status` y `moduleId` por línea, que
+ * este componente ignora cuando faltan.
+ */
+export type QuotePreviewData = {
+  readonly number: number;
+  readonly version: number;
+  readonly status?: QuoteStatus;
+  readonly client: { readonly name: string | null };
+  readonly event: {
+    readonly name: string;
+    readonly date: string | null;
+    readonly venue: string | null;
+    readonly type: string | null;
+  };
+  readonly validUntil: string;
+  readonly conditions: string | null;
+  readonly terms: {
+    readonly discountRateBp: number;
+    readonly taxRateBp: number;
+    readonly depositRateBp: number;
+  };
+  readonly totals: QuoteTotals;
+  readonly lines: readonly Omit<QuoteLineDto, "moduleId">[];
+};
+
 type QuotePreviewProps = {
-  readonly quote: QuoteDto;
+  readonly quote: QuotePreviewData;
 };
 
 const NOT_DEFINED = "Sin definir";
@@ -13,7 +43,8 @@ const NOT_DEFINED = "Sin definir";
  * Vista previa de una versión de cotización (DECOR-51). Componente puro: solo
  * muestra lo que se guardó en `quotes`/`quote_lines` (precios y totales
  * congelados por el servidor); no recalcula nada. El PDF (DECOR-52) puede
- * reutilizar la misma estructura.
+ * reutilizar la misma estructura. El enlace público (DECOR-53) la reutiliza
+ * sin mostrar el estado, que esa vista no recibe.
  */
 export function QuotePreview({ quote }: QuotePreviewProps) {
   const { client, event, terms, totals } = quote;
@@ -23,9 +54,11 @@ export function QuotePreview({ quote }: QuotePreviewProps) {
     <article aria-label={quoteTitle(quote.number, quote.version)} className="quote-sheet">
       <header className="quote-sheet-header">
         <p className="quote-meta">
-          <span className="quote-status" data-status={quote.status}>
-            {quoteStatusLabel(quote.status)}
-          </span>
+          {quote.status ? (
+            <span className="quote-status" data-status={quote.status}>
+              {quoteStatusLabel(quote.status)}
+            </span>
+          ) : null}
           <span>
             Válida hasta <time dateTime={quote.validUntil}>{validUntil}</time>
           </span>

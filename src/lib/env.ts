@@ -41,3 +41,11 @@ export function getCloudinaryEnv() {
     url: requireEnv("CLOUDINARY_URL"),
   };
 }
+
+/** Enlace público de cotizaciones (DECOR-53): base de la URL y secreto del HMAC del token. */
+export function getShareLinkEnv() {
+  return {
+    publicAppUrl: requireEnv("DECOR_PUBLIC_APP_URL"),
+    secret: requireEnv("DECOR_SHARE_LINK_SECRET"),
+  };
+}

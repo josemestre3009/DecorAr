@@ -21,6 +21,9 @@ DELETE FROM private.domain_events;
 
 -- 1b. Limpieza de cotizaciones versionadas (DECOR-50). Las líneas se borran
 -- en cascada con su cotización; el contador vive en el esquema privado.
+-- Los enlaces públicos (DECOR-53) se borran en cascada con la cotización,
+-- pero se limpian aparte por si quedara alguno huérfano.
+DELETE FROM private.quote_share_links;
 DELETE FROM public.quotes;
 DELETE FROM private.quote_counters;
 

@@ -1,7 +1,7 @@
 import type { Clock } from "../../../shared/application/ports";
+import { QUOTE_TIME_ZONE } from "../domain/quote";
 
-/** Zona horaria comercial de DecorAR: la vigencia se compara con la fecha local. */
-export const QUOTE_TIME_ZONE = "America/Bogota";
+export { QUOTE_TIME_ZONE };
 
 /**
  * Fecha de hoy (`YYYY-MM-DD`) en Colombia. Con UTC, desde las 7 p. m. ya sería
