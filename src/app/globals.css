@@ -1725,3 +1725,266 @@ body:has(.catalog-page) {
     font-size: 1rem;
   }
 }
+
+/* --- Vista previa de cotización (DECOR-51) ---
+ * Hoja legible en móvil, escritorio e impresión. Mismos tokens crema/cobre;
+ * en pantallas angostas cada fila de la tabla se vuelve una tarjeta para no
+ * desplazar horizontalmente.
+ */
+
+.quote-sheet {
+  background: var(--color-decor-surface);
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 10%, transparent);
+  border-radius: 1.25rem;
+  display: grid;
+  gap: 1.5rem;
+  margin-bottom: 1rem;
+  padding: 1.25rem;
+}
+
+.quote-meta {
+  align-items: center;
+  color: var(--color-decor-ink-soft);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 1rem;
+  margin: 0;
+}
+
+.quote-status {
+  background: var(--color-decor-copper-light);
+  border-radius: 999px;
+  color: var(--color-decor-copper-dark);
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  padding: 0.2rem 0.7rem;
+  text-transform: uppercase;
+}
+
+.quote-section {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-section .section-title {
+  margin: 0;
+}
+
+.quote-facts {
+  display: grid;
+  gap: 0.75rem 1.5rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  margin: 0;
+}
+
+.quote-facts dt,
+.quote-table thead th {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.quote-facts dd {
+  font-weight: 600;
+  margin: 0.15rem 0 0;
+  overflow-wrap: anywhere;
+}
+
+.quote-table {
+  border-collapse: collapse;
+  width: 100%;
+}
+
+.quote-table th,
+.quote-table td {
+  border-bottom: 1px solid color-mix(in srgb, var(--color-decor-ink) 10%, transparent);
+  padding: 0.65rem 0.5rem;
+  text-align: left;
+  vertical-align: top;
+}
+
+.quote-table .quote-concept {
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.quote-table .quote-num {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  white-space: nowrap;
+}
+
+.quote-empty {
+  margin: 0;
+}
+
+.quote-totals {
+  border-top: 2px solid color-mix(in srgb, var(--color-decor-copper) 35%, transparent);
+  padding-top: 1rem;
+}
+
+.quote-totals-list {
+  display: grid;
+  gap: 0.4rem;
+  margin: 0 0 0 auto;
+  max-width: 26rem;
+  width: 100%;
+}
+
+.quote-totals-list > div {
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.quote-totals-list dt {
+  color: var(--color-decor-ink-soft);
+}
+
+.quote-totals-list dd {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  margin: 0;
+  white-space: nowrap;
+}
+
+.quote-grand-total {
+  border-top: 1px solid color-mix(in srgb, var(--color-decor-ink) 15%, transparent);
+  margin-top: 0.35rem;
+  padding-top: 0.6rem;
+}
+
+.quote-grand-total dt,
+.quote-grand-total dd {
+  color: var(--color-decor-copper-dark);
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.quote-conditions {
+  margin: 0;
+  white-space: pre-line;
+}
+
+.quote-actions {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-actions-form {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.quote-action {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.quote-form-grid {
+  display: grid;
+  gap: 0.75rem 1rem;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 12rem), 1fr));
+}
+
+@media (min-width: 52rem) {
+  .quote-actions-form {
+    align-items: end;
+    grid-template-columns: auto auto auto;
+    justify-content: start;
+  }
+
+  .quote-actions > .quote-action {
+    justify-self: start;
+  }
+}
+
+@media screen and (max-width: 760px) {
+  .quote-table thead {
+    border: 0;
+    clip: rect(0 0 0 0);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .quote-table,
+  .quote-table tbody,
+  .quote-table tr,
+  .quote-table th,
+  .quote-table td {
+    display: block;
+  }
+
+  .quote-table tr {
+    border-bottom: 1px solid color-mix(in srgb, var(--color-decor-ink) 10%, transparent);
+    padding: 0.6rem 0;
+  }
+
+  .quote-table th,
+  .quote-table td {
+    border: 0;
+    padding: 0.15rem 0;
+  }
+
+  .quote-table td.quote-num {
+    display: flex;
+    justify-content: space-between;
+    text-align: right;
+  }
+
+  .quote-table td.quote-num::before {
+    color: var(--color-decor-ink-soft);
+    content: attr(data-label);
+    font-weight: 400;
+  }
+}
+
+@media print {
+  @page {
+    margin: 16mm 14mm;
+  }
+
+  body,
+  .catalog-page,
+  .quote-sheet {
+    background: #fff !important;
+    box-shadow: none !important;
+    color: #000;
+  }
+
+  .quote-page .catalog-nav,
+  .quote-page .page-lead,
+  .quote-actions,
+  .simulation-note {
+    display: none !important;
+  }
+
+  .quote-sheet {
+    border: 0;
+    padding: 0;
+  }
+
+  .quote-table thead {
+    display: table-header-group;
+  }
+
+  .quote-table tr,
+  .quote-totals,
+  .quote-facts > div {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .quote-section .section-title {
+    break-after: avoid;
+    page-break-after: avoid;
+  }
+}

@@ -61,6 +61,7 @@ import { QuoteController } from "@/interfaces/quotes/quote-controller";
 import { ChangeQuoteStatusUseCase } from "@/modules/quotes/application/use-cases/change-quote-status.use-case";
 import { CreateQuoteVersionUseCase } from "@/modules/quotes/application/use-cases/create-quote-version.use-case";
 import { CreateQuoteUseCase } from "@/modules/quotes/application/use-cases/create-quote.use-case";
+import { GetQuoteUseCase } from "@/modules/quotes/application/use-cases/get-quote.use-case";
 import { ListQuotesUseCase } from "@/modules/quotes/application/use-cases/list-quotes.use-case";
 import { SupabaseQuoteReader } from "@/modules/quotes/infrastructure/supabase-quote-reader";
 import { SupabaseQuoteRepository } from "@/modules/quotes/infrastructure/supabase-quote-repository";
@@ -386,6 +387,22 @@ export async function createQuoteController(
     quoteReader,
     sessionGateway,
   });
+}
+
+/**
+ * Vista previa de cotización (DECOR-51): lo que lee la Server Component de
+ * `/quotes/{id}`. Sólo el cliente de sesión, nunca service_role: la lectura
+ * corre bajo la RLS del dueño, igual que `GET /api/quotes/{id}`.
+ */
+export async function createQuoteQueryDependencies(options: SessionClientOptions = {}) {
+  const sessionClient = await createClient(options);
+
+  return {
+    getQuote: new GetQuoteUseCase(
+      createSessionGateway(sessionClient),
+      new SupabaseQuoteReader(sessionClient),
+    ),
+  };
 }
 
 /**
