@@ -25,12 +25,12 @@ describe("FlowSteps (DECOR-49)", () => {
     expect(screen.queryByRole("link", { name: "Cotización" })).toBeNull();
   });
 
-  it("con evento, los pasos llevan a su sección del configurador", () => {
+  it("con evento, los pasos llevan a su sección del evento", () => {
     render(<FlowSteps current="cotizacion" packageId="pkg 1" />);
 
-    expect(screen.getByRole("link", { name: "Evento" })).toHaveAttribute("href", "/packages/pkg%201#evento");
-    expect(screen.getByRole("link", { name: "Objetos" })).toHaveAttribute("href", "/packages/pkg%201#objetos");
-    expect(screen.getByRole("link", { name: "Montaje 3D" })).toHaveAttribute("href", "/packages/pkg%201#montaje");
+    expect(screen.getByRole("link", { name: "Evento" })).toHaveAttribute("href", "/packages/pkg%201");
+    expect(screen.getByRole("link", { name: "Objetos" })).toHaveAttribute("href", "/packages/pkg%201?seccion=objetos");
+    expect(screen.getByRole("link", { name: "Montaje 3D" })).toHaveAttribute("href", "/packages/pkg%201?seccion=catalogo");
     // Sin cotización abierta, "Compartir" todavía no tiene a dónde llevar.
     expect(screen.queryByRole("link", { name: "Compartir" })).toBeNull();
   });

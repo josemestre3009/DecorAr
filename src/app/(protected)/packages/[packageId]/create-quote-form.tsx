@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 
@@ -7,6 +8,7 @@ import { MAX_CONDITIONS_LENGTH, MAX_QUOTE_CLIENT_NAME_LENGTH } from "@/modules/q
 
 import { parsePercentToBp, todayInBogota } from "../../quotes/_lib/quote-format";
 import { createHttpQuotesClient, type QuotesClient } from "../../quotes/_lib/quotes-client";
+import { eventSectionHref } from "../_lib/event-sections";
 
 type CreateQuoteFormProps = {
   readonly packageId: string;
@@ -134,9 +136,9 @@ export function CreateQuoteForm({ packageId, clientName, client, today, hasItems
       ) : (
         <p className="content-hint">
           Agrega al menos un elemento del catálogo para poder cotizar.{" "}
-          <a className="secondary-link" href="#catalogo">
+          <Link className="secondary-link" href={eventSectionHref(packageId, "catalogo")}>
             Ir al catálogo
-          </a>
+          </Link>
         </p>
       )}
 

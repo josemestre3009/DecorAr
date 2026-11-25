@@ -1,5 +1,7 @@
 import Link from "next/link";
 
+import { eventSectionHref, type EventSectionId } from "../packages/_lib/event-sections";
+
 /**
  * Recorrido V2 (DECOR-49): Evento → Objetos → Montaje 3D → Cotización →
  * Compartir. Se muestra arriba de cada pantalla del recorrido para que siempre
@@ -28,6 +30,14 @@ type FlowStepsProps = {
   readonly quoteId?: string | null;
 };
 
+/** Sección del evento donde vive cada paso (rediseño visual móvil). */
+const STEP_SECTION: Readonly<Record<Exclude<FlowStepId, "compartir">, EventSectionId>> = {
+  cotizacion: "cotizar",
+  evento: "evento",
+  montaje: "catalogo",
+  objetos: "objetos",
+};
+
 export function flowStepHref(
   step: FlowStepId,
   packageId: string | null | undefined,
@@ -37,7 +47,7 @@ export function flowStepHref(
     return quoteId ? `/quotes/${encodeURIComponent(quoteId)}#compartir` : null;
   }
 
-  return packageId ? `/packages/${encodeURIComponent(packageId)}#${step}` : null;
+  return packageId ? eventSectionHref(packageId, STEP_SECTION[step]) : null;
 }
 
 export function FlowSteps({ current, packageId = null, quoteId = null }: FlowStepsProps) {

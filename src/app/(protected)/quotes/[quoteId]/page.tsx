@@ -8,7 +8,9 @@ import type { QuoteDto } from "@/modules/quotes/application/dtos/quote.dto";
 import { createQuoteQueryDependencies } from "@/composition/server";
 import { requireSessionUser } from "@/composition/session-guard";
 
-import { FlowSteps } from "../../_flow/flow-steps";
+import { Icon } from "../../_ui/icon";
+import { EventNav } from "../../packages/[packageId]/event-nav";
+import { eventSectionHref } from "../../packages/_lib/event-sections";
 import { resolvePackagesMode } from "../../packages/_lib/packages-client";
 import { PageHeading } from "../../packages/[packageId]/page-heading";
 import { RefreshButton } from "../../packages/[packageId]/refresh-button";
@@ -61,14 +63,19 @@ export default async function QuotePage({ params }: QuotePageProps) {
   const state = isLive ? await loadQuotePreview(quoteId) : null;
   const quote = state?.status === "ready" ? state.quote : null;
 
-  return (
-    <main className="catalog-page quote-page">
-      <header className="catalog-header">
+  const packageId = quote?.packageId ?? null;
+  const shareable = quote?.status === "sent" || quote?.status === "accepted";
+
+  const content = (
+    <main className={packageId ? "catalog-page quote-page event-main" : "catalog-page quote-page"}>
+      <header className="event-header">
         <div className="catalog-nav quote-nav">
-          <Link className="auth-link" href={quote?.packageId ? `/packages/${quote.packageId}` : "/packages"}>
-            {quote?.packageId ? "← Evento" : "← Eventos"}
+          <Link className="back-link" href={packageId ? eventSectionHref(packageId, "cotizar") : "/packages"}>
+            <Icon name="back" size={18} />
+            {packageId ? "Cotizaciones" : "Eventos"}
           </Link>
         </div>
+        <p className="event-kicker">{quote ? (shareable ? "Lista para compartir" : "Revisa antes de enviar") : "Cotización"}</p>
         <PageHeading>{quote ? quoteTitle(quote.number, quote.version) : "Cotización"}</PageHeading>
         <p className="page-lead">
           Revisa los datos, los conceptos y los totales antes de generar o compartir el PDF.
@@ -90,12 +97,6 @@ export default async function QuotePage({ params }: QuotePageProps) {
 
       {quote ? (
         <>
-          {/* Recorrido V2 (DECOR-49): una cotización enviada o aceptada ya está en "Compartir". */}
-          <FlowSteps
-            current={quote.status === "sent" || quote.status === "accepted" ? "compartir" : "cotizacion"}
-            packageId={quote.packageId}
-            quoteId={quote.id}
-          />
           <QuotePreview quote={quote} />
           <QuoteActions quote={quote} />
           <div className="flow-section quote-share-step" id="compartir">
@@ -112,8 +113,29 @@ export default async function QuotePage({ params }: QuotePageProps) {
               }}
             />
           </div>
+
+          {/* Acciones a mano en celular: barra fija sobre la navegación (no se imprime). */}
+          <div className="quote-quick-actions">
+            <a className="secondary-button quote-quick-action" download href={`/api/quotes/${encodeURIComponent(quote.id)}/pdf`}>
+              <Icon name="download" />
+              PDF
+            </a>
+            <a className="auth-submit quote-quick-action" href="#compartir">
+              <Icon name="share" />
+              {shareable ? "Compartir" : "Enviar al cliente"}
+            </a>
+          </div>
         </>
       ) : null}
     </main>
+  );
+
+  return packageId ? (
+    <div className="event-shell">
+      <EventNav active="cotizar" packageId={packageId} />
+      {content}
+    </div>
+  ) : (
+    content
   );
 }

@@ -24,6 +24,8 @@ type ViewState =
 type ModuleViewerProps = {
   readonly packageId: string;
   readonly moduleId: string;
+  /** A dónde vuelve "Volver al catálogo"; por defecto, al evento. */
+  readonly catalogHref?: string;
   /** Inyectables para las pruebas. */
   readonly fetcher?: typeof fetch;
   readonly detect?: () => Promise<CapacidadesAR>;
@@ -38,6 +40,7 @@ const detectFromNavigator = () => detectarCapacidadesAR(navigator);
 export function ModuleViewer({
   packageId,
   moduleId,
+  catalogHref: catalogHrefProp,
   fetcher,
   detect = detectFromNavigator,
   useCase = prepararVistaAR,
@@ -91,7 +94,7 @@ export function ModuleViewer({
     setAttempt((value) => value + 1);
   }
 
-  const catalogHref = `/packages/${encodeURIComponent(packageId)}`;
+  const catalogHref = catalogHrefProp ?? `/packages/${encodeURIComponent(packageId)}`;
 
   return (
     <section aria-busy={view.status === "loading"} aria-labelledby="viewer-title">
