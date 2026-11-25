@@ -113,18 +113,6 @@ export default async function QuotePage({ params }: QuotePageProps) {
               }}
             />
           </div>
-
-          {/* Acciones a mano en celular: barra fija sobre la navegación (no se imprime). */}
-          <div className="quote-quick-actions">
-            <a className="secondary-button quote-quick-action" download href={`/api/quotes/${encodeURIComponent(quote.id)}/pdf`}>
-              <Icon name="download" />
-              PDF
-            </a>
-            <a className="auth-submit quote-quick-action" href="#compartir">
-              <Icon name="share" />
-              {shareable ? "Compartir" : "Enviar al cliente"}
-            </a>
-          </div>
         </>
       ) : null}
     </main>

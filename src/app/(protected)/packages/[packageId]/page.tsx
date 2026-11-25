@@ -14,6 +14,7 @@ import { eventSectionLabel, parseEventSection } from "../_lib/event-sections";
 import { formatCop } from "../_lib/format";
 import { resolvePackagesMode } from "../_lib/packages-client";
 import { buildZoneTree, flattenZones } from "../_lib/zone-tree";
+import { BudgetBar } from "./budget-bar";
 import { BudgetTotal } from "./budget-total";
 import { CreateQuoteForm } from "./create-quote-form";
 import { DuplicatePackageButton } from "./duplicate-package-button";
@@ -190,6 +191,12 @@ export default async function PackagePage({ params, searchParams }: PackagePageP
 
           {section === "catalogo" ? (
             <>
+              <BudgetBar
+                budget={ready.budget}
+                packageId={packageId}
+                packageVersion={detail.version}
+                unitCount={unitCount}
+              />
               <p className="flow-hint" id="montaje">
                 <Icon name="cube" size={18} />
                 <span>

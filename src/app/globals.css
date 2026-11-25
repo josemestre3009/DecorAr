@@ -2747,56 +2747,8 @@ p .secondary-link {
   margin-top: 0.1rem;
 }
 
-/* ---------- Cotización: acciones fijas en celular ---------- */
-.quote-quick-actions {
-  -webkit-backdrop-filter: blur(16px);
-  backdrop-filter: blur(16px);
-  background: color-mix(in srgb, var(--color-decor-surface) 94%, transparent);
-  border-top: 1px solid color-mix(in srgb, var(--color-decor-ink) 9%, transparent);
-  bottom: calc(var(--nav-height) + env(safe-area-inset-bottom));
-  display: flex;
-  gap: 0.6rem;
-  left: 0;
-  padding: 0.6rem 1rem;
-  position: fixed;
-  right: 0;
-  z-index: 35;
-}
-
-.quote-page:not(.event-main) .quote-quick-actions {
-  bottom: 0;
-  padding-bottom: calc(0.6rem + env(safe-area-inset-bottom));
-}
-
-.quote-quick-action {
-  min-height: 2.9rem;
-}
-
-.quote-quick-action.secondary-button {
-  flex: 0 0 auto;
-}
-
-.quote-quick-action.auth-submit {
-  flex: 1 1 auto;
-}
-
-.quote-page.event-main {
-  padding-bottom: calc(var(--nav-height) + 6rem + env(safe-area-inset-bottom));
-}
-
-@media (min-width: 64rem) {
-  .quote-quick-actions {
-    display: none;
-  }
-
-  .quote-page.event-main {
-    padding-bottom: clamp(1.25rem, 6vw, 4rem);
-  }
-}
-
 @media print {
   .event-nav,
-  .quote-quick-actions,
   .back-link {
     display: none !important;
   }
@@ -2805,9 +2757,6 @@ p .secondary-link {
     display: block;
   }
 
-  .quote-page.event-main {
-    padding-bottom: 0;
-  }
 }
 
 .event-section > .budget-total .budget-amount strong {
@@ -3622,4 +3571,66 @@ p .secondary-link {
 
 .package-quote-link:hover {
   color: var(--color-decor-copper-deep);
+}
+
+/* Presupuesto a la vista en el catálogo: fijo arriba mientras se agrega. */
+.budget-bar {
+  align-items: center;
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+  background: linear-gradient(135deg, var(--color-decor-copper-dark), var(--color-decor-copper-deep));
+  border-radius: 1.25rem;
+  box-shadow: 0 14px 28px -16px color-mix(in srgb, var(--color-decor-copper-deep) 85%, transparent);
+  color: #fff;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+  padding: 0.8rem 1.1rem;
+  position: sticky;
+  top: 0.6rem;
+  z-index: 30;
+}
+
+.budget-bar p {
+  margin: 0;
+}
+
+.budget-bar-label {
+  color: var(--color-decor-copper-light);
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.budget-bar-detail {
+  color: color-mix(in srgb, #fff 85%, transparent);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.budget-bar-amount {
+  animation: value-pop 360ms var(--ease-spring) both;
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+
+.budget-bar-updating {
+  animation: budget-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes budget-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .budget-bar-amount,
+  .budget-bar-updating {
+    animation: none !important;
+  }
 }
