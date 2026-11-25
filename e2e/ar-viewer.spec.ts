@@ -139,9 +139,10 @@ test.describe("vista 3D y AR (DECOR-23)", () => {
     await signIn(page);
     await page.goto(`/packages/paquete-e2e/modules/${mesa.id}`);
 
-    await page.getByRole("link", { name: "← Volver al catálogo" }).click();
+    await page.getByRole("link", { name: "Volver al catálogo", exact: true }).click();
 
-    await expect(page).toHaveURL(/\/packages\/paquete-e2e$/);
+    // Con la API real vuelve a la sección Catálogo del evento (rediseño visual móvil).
+    await expect(page).toHaveURL(/\/packages\/paquete-e2e(\?seccion=catalogo)?$/);
   });
 
   test("un módulo que ya no está en el catálogo se informa sin visor", async ({ page }) => {

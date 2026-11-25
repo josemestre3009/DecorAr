@@ -60,7 +60,7 @@ describe("PackageContents (DECOR-22)", () => {
   it("la Zona de bienvenida se despliega con aria-expanded y muestra arco + mesa", () => {
     render(<PackageContents client={client()} nodes={NODES} packageId="pkg-1" version={3} />);
 
-    const toggle = screen.getByRole("button", { name: /Zona de bienvenida/ });
+    const toggle = screen.getByRole("button", { name: /^Zona de bienvenida/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveTextContent("2 elementos");
     const children = document.getElementById(toggle.getAttribute("aria-controls") as string) as HTMLElement;
@@ -193,7 +193,7 @@ describe("PackageContents (DECOR-22)", () => {
     const removeItem = vi.fn<PackagesClient["removeItem"]>().mockResolvedValue(ok(undefined));
     render(<PackageContents client={client(removeItem)} nodes={NODES} packageId="pkg-1" version={3} />);
 
-    fireEvent.click(screen.getByRole("button", { name: /Zona de bienvenida/ }));
+    fireEvent.click(screen.getByRole("button", { name: /^Zona de bienvenida/ }));
     fireEvent.click(screen.getByRole("button", { name: "Quitar una unidad de Mesa redonda" }));
 
     await waitFor(() => expect(removeItem).toHaveBeenCalledWith("pkg-1", "i-mesa"));
@@ -233,8 +233,17 @@ function groupsClient(partial: Partial<PackageGroupsClient> = {}): PackageGroups
   };
 }
 
-const rowOf = (name: string) =>
-  screen.getByRole("button", { name: new RegExp(name) }).closest("li") as HTMLElement;
+/** Fila de una zona con sus acciones abiertas: ahora están tras el botón "⋯" (rediseño visual móvil). */
+const rowOf = (name: string) => {
+  const row = screen.getByRole("button", { name: new RegExp(`^${name}`) }).closest("li") as HTMLElement;
+  const options = within(row).queryAllByRole("button", { name: `Opciones de ${name}` })[0];
+  if (options?.getAttribute("aria-expanded") === "false") fireEvent.click(options);
+  return row;
+};
+
+/** Abre las acciones ("⋯") de una fila de módulo. */
+const openItemActions = (row: HTMLElement, name: string) =>
+  fireEvent.click(within(row).getByRole("button", { name: `Opciones de ${name}` }));
 
 describe("PackageContents: zonas editables (Composite)", () => {
   beforeEach(() => {
@@ -321,7 +330,7 @@ describe("PackageContents: zonas editables (Composite)", () => {
 
     const select = within(row).getByLabelText("Mover Zona C a");
     // No puede moverse dentro de sí misma; sí bajo su hermana Zona A.
-    expect(within(select).queryByRole("option", { name: /Zona C/ })).not.toBeInTheDocument();
+    expect(within(select).queryByRole("option", { name: /^Zona C/ })).not.toBeInTheDocument();
     fireEvent.change(select, { target: { value: "zona-a" } });
     fireEvent.click(within(row).getByRole("button", { name: "Mover zona" }));
 
@@ -395,6 +404,7 @@ describe("PackageContents: zonas editables (Composite)", () => {
     );
 
     const pista = screen.getByText("Pista de baile").closest("li") as HTMLElement;
+    openItemActions(pista, "Pista de baile");
     fireEvent.click(within(pista).getByRole("button", { name: "Mover de zona" }));
     fireEvent.change(within(pista).getByLabelText("Mover Pista de baile a"), { target: { value: "zona" } });
     fireEvent.click(within(pista).getByRole("button", { name: "Mover aquí" }));
@@ -420,6 +430,7 @@ describe("PackageContents: zonas editables (Composite)", () => {
     );
 
     const pista = screen.getByText("Pista de baile").closest("li") as HTMLElement;
+    openItemActions(pista, "Pista de baile");
     fireEvent.click(within(pista).getByRole("button", { name: "Mover de zona" }));
     fireEvent.change(within(pista).getByLabelText("Mover Pista de baile a"), { target: { value: "zona" } });
     fireEvent.click(within(pista).getByRole("button", { name: "Mover aquí" }));
@@ -469,8 +480,37 @@ describe("PackageContents: zonas editables (Composite)", () => {
     );
 
     expect(screen.getByRole("heading", { name: "Contenido del evento" })).toBeInTheDocument();
-    const toggle = screen.getByRole("button", { name: /Zona A/ });
+    const toggle = screen.getByRole("button", { name: /^Zona A/ });
     expect(toggle).toHaveAttribute("aria-expanded", "false");
     expect(toggle).toHaveAttribute("aria-controls");
+  });
+});
+
+describe("PackageContents: acciones tras el botón ⋯ (rediseño visual móvil)", () => {
+  it("las acciones de una zona empiezan ocultas y el botón ⋯ las muestra y oculta", () => {
+    render(
+      <PackageContents client={client()} groupsClient={groupsClient()} nodes={NESTED} packageId="pkg-1" version={3} />,
+    );
+
+    const row = screen.getByRole("button", { name: /^Zona A/ }).closest("li") as HTMLElement;
+    const options = within(row).getAllByRole("button", { name: "Opciones de Zona A" })[0]!;
+    expect(options).toHaveAttribute("aria-expanded", "false");
+    expect(within(row).queryByRole("button", { name: "Renombrar" })).not.toBeInTheDocument();
+
+    fireEvent.click(options);
+    expect(options).toHaveAttribute("aria-expanded", "true");
+    expect(within(row).getAllByRole("button", { name: "Renombrar" })[0]).toBeVisible();
+
+    fireEvent.click(options);
+    expect(options).toHaveAttribute("aria-expanded", "false");
+    expect(within(row).queryByRole("button", { name: "Renombrar" })).not.toBeInTheDocument();
+  });
+
+  it("quitar una unidad es un botón de ícono con nombre accesible", () => {
+    render(<PackageContents client={client()} groupsClient={groupsClient()} nodes={NODES} packageId="pkg-1" version={3} />);
+
+    const remove = screen.getAllByRole("button", { name: "Quitar una unidad de Pista de baile" })[0]!;
+    expect(remove).toHaveClass("icon-button");
+    expect(remove).toHaveTextContent("");
   });
 });

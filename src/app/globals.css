@@ -3487,3 +3487,139 @@ p .secondary-link {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+/* =====================================================================
+ * Rediseño visual móvil — Fase 3: carga con esqueletos y movimiento
+ * reducido. Va al final para ganar a todas las reglas de animación.
+ * ===================================================================== */
+.package-catalog .module-grid-skeleton {
+  margin-top: 0.25rem;
+}
+
+.module-skeleton {
+  background: var(--color-decor-surface);
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 8%, transparent);
+  border-radius: 1.25rem;
+  display: grid;
+  gap: 0.55rem;
+  overflow: hidden;
+  padding-bottom: 0.9rem;
+}
+
+.skeleton-block {
+  animation: skeleton-shimmer 1.4s ease-in-out infinite;
+  background: linear-gradient(
+    90deg,
+    color-mix(in srgb, var(--color-decor-copper-light) 45%, var(--color-decor-bg)) 25%,
+    var(--color-decor-surface) 50%,
+    color-mix(in srgb, var(--color-decor-copper-light) 45%, var(--color-decor-bg)) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: 0.5rem;
+  display: block;
+}
+
+.skeleton-media {
+  aspect-ratio: 1 / 0.86;
+  border-radius: 0;
+}
+
+.skeleton-line {
+  height: 0.85rem;
+  margin: 0 0.85rem;
+}
+
+.skeleton-line-short {
+  width: 45%;
+}
+
+@keyframes skeleton-shimmer {
+  from {
+    background-position: 100% 0;
+  }
+  to {
+    background-position: -100% 0;
+  }
+}
+
+/* Movimiento reducido: sin desplazamientos, rebotes ni brillos. Los cambios
+   de estado siguen siendo inmediatos y visibles. */
+@media (prefers-reduced-motion: reduce) {
+  .event-section,
+  .event-nav-badge,
+  .package-catalog .module-added,
+  .add-sheet::backdrop,
+  .add-sheet-panel,
+  .add-sheet-closing .add-sheet-panel,
+  .stepper-value,
+  .catalog-toast,
+  .skeleton-block,
+  .event-section .zone-actions {
+    animation: none !important;
+  }
+
+  .auth-submit,
+  .secondary-button,
+  .text-button,
+  .back-link,
+  .event-nav-item,
+  .event-nav-icon,
+  .module-add-trigger,
+  .module-view-3d,
+  .icon-button,
+  .chip span,
+  .stepper-button,
+  .catalog-search {
+    transition: none !important;
+  }
+
+  .auth-submit:active,
+  .secondary-button:active,
+  .text-button:active,
+  .icon-button:active,
+  .module-add-trigger:active,
+  .event-nav-item:active,
+  .module-view-3d:hover,
+  .module-view-3d:active,
+  .chip:active span,
+  .stepper-button:active,
+  .auth-submit:hover,
+  .secondary-button:hover {
+    transform: none !important;
+  }
+}
+
+/* Zona en una sola fila: carpeta, nombre y cantidad. */
+.event-section .group-toggle {
+  flex-wrap: nowrap;
+}
+
+.event-section .group-toggle .content-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.event-section .group-toggle .content-qty {
+  flex: none;
+  font-size: 0.78rem;
+}
+
+/* Cotizaciones del evento: título sin subrayado, con flecha. */
+.package-quote-link {
+  color: var(--color-decor-ink);
+  gap: 0.35rem;
+  text-decoration: none;
+}
+
+.package-quote-link::after {
+  color: var(--color-decor-copper-deep);
+  content: "›";
+  font-size: 1.3rem;
+  line-height: 1;
+}
+
+.package-quote-link:hover {
+  color: var(--color-decor-copper-deep);
+}

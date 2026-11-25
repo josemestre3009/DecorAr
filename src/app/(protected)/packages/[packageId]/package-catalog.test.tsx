@@ -28,6 +28,22 @@ function client(addItem: PackagesClient["addItem"] = vi.fn()): PackagesClient {
 
 const visible = (text: string | null) => (text ?? "").replace(/\s/g, " ");
 
+const cardOf = async (name: string) =>
+  (await screen.findByRole("heading", { name })).closest("article") as HTMLElement;
+
+/** Abre la hoja inferior de un módulo (rediseño visual móvil) y consulta dentro de ella. */
+async function openSheet(name: string) {
+  const card = await cardOf(name);
+  fireEvent.click(within(card).getByRole("button", { name: `Agregar ${name}` }));
+  return within(await within(card).findByRole("dialog"));
+}
+
+/** La hoja se cierra con una animación corta. */
+async function sheetClosed(name: string) {
+  const card = await cardOf(name);
+  await waitFor(() => expect(within(card).queryByRole("dialog")).not.toBeInTheDocument());
+}
+
 describe("PackageCatalog", () => {
   beforeEach(() => {
     push.mockReset();
@@ -105,22 +121,25 @@ describe("PackageCatalog", () => {
     }
   });
 
-  it("agrega el módulo al paquete y lo anuncia", async () => {
+  it("agrega el módulo al paquete desde la hoja y lo anuncia", async () => {
     const addItem = vi
       .fn<PackagesClient["addItem"]>()
       .mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
+    let sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
 
     await waitFor(() =>
       expect(screen.getByText("Arco floral se agregó a tu evento.")).toBeInTheDocument(),
     );
     expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id);
     expect(screen.getByText("Agregado a tu evento")).toBeInTheDocument();
+    await sheetClosed("Arco floral");
 
-    fireEvent.click(screen.getByRole("button", { name: "Agregar Arco floral" }));
+    sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
 
     expect(await screen.findByText("Agregado 2 veces")).toBeInTheDocument();
     // Con la API real el contenido del paquete se vuelve a leer del servidor (DECOR-22).
@@ -141,43 +160,71 @@ describe("PackageCatalog", () => {
       />,
     );
 
-    const increase = await screen.findByRole("button", { name: "Aumentar cantidad de Arco floral" });
+    const sheet = await openSheet("Arco floral");
+    const increase = sheet.getByRole("button", { name: "Aumentar cantidad de Arco floral" });
     fireEvent.click(increase);
     fireEvent.click(increase);
 
-    expect(screen.getByText("×3")).toBeInTheDocument();
+    expect(sheet.getByRole("status")).toHaveTextContent("3");
     expect(increase).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(increase);
-    expect(screen.getByText("×3")).toBeInTheDocument();
+    expect(sheet.getByRole("status")).toHaveTextContent("3");
+    expect(sheet.getByText("Máximo 3 según el espacio disponible.")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: "Agregar 3 unidades de Arco floral" }));
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar 3 unidades de Arco floral" }));
 
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id, 3));
     expect(screen.getByText("3 unidades de Arco floral se agregaron a tu evento.")).toBeInTheDocument();
     expect(screen.getByText("Agregado 3 veces")).toBeInTheDocument();
-    // Tras el éxito la cantidad vuelve a 1 y el nombre accesible del botón cambia.
-    expect(screen.getByRole("button", { name: "Agregar Arco floral" })).toBeInTheDocument();
-    expect(screen.queryByText("×3")).not.toBeInTheDocument();
+    // Tras el éxito la hoja se cierra y el foco vuelve al "+" de la tarjeta.
+    await sheetClosed("Arco floral");
+    expect(screen.getByRole("button", { name: "Agregar Arco floral" })).toHaveFocus();
   });
 
-  it("ajusta la cantidad cuando el espacio se reduce al agregar otro módulo", async () => {
+  it("muestra el total en vivo según la cantidad", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+
+    const sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("button", { name: "Aumentar cantidad de Arco floral" }));
+
+    expect(visible(sheet.getByText(/^2 ×/).textContent)).toBe("2 × $ 200.000");
+    expect(visible(sheet.getByText(/400\.000/).textContent)).toBe("$ 400.000");
+  });
+
+  it("al reabrir la hoja la cantidad vuelve a 1", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+
+    let sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("button", { name: "Aumentar cantidad de Arco floral" }));
+    fireEvent.click(sheet.getByRole("button", { name: "Cerrar" }));
+    await sheetClosed("Arco floral");
+
+    sheet = await openSheet("Arco floral");
+    expect(sheet.getByRole("status")).toHaveTextContent("1");
+  });
+
+  it("ajusta el máximo cuando el espacio se reduce al agregar otro módulo", async () => {
     const addItem = vi
       .fn<PackagesClient["addItem"]>()
       .mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={6} />);
 
-    const increase = await screen.findByRole("button", { name: "Aumentar cantidad de Arco floral" });
-    fireEvent.click(increase);
-    fireEvent.click(increase);
-    expect(screen.getByText("×3")).toBeInTheDocument();
-
     // Mesa redonda ocupa 4 m² y deja 2 m²: Arco floral (2 m²) baja a máximo 1.
-    fireEvent.click(screen.getByRole("button", { name: "Agregar Mesa redonda" }));
-
+    const mesa = await openSheet("Mesa redonda");
+    fireEvent.click(mesa.getByRole("button", { name: "Agregar Mesa redonda" }));
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[0].id));
-    await waitFor(() => expect(screen.queryByText("×3")).not.toBeInTheDocument());
-    fireEvent.click(screen.getByRole("button", { name: "Agregar Arco floral" }));
+    await sheetClosed("Mesa redonda");
+
+    const arco = await openSheet("Arco floral");
+    expect(arco.getByText("Máximo 1 según el espacio disponible.")).toBeInTheDocument();
+    expect(arco.getByRole("button", { name: "Aumentar cantidad de Arco floral" })).toHaveAttribute(
+      "aria-disabled",
+      "true",
+    );
+    fireEvent.click(arco.getByRole("button", { name: "Agregar Arco floral" }));
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1].id));
   });
 
@@ -188,17 +235,18 @@ describe("PackageCatalog", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={5} />);
 
-    const increase = await screen.findByRole("button", { name: "Aumentar cantidad de Arco floral" });
-    fireEvent.click(increase);
-    expect(screen.getByText("×2")).toBeInTheDocument();
-
-    // Mesa redonda ocupa 4 m²: quedan 1 m², insuficientes para otra unidad de Arco floral.
-    fireEvent.click(screen.getByRole("button", { name: "Agregar Mesa redonda" }));
-
+    // Mesa redonda ocupa 4 m²: queda 1 m², insuficiente para otra unidad de Arco floral.
+    const mesa = await openSheet("Mesa redonda");
+    fireEvent.click(mesa.getByRole("button", { name: "Agregar Mesa redonda" }));
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[0].id));
-    const arco = await screen.findByRole("button", { name: "Agregar Arco floral" });
-    expect(arco).toHaveAttribute("aria-disabled", "true");
-    fireEvent.click(arco);
+    await sheetClosed("Mesa redonda");
+
+    const arco = await openSheet("Arco floral");
+    expect(arco.getByRole("status")).toHaveTextContent("1");
+    expect(arco.getByText("No queda espacio para otra unidad.")).toBeInTheDocument();
+    const confirm = arco.getByRole("button", { name: "Agregar Arco floral" });
+    expect(confirm).toHaveAttribute("aria-disabled", "true");
+    fireEvent.click(confirm);
     expect(addItem).toHaveBeenCalledTimes(1);
   });
 
@@ -207,8 +255,9 @@ describe("PackageCatalog", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json([fixture[0]]));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={3} />);
 
-    expect(await screen.findByText("No queda espacio para otra unidad.")).toBeInTheDocument();
-    const button = screen.getByRole("button", { name: "Agregar Mesa redonda" });
+    const sheet = await openSheet("Mesa redonda");
+    expect(sheet.getByText("No queda espacio para otra unidad.")).toBeInTheDocument();
+    const button = sheet.getByRole("button", { name: "Agregar Mesa redonda" });
     expect(button).toHaveAttribute("aria-disabled", "true");
     fireEvent.click(button);
     expect(addItem).not.toHaveBeenCalled();
@@ -223,7 +272,8 @@ describe("PackageCatalog", () => {
       <PackageCatalog client={{ ...client(addItem), mode: "simulated" }} fetcher={fetcher} packageId="p-1" />,
     );
 
-    fireEvent.click(await screen.findByRole("button", { name: "Agregar Arco floral" }));
+    const sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
 
     await screen.findByText("Arco floral se agregó a tu evento.");
     expect(refresh).not.toHaveBeenCalled();
@@ -238,9 +288,10 @@ describe("PackageCatalog", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" />);
 
-    fireEvent.click(await screen.findByRole("button", { name: "Agregar Mesa redonda" }));
+    const sheet = await openSheet("Mesa redonda");
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Mesa redonda" }));
 
-    const busy = await screen.findByRole("button", { name: "Agregando Mesa redonda" });
+    const busy = await sheet.findByRole("button", { name: "Agregando Mesa redonda" });
     expect(busy).toHaveAttribute("aria-disabled", "true");
     // Un botón `disabled` perdería el foco del teclado.
     expect(busy).toBeEnabled();
@@ -250,12 +301,11 @@ describe("PackageCatalog", () => {
 
     resolveAdd(ok({ itemId: "i-1", packageVersion: 2 }));
 
-    expect(await screen.findByRole("button", { name: "Agregar Mesa redonda" })).not.toHaveAttribute(
-      "aria-disabled",
-    );
+    await sheetClosed("Mesa redonda");
+    expect(screen.getByRole("button", { name: "Agregar Mesa redonda" })).not.toHaveAttribute("aria-busy");
   });
 
-  it("muestra el error de agregar junto a la tarjeta", async () => {
+  it("muestra el error de agregar en la hoja y la deja abierta", async () => {
     const addItem = vi
       .fn<PackagesClient["addItem"]>()
       .mockResolvedValue(
@@ -264,17 +314,47 @@ describe("PackageCatalog", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" />);
 
-    const button = await screen.findByRole("button", { name: "Agregar Pista de baile" });
-    fireEvent.click(button);
+    const sheet = await openSheet("Pista de baile");
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Pista de baile" }));
 
-    const alert = await screen.findByRole("alert");
+    const alert = await sheet.findByRole("alert");
     expect(alert).toHaveTextContent("Excede la capacidad.");
-    expect(screen.getByRole("button", { name: "Agregar Pista de baile" })).toHaveAttribute(
+    expect(sheet.getByRole("button", { name: "Agregar Pista de baile" })).toHaveAttribute(
       "aria-describedby",
       alert.id,
     );
+    expect(sheet.getByRole("button", { name: "Cerrar" })).toBeInTheDocument();
     // Un 422 no muta la interfaz: no se refresca el contenido (DECOR-22).
     expect(refresh).not.toHaveBeenCalled();
+  });
+
+  it("muestra un aviso visual al agregar varias unidades", async () => {
+    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    const { container } = render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" />);
+
+    const sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("button", { name: "Aumentar cantidad de Arco floral" }));
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar 2 unidades de Arco floral" }));
+
+    await waitFor(() => expect(container.querySelector(".catalog-toast")).toHaveTextContent("2 × Arco floral agregados"));
+    // Es solo visual: la región viva ya lo anuncia.
+    expect(container.querySelector(".catalog-toast")).toHaveAttribute("aria-hidden", "true");
+  });
+
+  it("filtra el catálogo por nombre sin importar tildes ni mayúsculas", async () => {
+    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
+    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+
+    const search = await screen.findByRole("searchbox", { name: "Buscar en el catálogo" });
+    fireEvent.change(search, { target: { value: "ARCÓ" } });
+
+    expect(screen.getAllByRole("article")).toHaveLength(1);
+    expect(screen.getByRole("heading", { name: "Arco floral" })).toBeInTheDocument();
+
+    fireEvent.change(search, { target: { value: "trono" } });
+    expect(screen.queryAllByRole("article")).toHaveLength(0);
+    expect(screen.getByText("No encontramos elementos con «trono».")).toBeInTheDocument();
   });
 
   it("reconcilia el contador con las unidades confirmadas por el servidor tras un refresco (DECOR-22)", async () => {
@@ -327,9 +407,6 @@ const ZONES: ZoneOption[] = [
   { ancestorIds: [], depth: 1, descendantIds: [], groupId: "g-1", height: 1, name: "Recepción" },
 ];
 
-const cardOf = async (name: string) =>
-  (await screen.findByRole("heading", { name })).closest("article") as HTMLElement;
-
 describe("PackageCatalog: destino por zona para agregar módulos", () => {
   beforeEach(() => {
     push.mockReset();
@@ -341,9 +418,11 @@ describe("PackageCatalog: destino por zona para agregar módulos", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" zones={ZONES} />);
 
-    const card = await cardOf("Arco floral");
-    fireEvent.change(within(card).getByLabelText("Zona"), { target: { value: "g-1" } });
-    fireEvent.click(within(card).getByRole("button", { name: "Agregar Arco floral" }));
+    const sheet = await openSheet("Arco floral");
+    fireEvent.click(sheet.getByRole("radio", { name: /Recepción/ }));
+    // En una zona se agrega de a uno: el contador desaparece.
+    expect(sheet.queryByRole("button", { name: "Aumentar cantidad de Arco floral" })).not.toBeInTheDocument();
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
 
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id, 1, "g-1"));
     expect(refresh).toHaveBeenCalled();
@@ -354,9 +433,9 @@ describe("PackageCatalog: destino por zona para agregar módulos", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" zones={ZONES} />);
 
-    const card = await cardOf("Arco floral");
-    expect(within(card).getByLabelText("Zona")).toHaveValue("");
-    fireEvent.click(within(card).getByRole("button", { name: "Agregar Arco floral" }));
+    const sheet = await openSheet("Arco floral");
+    expect(sheet.getByRole("radio", { name: "Sin zona" })).toBeChecked();
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
 
     await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id));
   });
@@ -368,12 +447,11 @@ describe("PackageCatalog: destino por zona para agregar módulos", () => {
       <PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={3} zones={ZONES} />,
     );
 
-    const card = await cardOf("Mesa redonda");
-    const withoutZone = within(card).getByRole("button", { name: "Agregar Mesa redonda" });
-    expect(withoutZone).toHaveAttribute("aria-disabled", "true");
+    const sheet = await openSheet("Mesa redonda");
+    expect(sheet.getByRole("button", { name: "Agregar Mesa redonda" })).toHaveAttribute("aria-disabled", "true");
 
-    fireEvent.change(within(card).getByLabelText("Zona"), { target: { value: "g-1" } });
-    const withZone = within(card).getByRole("button", { name: "Agregar Mesa redonda" });
+    fireEvent.click(sheet.getByRole("radio", { name: /Recepción/ }));
+    const withZone = sheet.getByRole("button", { name: "Agregar Mesa redonda" });
     expect(withZone).not.toHaveAttribute("aria-disabled");
 
     fireEvent.click(withZone);
@@ -384,7 +462,8 @@ describe("PackageCatalog: destino por zona para agregar módulos", () => {
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
     render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
 
-    await screen.findAllByRole("article");
-    expect(screen.queryByLabelText("Zona")).not.toBeInTheDocument();
+    const sheet = await openSheet("Arco floral");
+    expect(sheet.queryByRole("radio")).not.toBeInTheDocument();
+    expect(sheet.queryByRole("group", { name: "Zona" })).not.toBeInTheDocument();
   });
 });

@@ -185,10 +185,22 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
       </p>
 
       {catalog.status === "loading" ? (
-        <p className="catalog-state" role="status">
-          <span aria-hidden="true" className="spinner" />
-          Cargando catálogo…
-        </p>
+        <>
+          <p className="catalog-state" role="status">
+            <span aria-hidden="true" className="spinner" />
+            Cargando catálogo…
+          </p>
+          {/* Tarjetas esqueleto: anticipan la forma del catálogo mientras carga. */}
+          <ul aria-hidden="true" className="module-grid module-grid-skeleton">
+            {[0, 1, 2, 3].map((index) => (
+              <li className="module-skeleton" key={index}>
+                <span className="skeleton-block skeleton-media" />
+                <span className="skeleton-block skeleton-line" />
+                <span className="skeleton-block skeleton-line skeleton-line-short" />
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
 
       {catalog.status === "error" ? (

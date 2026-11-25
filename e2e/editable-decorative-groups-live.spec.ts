@@ -158,7 +158,20 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     zoneToggle(page, name).locator("xpath=ancestor::li[1]");
   const rootList = (page: Page) => contents(page).locator(":scope > ul.content-list");
   const childList = (row: Locator) => row.locator(":scope > .content-children > ul.content-list");
-  const rowActions = (row: Locator) => row.locator(":scope > .zone-actions");
+  /**
+ * Acciones de la fila: desde el rediseño visual móvil viven tras el botón
+ * "⋯" de la propia fila (zona o módulo); se abre si está cerrado.
+ */
+async function rowActions(row: Locator) {
+  const options = row.locator(":scope > .content-row .content-options");
+  if ((await options.getAttribute("aria-expanded")) === "false") await options.click();
+  return row.locator(":scope > .zone-actions");
+}
+
+/** Secciones del evento (rediseño visual móvil): el contenido vive en Objetos. */
+async function goToSection(page: Page, packageId: string, section: "objetos" | "mas") {
+  await page.goto(`/packages/${packageId}?seccion=${section}`);
+}
   const moduleRow = (list: Locator, name: string) =>
     list
       .locator("> li")
@@ -183,7 +196,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
 
   async function createSubzone(page: Page, parent: string, name: string) {
     const row = zoneRow(page, parent);
-    await rowActions(row).getByRole("button", { name: "Crear subzona" }).click();
+    await (await rowActions(row)).getByRole("button", { name: "Crear subzona" }).click();
     const form = row.locator(":scope > form.zone-form");
     await form.getByLabel("Nombre de la zona").fill(name);
     await form.getByRole("button", { name: "Crear subzona" }).click();
@@ -213,6 +226,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     await page.getByRole("button", { name: "Crear evento" }).click();
     await expect(page).toHaveURL(PACKAGE_URL);
     const sourceId = eventId(page);
+    await goToSection(page, sourceId, "objetos");
 
     const catalog = (await (await page.request.get("/api/modules")).json()) as CatalogModule[];
     expect(
@@ -247,7 +261,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     // Mover un módulo de zona a raíz conservando la misma instancia.
     await expand(page, ROOT);
     const moduleARow = moduleRow(childList(zoneRow(page, ROOT)), mA.name);
-    await rowActions(moduleARow).getByRole("button", { name: "Mover de zona" }).click();
+    await (await rowActions(moduleARow)).getByRole("button", { name: "Mover de zona" }).click();
     const moveForm = moduleARow.locator(":scope > form.zone-editor");
     await moveForm.getByLabel(`Mover ${mA.name} a`).selectOption({ label: "Sin zona (raíz)" });
     await moveForm.getByRole("button", { name: "Mover aquí" }).click();
@@ -259,7 +273,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
 
     // Renombrar una zona.
     const otherRow = zoneRow(page, OTHER);
-    await rowActions(otherRow).getByRole("button", { name: "Renombrar" }).click();
+    await (await rowActions(otherRow)).getByRole("button", { name: "Renombrar" }).click();
     const renameForm = otherRow.locator(":scope > form.zone-editor");
     await renameForm.getByLabel(`Nuevo nombre para ${OTHER}`).fill(RENAMED);
     await renameForm.getByRole("button", { name: "Guardar nombre" }).click();
@@ -268,7 +282,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     // Eliminar una subzona con move_to_root: su módulo pasa a la raíz.
     await expand(page, RENAMED);
     const subBRow = zoneRow(page, SUB_B);
-    await rowActions(subBRow).getByRole("button", { name: "Eliminar" }).click();
+    await (await rowActions(subBRow)).getByRole("button", { name: "Eliminar" }).click();
     const confirmSubB = subBRow.locator(":scope > .zone-confirm");
     await confirmSubB.getByRole("button", { name: "Mover contenido a la raíz y eliminar zona" }).click();
     await expect(zoneToggle(page, SUB_B)).toHaveCount(0);
@@ -280,7 +294,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     // Eliminar la otra zona con delete_contents: se borra su módulo.
     await expand(page, RENAMED);
     const renamedRow = zoneRow(page, RENAMED);
-    await rowActions(renamedRow).getByRole("button", { name: "Eliminar" }).click();
+    await (await rowActions(renamedRow)).getByRole("button", { name: "Eliminar" }).click();
     const confirmRenamed = renamedRow.locator(":scope > .zone-confirm");
     await confirmRenamed.getByRole("button", { name: "Eliminar zona y todo su contenido" }).click();
     await expect(zoneToggle(page, RENAMED)).toHaveCount(0);
@@ -303,7 +317,8 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
       ].sort(),
     );
 
-    // Guardar como plantilla privada.
+    // Guardar como plantilla privada (sección "Más opciones").
+    await goToSection(page, sourceId, "mas");
     const templateName = `Plantilla zonas ${randomUUID().slice(0, 8)}`;
     const saveRegion = page.getByRole("region", { name: "Plantilla", exact: true });
     await saveRegion.getByRole("button", { name: "Guardar como plantilla" }).click();
@@ -333,7 +348,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     );
 
     // Instanciar un segundo evento desde la plantilla.
-    await page.getByRole("link", { name: "← Eventos" }).click();
+    await page.getByRole("link", { name: "Eventos", exact: true }).click();
     await expect(page).toHaveURL(/\/packages$/);
     const templates = page.getByRole("region", { name: "Plantillas", exact: true });
     await templates.getByRole("button", { name: `Usar plantilla ${templateName}` }).click();
@@ -343,6 +358,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
     await expect(page).toHaveURL(PACKAGE_URL);
     const secondId = eventId(page);
     expect(secondId).not.toBe(sourceId);
+    await goToSection(page, secondId, "objetos");
 
     // Jerarquía y ubicaciones copiadas con identificadores nuevos.
     const secondGroups = await readGroups(secondId);
@@ -360,7 +376,7 @@ test.describe.serial("editable-decorative-groups contra la API real", () => {
 
     // Independencia: renombrar en la copia no toca origen ni plantilla.
     const secondRootRow = zoneRow(page, ROOT);
-    await rowActions(secondRootRow).getByRole("button", { name: "Renombrar" }).click();
+    await (await rowActions(secondRootRow)).getByRole("button", { name: "Renombrar" }).click();
     const secondRename = secondRootRow.locator(":scope > form.zone-editor");
     await secondRename.getByLabel(`Nuevo nombre para ${ROOT}`).fill(EDITED);
     await secondRename.getByRole("button", { name: "Guardar nombre" }).click();
