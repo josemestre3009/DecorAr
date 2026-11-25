@@ -92,6 +92,7 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     await signIn(page);
     await expect(steps(page).locator("[aria-current='step']")).toHaveText(/Evento/);
     await expectNoHorizontalOverflow(page);
+    await page.getByRole("button", { name: "Nuevo evento" }).click();
     await page.getByLabel("Nombre del evento").fill(`Flujo V2 ${randomUUID().slice(0, 8)}`);
     await page.getByRole("button", { name: "Crear evento" }).click();
     await expect(page).toHaveURL(PACKAGE_URL, { timeout: 60_000 });

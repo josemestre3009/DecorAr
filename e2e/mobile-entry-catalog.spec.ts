@@ -79,6 +79,8 @@ async function expectVisibleFocus(control: Locator) {
  * el área son metadatos opcionales que se completan después.
  */
 async function createEvent(page: Page, name = "Evento de prueba") {
+  // El formulario vive en la hoja "Nuevo evento" (rediseño visual).
+  await page.getByRole("button", { name: "Nuevo evento" }).click();
   await page.getByLabel("Nombre del evento").fill(name);
   await page.getByRole("button", { name: "Crear evento" }).click();
 }
@@ -157,7 +159,7 @@ test.describe("creación de evento y catálogo", () => {
     await serveCatalog(page);
     await signIn(page);
 
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Organiza tus eventos");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tus eventos");
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
     await createEvent(page, "Boda de prueba");
@@ -248,11 +250,18 @@ test.describe("creación de evento y catálogo", () => {
     // el recorrido debe empezar desde el principio de la página.
     await page.goto("/packages");
 
-    // Crear el evento (DECOR-44): solo el nombre es obligatorio. Los detalles
-    // opcionales quedan plegados y no interrumpen el recorrido.
+    // El menú de cuenta y "Nuevo evento" se alcanzan con Tab y foco visible.
     await page.keyboard.press("Tab");
+    await expectVisibleFocus(page.getByRole("button", { name: "Tu cuenta" }));
+    await page.keyboard.press("Tab");
+    const newEvent = page.getByRole("button", { name: "Nuevo evento" });
+    await expectVisibleFocus(newEvent);
+    await page.keyboard.press("Enter");
+
+    // Crear el evento (DECOR-44) en la hoja: el foco empieza en el nombre, que es
+    // lo único obligatorio. Los detalles opcionales quedan plegados.
     const name = page.getByLabel("Nombre del evento");
-    await expectVisibleFocus(name);
+    await expect(name).toBeFocused();
     await page.keyboard.type("Evento de teclado");
 
     await page.keyboard.press("Tab");
@@ -261,12 +270,6 @@ test.describe("creación de evento y catálogo", () => {
     await page.keyboard.press("Tab");
     const submit = page.getByRole("button", { name: "Crear evento" });
     await expectVisibleFocus(submit);
-
-    await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("button", { name: "Cerrar sesión" }));
-
-    await page.keyboard.press("Shift+Tab");
-    await expect(submit).toBeFocused();
     await page.keyboard.press("Enter");
 
     // Catálogo: al llegar, el foco pasa al título para que el recorrido empiece

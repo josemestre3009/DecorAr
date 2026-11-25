@@ -94,6 +94,7 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
     await signIn(page);
 
     // Evento mínimo: solo el nombre, sin espacio ni área.
+    await page.getByRole("button", { name: "Nuevo evento" }).click();
     await page.getByLabel("Nombre del evento").fill(`Boda mínima ${randomUUID().slice(0, 8)}`);
     await page.getByRole("button", { name: "Crear evento" }).click();
     await expect(page).toHaveURL(PACKAGE_URL);

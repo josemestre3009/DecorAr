@@ -18,6 +18,7 @@ vi.mock("@/composition/server", () => ({
   })),
 }));
 vi.mock("./event-form", () => ({ EventForm: () => <form aria-label="Crear evento" /> }));
+vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("./template-manager", () => ({ TemplateManager: () => <section aria-label="Plantillas" /> }));
 
 const { default: PackagesPage, loadPackageHistory } = await import("./page");
@@ -98,13 +99,14 @@ describe("PackagesPage", () => {
     expect(screen.getByText("Evento sin nombre")).toBeInTheDocument();
   });
 
-  it("muestra un estado vacío sin ocultar el formulario de creación", async () => {
+  it("muestra un estado vacío con un botón para crear el primer evento", async () => {
     listMock.mockResolvedValue(ok([]));
 
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByText("Aún no tienes eventos.")).toBeInTheDocument();
-    expect(screen.getByRole("form", { name: "Crear evento" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nuevo evento" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Crear tu primer evento" })).toHaveAttribute("aria-haspopup", "dialog");
   });
 
   it("convierte fallos de lectura en un estado recuperable", async () => {
@@ -121,7 +123,7 @@ describe("PackagesPage", () => {
     render(await PackagesPage({ searchParams: Promise.resolve({}) }));
 
     expect(screen.getByRole("alert")).toHaveTextContent("No pudimos cargar tus eventos");
-    expect(screen.getByRole("form", { name: "Crear evento" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Nuevo evento" })).toBeInTheDocument();
   });
 
   it("no consulta historial persistente en modo simulado", async () => {

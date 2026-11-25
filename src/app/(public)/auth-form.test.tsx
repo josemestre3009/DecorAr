@@ -59,4 +59,21 @@ describe("AuthForm", () => {
     expect(screen.getByLabelText("Contraseña")).toHaveAttribute("aria-invalid", "true");
     expect(screen.getByLabelText("Correo electrónico")).toHaveValue("ana@correo.com");
   });
+
+  it("el botón del ojo muestra y oculta la contraseña sin cambiar el nombre del campo", () => {
+    render(<AuthForm action={vi.fn()} mode="login" />);
+
+    const password = screen.getByLabelText("Contraseña");
+    const toggle = screen.getByRole("button", { name: "Mostrar contraseña" });
+    expect(password).toHaveAttribute("type", "password");
+    expect(toggle).toHaveAttribute("aria-pressed", "false");
+    expect(toggle).toHaveAttribute("type", "button");
+
+    fireEvent.click(toggle);
+    expect(password).toHaveAttribute("type", "text");
+    expect(toggle).toHaveAttribute("aria-pressed", "true");
+
+    fireEvent.click(toggle);
+    expect(password).toHaveAttribute("type", "password");
+  });
 });

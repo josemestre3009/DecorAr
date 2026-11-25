@@ -2,9 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   allowedDevOrigins: ["*.trycloudflare.com"],
-  // Solo en desarrollo: abajo a la izquierda tapaba la pestaña "Evento" de la
-  // barra inferior del rediseño móvil.
-  devIndicators: { position: "top-right" },
+  // Solo en desarrollo: el indicador de Next tapaba la barra inferior (abajo) o
+  // el menú de cuenta (arriba) del rediseño móvil. Los errores siguen saliendo.
+  devIndicators: false,
   output: "standalone",
 };
 
