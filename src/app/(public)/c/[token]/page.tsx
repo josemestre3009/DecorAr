@@ -51,7 +51,16 @@ export default async function SharedQuotePage({ params }: SharedQuotePageProps) 
         <h2 className="section-title" id="quote-actions-title">
           Guardar esta cotización
         </h2>
-        <PrintButton />
+        <div className="quote-actions-row">
+          <a
+            className="primary-button quote-action"
+            download
+            href={`/api/c/${encodeURIComponent(token)}/pdf`}
+          >
+            Descargar PDF
+          </a>
+          <PrintButton />
+        </div>
       </section>
     </main>
   );

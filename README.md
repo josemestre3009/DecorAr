@@ -67,6 +67,8 @@ npm start
 | `NEXT_PUBLIC_DECOR_PACKAGES_API` | `simulated` o `live` | Publica, build-time |
 | `SUPABASE_SERVICE_ROLE_KEY` | Operaciones administrativas | Secreto server-side |
 | `CLOUDINARY_URL` | Publicacion de GLB, USDZ y posters | Secreto server-side |
+| `DECOR_PUBLIC_APP_URL` | Origen para enlaces publicos `/c/{token}` | Server-side |
+| `DECOR_SHARE_LINK_SECRET` | Secreto HMAC-SHA256 para enlaces publicos | Secreto server-side |
 | `DECOR_E2E_*` | Pruebas E2E generales | Solo pruebas |
 | `DECOR_E2E_USER_A_*`, `DECOR_E2E_USER_B_*` | Flujo E2E movil multiusuario | Solo pruebas |
 
@@ -111,6 +113,7 @@ Las reglas se validan mediante `scripts/scan-architecture.test.ts`; el detalle e
 | Publish-Subscribe | Presupuesto desacoplado de cambios del paquete | `src/modules/events`, outbox y Realtime privado |
 | Transactional Outbox | Publicacion posterior sin perder cambios confirmados | `private.domain_events`, `DrainOutboxUseCase` |
 | Consumidor idempotente | Reintentos sin duplicar efectos | `ConsumePackageChangedEvent` y `process_budget_event` |
+| Cotizaciones V2 | Versiones congeladas, PDF (`@react-pdf/renderer`), enlace publico HMAC `/c/{token}` y WhatsApp | `src/modules/quotes`, `src/app/(protected)/quotes/[quoteId]`, `src/app/(public)/c/[token]` |
 
 ## API y errores
 
@@ -119,8 +122,12 @@ Los Route Handlers viven en `src/app/api`; los controladores en `src/interfaces`
 - `/api/health`: salud del proceso.
 - `/api/session`: estado de la sesion.
 - `/api/modules`: catalogo activo.
-- `/api/packages`: crear y listar paquetes propios.
-- `/api/packages/{id}/items`, `/items/{itemId}`, `/groups`, `/clone`, `/budget`: configuracion, eliminacion, clonacion persistida y presupuesto.
+- `/api/packages`: crear, listar y actualizar metadatos (`PATCH /api/packages/{id}`).
+- `/api/packages/{id}/items`, `/items/{itemId}`, `/groups`, `/groups/{groupId}`, `/clone`, `/budget`: configuracion, zonas editables, eliminacion, clonacion persistida y presupuesto.
+- `/api/packages/{id}/scene`: posicion y rotacion por objeto (`GET/PUT`, DECOR-46).
+- `/api/event-templates`, `/api/event-templates/{id}`, `/instantiate`: plantillas privadas de eventos (DECOR-44).
+- `/api/packages/{id}/quotes`, `/api/quotes`, `/api/quotes/{id}`, `/versions`, `/status`, `/pdf`, `/share-link`: cotizaciones versionadas, PDF y enlace publico revocable (DECOR-50..53).
+- `/c/{token}` y `/api/c/{token}/pdf`: lectura publica sin sesion y descarga directa del PDF para el cliente (DECOR-53, DECOR-56).
 
 Las respuestas fallidas usan codigos controlados como `auth.unauthenticated`, `package.not_found`, `package.version_conflict` e `internal_error`, mas `x-correlation-id`. `src/infrastructure/logging/json-logger.ts` genera logs JSON y `src/shared/application/sanitize-log-context.ts` censura secretos. La recuperacion usa outbox durable, reintentos e idempotencia; Realtime solo notifica y el cliente resincroniza desde PostgreSQL.
 
@@ -133,6 +140,7 @@ Las respuestas fallidas usan codigos controlados como `auth.unauthenticated`, `p
 - Consistencia eventual en presupuesto: desacopla paquetes y calculo; la UI puede mostrar brevemente un valor anterior.
 - RLS protege datos por usuario. La service role queda limitada a adaptadores server-only.
 - Docker contiene solo Next.js. Menos infraestructura local; las pruebas integrales necesitan servicios remotos configurados.
+- Alcance AR en V2: la vista multiobjeto y WebXR (`DECOR-47/48`) fueron canceladas por el equipo; se conserva el visor 3D/AR individual por modulo como respaldo (Android Scene Viewer/WebXR e iOS Quick Look en Safari).
 
 Analisis ampliado: [`docs/DecorAR.md`](docs/DecorAR.md).
 
@@ -151,6 +159,12 @@ El E2E movil del MVP usa la API `live`, Docker, dos cuentas dedicadas y un seed 
 ```sh
 npm run e2e:seed
 npm run test:e2e:mvp
+```
+
+Las pruebas E2E V2 contra la API `live` (`DECOR_LIVE_SMOKE=1` y `NEXT_PUBLIC_DECOR_PACKAGES_API=live`) cubren recorrido guiado, cotizacion, PDF publico, enlace `/c/{token}`, WhatsApp, plantillas y zonas editables:
+
+```sh
+DECOR_LIVE_SMOKE=1 NEXT_PUBLIC_DECOR_PACKAGES_API=live npx playwright test e2e/flujo-v2-live.spec.ts e2e/quote-share-live.spec.ts
 ```
 
 ## Troubleshooting

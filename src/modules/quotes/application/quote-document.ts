@@ -1,5 +1,34 @@
-import type { QuoteDto } from "./dtos/quote.dto";
+import type { QuoteLineDto } from "./dtos/quote.dto";
+import type { QuoteTotals } from "../domain/quote";
 import type { QuoteStatus } from "../domain/quote-status";
+
+/**
+ * Datos mínimos para armar el PDF (DECOR-52 / DECOR-56). `QuoteDto` y
+ * `PublicQuoteDto` la satisfacen ambos por tipado estructural: el enlace
+ * público omite `status`, `createdAt` y `moduleId`.
+ */
+export type QuoteDocumentSource = {
+  readonly number: number;
+  readonly version: number;
+  readonly status?: QuoteStatus;
+  readonly createdAt?: string;
+  readonly client: { readonly name: string | null };
+  readonly event: {
+    readonly name: string;
+    readonly date: string | null;
+    readonly venue: string | null;
+    readonly type: string | null;
+  };
+  readonly validUntil: string;
+  readonly conditions: string | null;
+  readonly terms: {
+    readonly discountRateBp: number;
+    readonly taxRateBp: number;
+    readonly depositRateBp: number;
+  };
+  readonly totals: QuoteTotals;
+  readonly lines: readonly Omit<QuoteLineDto, "moduleId">[];
+};
 
 /**
  * Contenido comercial de una cotización listo para imprimir (DECOR-52).
@@ -11,9 +40,9 @@ import type { QuoteStatus } from "../domain/quote-status";
 export type QuoteDocument = {
   readonly title: string;
   readonly fileName: string;
-  readonly statusLabel: string;
+  readonly statusLabel: string | null;
   readonly validUntil: string;
-  readonly issuedOn: string;
+  readonly issuedOn: string | null;
   readonly facts: readonly { readonly label: string; readonly value: string }[];
   readonly lines: readonly {
     readonly key: string;
@@ -72,12 +101,13 @@ function formatDate(value: string | null): string | null {
 }
 
 /** Nombre de descarga, p. ej. `cotizacion-12-v2.pdf` (sólo ASCII). */
-export function quoteFileName(quote: Pick<QuoteDto, "number" | "version">): string {
+export function quoteFileName(quote: Pick<QuoteDocumentSource, "number" | "version">): string {
   return `cotizacion-${quote.number}-v${quote.version}.pdf`;
 }
 
-export function buildQuoteDocument(quote: QuoteDto): QuoteDocument {
+export function buildQuoteDocument(quote: QuoteDocumentSource): QuoteDocument {
   const { client, event, terms, totals } = quote;
+  const issuedDate = quote.createdAt?.slice(0, 10) ?? null;
 
   return {
     conditions: quote.conditions?.trim() ? quote.conditions.trim() : null,
@@ -89,7 +119,7 @@ export function buildQuoteDocument(quote: QuoteDto): QuoteDocument {
       { label: "Tipo de evento", value: event.type ?? NOT_DEFINED },
     ],
     fileName: quoteFileName(quote),
-    issuedOn: formatDate(quote.createdAt.slice(0, 10)) ?? quote.createdAt.slice(0, 10),
+    issuedOn: issuedDate ? (formatDate(issuedDate) ?? issuedDate) : null,
     lines: quote.lines.map((line) => ({
       concept: line.name,
       key: `${line.position}`,
@@ -97,7 +127,7 @@ export function buildQuoteDocument(quote: QuoteDto): QuoteDocument {
       subtotal: formatCopForDocument(line.lineTotalCop),
       unitPrice: formatCopForDocument(line.unitPriceCop),
     })),
-    statusLabel: STATUS_LABELS[quote.status],
+    statusLabel: quote.status ? STATUS_LABELS[quote.status] : null,
     title: `Cotización N.º ${quote.number} · versión ${quote.version}`,
     totals: [
       { emphasis: false, label: "Subtotal", value: formatCopForDocument(totals.subtotalCop) },

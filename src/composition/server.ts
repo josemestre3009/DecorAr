@@ -59,6 +59,7 @@ import { GuardarEscenaUseCase } from "@/modules/ar/application/use-cases/guardar
 import { SupabaseEscenaRepository } from "@/modules/ar/infrastructure/supabase-escena-repository";
 import { QuoteController } from "@/interfaces/quotes/quote-controller";
 import { QuoteShareLinkController } from "@/interfaces/quotes/quote-share-link-controller";
+import { SharedQuotePdfController } from "@/interfaces/quotes/shared-quote-pdf-controller";
 import { ChangeQuoteStatusUseCase } from "@/modules/quotes/application/use-cases/change-quote-status.use-case";
 import { CreateQuoteShareLinkUseCase } from "@/modules/quotes/application/use-cases/create-quote-share-link.use-case";
 import { CreateQuoteVersionUseCase } from "@/modules/quotes/application/use-cases/create-quote-version.use-case";
@@ -475,6 +476,20 @@ export function createSharedQuoteQueryDependencies() {
   return {
     getSharedQuote: new GetSharedQuoteUseCase(sharedQuoteReader, signer),
   };
+}
+
+/**
+ * Descarga pública del PDF de una cotización compartida (DECOR-56): reutiliza
+ * `GetSharedQuoteUseCase` (misma validación por token sin sesión) y
+ * `ReactPdfQuoteRenderer`.
+ */
+export function createSharedQuotePdfController(): SharedQuotePdfController {
+  const { getSharedQuote } = createSharedQuoteQueryDependencies();
+
+  return new SharedQuotePdfController({
+    getSharedQuote,
+    pdfRenderer: quotePdfRenderer,
+  });
 }
 
 /**

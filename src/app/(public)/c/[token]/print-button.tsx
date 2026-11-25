@@ -1,9 +1,8 @@
 "use client";
 
 /**
- * Imprimir/guardar como PDF en la página pública (DECOR-53). Mismo recurso
- * que usa el propietario en la vista previa (DECOR-51) mientras no exista una
- * ruta de PDF propia (DECOR-52).
+ * Imprimir en la página pública (DECOR-53), como complemento a la descarga
+ * directa del PDF (DECOR-56).
  */
 export function PrintButton() {
   return (

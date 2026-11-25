@@ -59,4 +59,4 @@ Permite a un cliente sin sesión consultar una cotización `sent` o `accepted`.
 - **API** (`src/interfaces/quotes/quote-share-link-controller.ts`): `POST/GET/DELETE /api/quotes/{quoteId}/share-link`, autenticada, mismo patrón 401/404 que el resto de cotizaciones.
 - **Página pública**: `src/app/(public)/c/[token]/page.tsx`, sin sesión, `notFound()` uniforme ante cualquier motivo de rechazo. `src/proxy.ts` añade `/c` a las rutas públicas con `Cache-Control: no-store` y `Referrer-Policy: no-referrer`.
 - **Configuración**: `DECOR_PUBLIC_APP_URL` (origen de la URL compartida) y `DECOR_SHARE_LINK_SECRET` (secreto del HMAC; rotarlo invalida todos los enlaces activos a la vez).
-- El PDF de la página pública usa `window.print()` mientras no exista una ruta de descarga propia (DECOR-52).
+- La página pública ofrece descarga directa del PDF mediante `GET /api/c/{token}/pdf` (`SharedQuotePdfController`, DECOR-56) reutilizando `GetSharedQuoteUseCase` y `ReactPdfQuoteRenderer` con `Cache-Control: no-store` y `Referrer-Policy: no-referrer`, además de `window.print()` como respaldo.

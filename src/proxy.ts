@@ -13,8 +13,8 @@ const LOGIN_PATH = "/login";
 const PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup", "/docs/components.html", "/c"];
 
 // El token nunca debe quedar en una caché intermedia ni viajar en el header
-// Referer de un salto posterior (DECOR-53).
-const SHARE_LINK_PREFIX = "/c/";
+// Referer de un salto posterior (DECOR-53 / DECOR-56).
+const SHARE_LINK_PREFIXES = ["/c/", "/api/c/"];
 const SHARE_LINK_HEADERS: Record<string, string> = {
   "Cache-Control": "no-store",
   "Referrer-Policy": "no-referrer",
@@ -85,7 +85,7 @@ export async function proxy(request: NextRequest) {
   const isAuthenticated = Boolean(data?.claims?.sub);
   const { pathname } = request.nextUrl;
 
-  if (pathname.startsWith(SHARE_LINK_PREFIX)) {
+  if (SHARE_LINK_PREFIXES.some((prefix) => pathname.startsWith(prefix))) {
     return applyHeaders(response, { ...pendingHeaders, ...SHARE_LINK_HEADERS });
   }
 
