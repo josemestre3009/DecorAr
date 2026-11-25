@@ -19,6 +19,8 @@
   --color-decor-ink-soft: #4a4744;
   --color-decor-copper: #b5714f;
   --color-decor-copper-dark: #9a5b3d;
+  /* DECOR-49: cobre profundo para hover y texto pequeño sobre cobre claro (contraste AA). */
+  --color-decor-copper-deep: #82492f;
   --color-decor-copper-light: #e8d3c6;
   --color-decor-line: #2b2b2b;
   --color-decor-charcoal: #2e2e30;
@@ -1111,9 +1113,12 @@ a {
   color: var(--color-decor-ink-soft);
 }
 
-/* Acción principal: pill cobre, como en la portada. */
+/*
+ * Acción principal: pill cobre, como en la portada. DECOR-49: el blanco sobre
+ * el cobre medio daba 3,9:1; con el cobre oscuro llega a 5,3:1 (AA).
+ */
 .auth-submit {
-  background: var(--color-decor-copper);
+  background: var(--color-decor-copper-dark);
   box-shadow: 0 10px 24px -14px var(--color-decor-copper-dark);
   color: #fff;
   font-weight: 600;
@@ -1122,7 +1127,7 @@ a {
 }
 
 .auth-submit:hover {
-  background: var(--color-decor-copper-dark);
+  background: var(--color-decor-copper-deep);
 }
 
 .auth-submit:active {
@@ -1754,7 +1759,8 @@ body:has(.catalog-page) {
 .quote-status {
   background: var(--color-decor-copper-light);
   border-radius: 999px;
-  color: var(--color-decor-copper-dark);
+  /* DECOR-49: texto pequeño, necesita 4,5:1 sobre el cobre claro. */
+  color: var(--color-decor-copper-deep);
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -1987,5 +1993,238 @@ body:has(.catalog-page) {
   .quote-section .section-title {
     break-after: avoid;
     page-break-after: avoid;
+  }
+}
+
+/* DECOR-49: recorrido V2 Evento → Objetos → Montaje 3D → Cotización → Compartir. */
+.flow-steps {
+  container-type: inline-size;
+  margin: 0 0 1.25rem;
+}
+
+.flow-steps ol {
+  display: grid;
+  gap: 0.35rem;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.flow-step-target {
+  align-items: center;
+  border-radius: 0.75rem;
+  color: var(--color-decor-ink-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  justify-content: flex-start;
+  min-height: 2.75rem;
+  padding: 0.35rem 0.15rem;
+  text-align: center;
+  text-decoration: none;
+}
+
+a.flow-step-target:hover {
+  background: color-mix(in srgb, var(--color-decor-copper-light) 55%, transparent);
+  color: var(--color-decor-ink);
+}
+
+a.flow-step-target:focus-visible {
+  outline: 3px solid var(--clay);
+  outline-offset: 2px;
+}
+
+.flow-step-number {
+  align-items: center;
+  background: var(--color-decor-surface);
+  border: 1.5px solid color-mix(in srgb, var(--color-decor-ink) 30%, transparent);
+  border-radius: 999px;
+  display: inline-flex;
+  font-size: 0.85rem;
+  font-weight: 700;
+  height: 1.75rem;
+  justify-content: center;
+  width: 1.75rem;
+}
+
+/* Las palabras nunca se parten: si no caben, se usa la vista compacta de abajo. */
+.flow-step-label {
+  font-size: 0.75rem;
+  font-weight: 600;
+  hyphens: manual;
+  line-height: 1.2;
+  overflow-wrap: normal;
+}
+
+.flow-steps-caption {
+  display: none;
+  font-size: 0.85rem;
+  font-weight: 700;
+  margin: 0.4rem 0 0;
+  text-align: center;
+}
+
+/*
+ * Recuadro angosto (celular o columna del formulario): solo números y la
+ * línea "Paso N de 5 · Nombre". Los nombres quedan en el árbol de
+ * accesibilidad con la técnica de .visually-hidden.
+ */
+@container (max-width: 26rem) {
+  .flow-step-label {
+    clip: rect(0 0 0 0);
+    clip-path: inset(50%);
+    height: 1px;
+    overflow: hidden;
+    position: absolute;
+    white-space: nowrap;
+    width: 1px;
+  }
+
+  .flow-step-target {
+    justify-content: center;
+  }
+
+  .flow-steps-caption {
+    display: block;
+  }
+}
+
+.flow-step-done .flow-step-number {
+  background: var(--color-decor-copper-light);
+  border-color: var(--color-decor-copper-dark);
+  color: var(--color-decor-copper-deep);
+}
+
+.flow-step-current .flow-step-target {
+  color: var(--color-decor-ink);
+}
+
+.flow-step-current .flow-step-number {
+  background: var(--color-decor-copper-dark);
+  border-color: var(--color-decor-copper-dark);
+  color: #fff;
+}
+
+.flow-step-current .flow-step-label {
+  font-weight: 800;
+}
+
+/* Las anclas del recorrido no quedan pegadas al borde superior al saltar. */
+.flow-section,
+.flow-hint {
+  scroll-margin-top: 1rem;
+}
+
+.flow-hint {
+  background: color-mix(in srgb, var(--color-decor-copper-light) 55%, transparent);
+  border-radius: 0.75rem;
+  color: var(--color-decor-ink);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  margin: 0 0 1rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.next-step {
+  border-color: color-mix(in srgb, var(--color-decor-copper-dark) 45%, transparent);
+  display: grid;
+  gap: 0.5rem;
+}
+
+.next-step-eyebrow {
+  color: var(--color-decor-copper-deep);
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.next-step .section-title {
+  margin: 0;
+}
+
+.next-step-body {
+  line-height: 1.5;
+  margin: 0;
+}
+
+.next-step-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin-top: 0.25rem;
+}
+
+.next-step-action {
+  align-items: center;
+  display: inline-flex;
+  justify-content: center;
+  min-height: 2.75rem;
+  text-decoration: none;
+}
+
+.package-quote-list {
+  display: grid;
+  gap: 0.75rem;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.package-quote {
+  border: 1px solid color-mix(in srgb, var(--color-decor-ink) 12%, transparent);
+  border-radius: 0.9rem;
+  padding: 0.75rem 0.9rem;
+}
+
+.package-quote-head {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  justify-content: space-between;
+}
+
+.package-quote-link {
+  align-items: center;
+  color: var(--color-decor-ink);
+  display: inline-flex;
+  font-weight: 700;
+  min-height: 2.75rem;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.package-quote-link:focus-visible {
+  outline: 3px solid var(--clay);
+  outline-offset: 2px;
+}
+
+.package-quote-meta {
+  color: var(--color-decor-ink-soft);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  margin: 0.25rem 0 0;
+}
+
+.quote-send {
+  display: grid;
+  gap: 0.75rem;
+  justify-items: start;
+}
+
+@media (max-width: 480px) {
+  .next-step-action,
+  .quote-send .quote-action {
+    width: 100%;
+  }
+}
+
+@media print {
+  .flow-steps,
+  .quote-share-step {
+    display: none !important;
   }
 }

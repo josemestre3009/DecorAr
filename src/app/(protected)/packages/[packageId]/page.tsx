@@ -8,6 +8,7 @@ import type { PackageDetailView } from "@/modules/packages/application/dtos/pack
 import { createPackageQueryDependencies } from "@/composition/server";
 import { requireSessionUser } from "@/composition/session-guard";
 
+import { FlowSteps } from "../../_flow/flow-steps";
 import { countUnitsByModule, type ConfiguratorBudget } from "../_lib/configurator-view";
 import { resolvePackagesMode } from "../_lib/packages-client";
 import { buildZoneTree, flattenZones } from "../_lib/zone-tree";
@@ -16,8 +17,10 @@ import { CreateQuoteForm } from "./create-quote-form";
 import { DuplicatePackageButton } from "./duplicate-package-button";
 import { EventMetadataEditor } from "./event-metadata-editor";
 import { EventSummary } from "./event-summary";
+import { NextStep } from "./next-step";
 import { PackageCatalog } from "./package-catalog";
 import { PackageContents } from "./package-contents";
+import { PackageQuotes } from "./package-quotes";
 import { PageHeading } from "./page-heading";
 import { RefreshButton } from "./refresh-button";
 import { SaveTemplateButton } from "./save-template-button";
@@ -93,6 +96,7 @@ export default async function PackagePage({ params }: PackagePageProps) {
   const detail = ready?.detail ?? null;
   // Zonas planas para los selectores de destino del contenido y el catálogo.
   const zones = detail ? flattenZones(buildZoneTree(detail.nodes)) : [];
+  const unitCount = serverCounts ? Object.values(serverCounts).reduce((total, count) => total + count, 0) : 0;
 
   return (
     <main className="catalog-page">
@@ -106,10 +110,13 @@ export default async function PackagePage({ params }: PackagePageProps) {
         <PageHeading>{detail?.name ?? "Tu evento"}</PageHeading>
         <p className="page-lead">
           {isLive
-            ? "Revisa los datos del evento, agrega o quita elementos y guarda la configuración como plantilla."
+            ? "Revisa los datos del evento, elige sus elementos, míralos en 3D y crea la cotización para tu cliente."
             : "Elige los módulos que quieres en tu decoración."}
         </p>
       </header>
+
+      {/* Recorrido V2 (DECOR-49): con evento real; en modo simulado no hay cotización. */}
+      {detail ? <FlowSteps current={unitCount === 0 ? "objetos" : "cotizacion"} packageId={packageId} /> : null}
 
       {configurator === null ? (
         <p className="simulation-note">
@@ -129,32 +136,53 @@ export default async function PackagePage({ params }: PackagePageProps) {
 
       {detail && ready ? (
         <>
-          <div className="configurator-summary">
-            <EventSummary detail={detail} />
-            <BudgetTotal
-              budget={ready.budget}
+          <NextStep unitCount={unitCount} />
+          <div className="flow-section" id="evento">
+            <div className="configurator-summary">
+              <EventSummary detail={detail} />
+              <BudgetTotal
+                budget={ready.budget}
+                packageId={packageId}
+                packageVersion={detail.version}
+              />
+            </div>
+            <EventMetadataEditor detail={detail} packageId={packageId} />
+          </div>
+          <div className="flow-section" id="objetos">
+            <PackageContents
+              nodes={detail.nodes}
               packageId={packageId}
-              packageVersion={detail.version}
+              version={detail.version}
             />
           </div>
-          <EventMetadataEditor detail={detail} packageId={packageId} />
-          <SaveTemplateButton eventName={detail.name} packageId={packageId} />
-          <CreateQuoteForm clientName={detail.clientName} packageId={packageId} />
-          <PackageContents
-            nodes={detail.nodes}
-            packageId={packageId}
-            version={detail.version}
-          />
         </>
       ) : null}
 
-      <PackageCatalog
-        packageId={packageId}
-        packageVersion={detail?.version}
-        remainingM2={detail?.remainingM2 ?? undefined}
-        serverCounts={serverCounts}
-        zones={zones}
-      />
+      <div className="flow-section" id="catalogo">
+        {detail ? (
+          <p className="flow-hint" id="montaje">
+            <strong>Montaje 3D:</strong> en cada elemento toca «Ver en 3D» para verlo a tamaño real y, si tu
+            celular lo permite, en tu espacio.
+          </p>
+        ) : null}
+        <PackageCatalog
+          packageId={packageId}
+          packageVersion={detail?.version}
+          remainingM2={detail?.remainingM2 ?? undefined}
+          serverCounts={serverCounts}
+          zones={zones}
+        />
+      </div>
+
+      {detail ? (
+        <>
+          <div className="flow-section" id="cotizacion">
+            <PackageQuotes packageId={packageId} />
+            <CreateQuoteForm clientName={detail.clientName} hasItems={unitCount > 0} packageId={packageId} />
+          </div>
+          <SaveTemplateButton eventName={detail.name} packageId={packageId} />
+        </>
+      ) : null}
     </main>
   );
 }

@@ -11,10 +11,12 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 
 const fakeClient = (createQuote: QuotesClient["createQuote"]): QuotesClient => ({
+  changeStatus: vi.fn(),
   createQuote,
   createQuoteVersion: vi.fn(),
   createShareLink: vi.fn(),
   getShareLink: vi.fn(),
+  listQuotes: vi.fn(),
   revokeShareLink: vi.fn(),
 });
 
@@ -98,5 +100,20 @@ describe("CreateQuoteForm (DECOR-51)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Generar y revisar" }));
 
     await waitFor(() => expect(push).toHaveBeenCalledWith("/login"));
+  });
+});
+
+describe("CreateQuoteForm sin elementos (DECOR-49)", () => {
+  it("en lugar del formulario avisa que hay que agregar elementos y lleva al catálogo", () => {
+    const createQuote = vi.fn();
+    render(
+      <CreateQuoteForm client={fakeClient(createQuote)} clientName="Ana" hasItems={false} packageId="pkg-1" today={TODAY} />,
+    );
+
+    expect(screen.queryByRole("button", { name: "Generar cotización" })).toBeNull();
+    expect(screen.queryByRole("form", { name: "Generar cotización" })).toBeNull();
+    expect(screen.getByText(/Agrega al menos un elemento del catálogo para poder cotizar/)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Ir al catálogo" })).toHaveAttribute("href", "#catalogo");
+    expect(createQuote).not.toHaveBeenCalled();
   });
 });

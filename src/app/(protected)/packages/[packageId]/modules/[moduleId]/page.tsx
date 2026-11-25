@@ -3,6 +3,7 @@ import Link from "next/link";
 
 import { requireSessionUser } from "@/composition/session-guard";
 
+import { FlowSteps } from "../../../../_flow/flow-steps";
 import { PageHeading } from "../../page-heading";
 import { ModuleViewer } from "./module-viewer";
 
@@ -24,7 +25,7 @@ export default async function ModulePage({ params }: ModulePageProps) {
   return (
     <main className="catalog-page">
       <header className="catalog-header">
-        <Link className="auth-link" href={`/packages/${encodeURIComponent(packageId)}`}>
+        <Link className="auth-link" href={`/packages/${encodeURIComponent(packageId)}#catalogo`}>
           ← Volver al catálogo
         </Link>
         <PageHeading>Ver en 3D</PageHeading>
@@ -32,6 +33,8 @@ export default async function ModulePage({ params }: ModulePageProps) {
           Gira el modelo y ábrelo en tu espacio para verlo a su tamaño real.
         </p>
       </header>
+
+      <FlowSteps current="montaje" packageId={packageId} />
 
       <ModuleViewer moduleId={moduleId} packageId={packageId} />
     </main>

@@ -44,7 +44,7 @@ const FOCUS = "focus-visible:outline-2 focus-visible:outline-solid";
 const INPUT =
   `h-12 w-full rounded-xl font-[inherit] border border-decor-ink/15 bg-decor-surface px-4 text-base text-decor-ink transition-colors placeholder:text-decor-ink-soft/60 hover:border-decor-ink/30 focus:border-decor-copper ${FOCUS} focus-visible:outline-offset-2 focus-visible:outline-decor-copper aria-[invalid=true]:border-decor-copper-dark motion-reduce:transition-none`;
 const PRIMARY =
-  `inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full border-0 bg-decor-copper font-[inherit] px-6 text-base font-medium text-white no-underline transition duration-150 hover:bg-decor-copper-dark active:scale-[0.98] active:bg-decor-copper-dark disabled:cursor-wait disabled:opacity-70 disabled:active:scale-100 ${FOCUS} focus-visible:outline-offset-4 focus-visible:outline-decor-ink motion-reduce:transition-none motion-reduce:active:scale-100`;
+  `inline-flex min-h-12 w-full cursor-pointer items-center justify-center rounded-full border-0 bg-decor-copper-dark font-[inherit] px-6 text-base font-medium text-white no-underline transition duration-150 hover:bg-decor-copper-deep active:scale-[0.98] active:bg-decor-copper-deep disabled:cursor-wait disabled:opacity-70 disabled:active:scale-100 ${FOCUS} focus-visible:outline-offset-4 focus-visible:outline-decor-ink motion-reduce:transition-none motion-reduce:active:scale-100`;
 const TEXT_LINK =
   `rounded-sm font-medium text-decor-copper-dark underline underline-offset-4 hover:text-decor-ink ${FOCUS} focus-visible:outline-offset-2 focus-visible:outline-decor-copper`;
 
