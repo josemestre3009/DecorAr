@@ -7,6 +7,7 @@ import { createPackageListQueryDependencies } from "@/composition/server";
 import { requireSessionUser } from "@/composition/session-guard";
 import type { PackageSummary } from "@/modules/packages/application/ports/package-reader.port";
 
+import { FlowSteps } from "../_flow/flow-steps";
 import { resolvePackagesMode } from "./_lib/packages-client";
 import { EventHistory } from "./event-history";
 import { EventForm } from "./event-form";
@@ -63,6 +64,9 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
             Crea un evento con su nombre. Cliente, fecha, lugar y área pueden completarse
             después, al configurar la decoración.
           </p>
+
+          {/* Recorrido V2 (DECOR-49): el primer paso es crear o abrir un evento. */}
+          <FlowSteps current="evento" />
 
           <EventForm />
 

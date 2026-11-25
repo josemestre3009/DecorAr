@@ -16,6 +16,11 @@ type CreateQuoteFormProps = {
   readonly client?: QuotesClient;
   /** Inyectable para las pruebas; por defecto la fecha de hoy en Colombia. */
   readonly today?: string;
+  /**
+   * Sin elementos no hay nada que cotizar (el servidor respondería
+   * `quote.empty_package`): se muestra el aviso en lugar del formulario (DECOR-49).
+   */
+  readonly hasItems?: boolean;
 };
 
 type FieldErrors = Partial<Record<"validUntil" | "taxRate" | "discountRate" | "depositRate", string>>;
@@ -28,7 +33,7 @@ const DEFAULT_TAX_PERCENT = "19";
  * comerciales que pide la API de DECOR-50. El servidor congela precios y
  * calcula totales; al crearla se abre su vista previa.
  */
-export function CreateQuoteForm({ packageId, clientName, client, today }: CreateQuoteFormProps) {
+export function CreateQuoteForm({ packageId, clientName, client, today, hasItems = true }: CreateQuoteFormProps) {
   const router = useRouter();
   const quotes = useMemo(() => client ?? createHttpQuotesClient(), [client]);
   const minDate = today ?? todayInBogota();
@@ -109,22 +114,33 @@ export function CreateQuoteForm({ packageId, clientName, client, today }: Create
         <h2 className="section-title" id="create-quote-title">
           Cotización
         </h2>
-        <button
-          aria-expanded={open}
-          className="secondary-button"
-          onClick={() => (open ? close() : setOpen(true))}
-          ref={toggleRef}
-          type="button"
-        >
-          {open ? "Cerrar" : "Generar cotización"}
-        </button>
+        {hasItems ? (
+          <button
+            aria-expanded={open}
+            className="secondary-button"
+            onClick={() => (open ? close() : setOpen(true))}
+            ref={toggleRef}
+            type="button"
+          >
+            {open ? "Cerrar" : "Generar cotización"}
+          </button>
+        ) : null}
       </div>
 
-      <p className="content-hint">
-        Congela los precios actuales del evento y abre una vista previa para revisarla antes del PDF.
-      </p>
+      {hasItems ? (
+        <p className="content-hint">
+          Congela los precios actuales del evento y abre una vista previa para revisarla antes del PDF.
+        </p>
+      ) : (
+        <p className="content-hint">
+          Agrega al menos un elemento del catálogo para poder cotizar.{" "}
+          <a className="secondary-link" href="#catalogo">
+            Ir al catálogo
+          </a>
+        </p>
+      )}
 
-      {open ? (
+      {open && hasItems ? (
         <form aria-label="Generar cotización" className="auth-form" noValidate onSubmit={handleSubmit}>
           <div className="quote-form-grid">
             <div className="auth-field">

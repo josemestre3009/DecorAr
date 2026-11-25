@@ -12,10 +12,12 @@ const push = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push, refresh: vi.fn() }) }));
 
 const fakeClient = (createQuoteVersion: QuotesClient["createQuoteVersion"]): QuotesClient => ({
+  changeStatus: vi.fn(),
   createQuote: vi.fn(),
   createQuoteVersion,
   createShareLink: vi.fn(),
   getShareLink: vi.fn(),
+  listQuotes: vi.fn(),
   revokeShareLink: vi.fn(),
 });
 

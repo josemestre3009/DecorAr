@@ -135,3 +135,100 @@ describe("createHttpQuotesClient — enlace público (DECOR-53)", () => {
     expect((await client.revokeShareLink("q-1")).ok).toBe(false);
   });
 });
+
+describe("createHttpQuotesClient — recorrido V2 (DECOR-49)", () => {
+  const SUMMARY = {
+    clientName: "Ana",
+    createdAt: "2026-11-24T10:00:00Z",
+    eventName: "Boda",
+    id: "q-1",
+    number: 3,
+    packageId: "pkg-1",
+    status: "draft",
+    totalCop: 250000,
+    validUntil: "2026-12-01",
+    version: 2,
+  };
+
+  it("changeStatus envía PATCH con el estado nuevo", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json(200, { id: "q 1", status: "sent" }));
+
+    const result = await createHttpQuotesClient(fetcher).changeStatus("q 1", "sent");
+
+    expect(result).toEqual({ ok: true, value: undefined });
+    const [url, init] = fetcher.mock.calls[0];
+    expect(url).toBe("/api/quotes/q%201/status");
+    expect(init.method).toBe("PATCH");
+    expect(JSON.parse(init.body)).toEqual({ status: "sent" });
+  });
+
+  it("changeStatus devuelve el mensaje de una transición rechazada", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      json(422, { error: { code: "quote.invalid_status_transition", message: "No se puede pasar." } }),
+    );
+
+    const result = await createHttpQuotesClient(fetcher).changeStatus("q-1", "sent");
+
+    expect(result).toMatchObject({ error: { code: "quote.invalid_status_transition", message: "No se puede pasar." }, ok: false });
+  });
+
+  it("listQuotes lee GET /api/quotes sin caché y conserva lo que usa la interfaz", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json(200, { quotes: [SUMMARY] }));
+
+    const result = await createHttpQuotesClient(fetcher).listQuotes();
+
+    expect(fetcher).toHaveBeenCalledWith("/api/quotes", expect.objectContaining({ cache: "no-store" }));
+    expect(result).toEqual({
+      ok: true,
+      value: [
+        {
+          createdAt: "2026-11-24T10:00:00Z",
+          id: "q-1",
+          number: 3,
+          packageId: "pkg-1",
+          status: "draft",
+          totalCop: 250000,
+          validUntil: "2026-12-01",
+          version: 2,
+        },
+      ],
+    });
+  });
+
+  it("listQuotes acepta una cotización cuyo evento ya no existe", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json(200, { quotes: [{ ...SUMMARY, packageId: null }] }));
+
+    const result = await createHttpQuotesClient(fetcher).listQuotes();
+
+    expect(result.ok && result.value[0]?.packageId).toBeNull();
+  });
+
+  it.each([
+    ["sin lista", {}],
+    ["estado desconocido", { quotes: [{ ...SUMMARY, status: "archived" }] }],
+    ["total no numérico", { quotes: [{ ...SUMMARY, totalCop: "250000" }] }],
+  ])("listQuotes trata una respuesta %s como inesperada", async (_case, body) => {
+    const fetcher = vi.fn().mockResolvedValue(json(200, body));
+
+    const result = await createHttpQuotesClient(fetcher).listQuotes();
+
+    expect(result).toMatchObject({ error: { kind: "server" }, ok: false });
+  });
+
+  it("listQuotes deja pasar la cancelación al desmontar", async () => {
+    const controller = new AbortController();
+    controller.abort();
+    const abort = new DOMException("Aborted", "AbortError");
+    const fetcher = vi.fn().mockRejectedValue(abort);
+
+    await expect(createHttpQuotesClient(fetcher).listQuotes(controller.signal)).rejects.toBe(abort);
+  });
+
+  it("un fallo de red se marca como red en changeStatus y listQuotes", async () => {
+    const offline = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
+    const client = createHttpQuotesClient(offline);
+
+    expect(await client.changeStatus("q-1", "sent")).toMatchObject({ error: { kind: "network" }, ok: false });
+    expect(await client.listQuotes()).toMatchObject({ error: { kind: "network" }, ok: false });
+  });
+});

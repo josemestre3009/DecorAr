@@ -8,12 +8,14 @@ import type { QuoteDto } from "@/modules/quotes/application/dtos/quote.dto";
 import { createQuoteQueryDependencies } from "@/composition/server";
 import { requireSessionUser } from "@/composition/session-guard";
 
+import { FlowSteps } from "../../_flow/flow-steps";
 import { resolvePackagesMode } from "../../packages/_lib/packages-client";
 import { PageHeading } from "../../packages/[packageId]/page-heading";
 import { RefreshButton } from "../../packages/[packageId]/refresh-button";
 import { quoteTitle } from "../_lib/quote-format";
 import { QuoteActions } from "./quote-actions";
 import { QuotePreview } from "./quote-preview";
+import { QuoteSendStep } from "./quote-send-step";
 import { ShareLinkSection } from "./share-link-section";
 
 export const metadata: Metadata = {
@@ -88,19 +90,28 @@ export default async function QuotePage({ params }: QuotePageProps) {
 
       {quote ? (
         <>
-          <QuotePreview quote={quote} />
-          <ShareLinkSection
+          {/* Recorrido V2 (DECOR-49): una cotización enviada o aceptada ya está en "Compartir". */}
+          <FlowSteps
+            current={quote.status === "sent" || quote.status === "accepted" ? "compartir" : "cotizacion"}
+            packageId={quote.packageId}
             quoteId={quote.id}
-            status={quote.status}
-            summary={{
-              clientName: quote.client.name,
-              number: quote.number,
-              totalCop: quote.totals.totalCop,
-              validUntil: quote.validUntil,
-              version: quote.version,
-            }}
           />
+          <QuotePreview quote={quote} />
           <QuoteActions quote={quote} />
+          <div className="flow-section quote-share-step" id="compartir">
+            <QuoteSendStep quoteId={quote.id} status={quote.status} validUntil={quote.validUntil} />
+            <ShareLinkSection
+              quoteId={quote.id}
+              status={quote.status}
+              summary={{
+                clientName: quote.client.name,
+                number: quote.number,
+                totalCop: quote.totals.totalCop,
+                validUntil: quote.validUntil,
+                version: quote.version,
+              }}
+            />
+          </div>
         </>
       ) : null}
     </main>

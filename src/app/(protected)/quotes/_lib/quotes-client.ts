@@ -1,3 +1,4 @@
+import { isQuoteStatus, type QuoteStatus } from "@/modules/quotes/domain/quote-status";
 import { err, ok, type Result } from "@/shared/domain/result";
 
 import {
@@ -12,6 +13,8 @@ import {
  *
  * - `POST /api/packages/{packageId}/quotes` → 201 `QuoteDto` (versión 1)
  * - `POST /api/quotes/{quoteId}/versions` → 201 `QuoteDto` (versión nueva)
+ * - `PATCH /api/quotes/{quoteId}/status {status}` → 200 (DECOR-49: marcar como enviada)
+ * - `GET /api/quotes` → 200 `{quotes: QuoteSummaryDto[]}` (DECOR-49: cotizaciones del evento)
  * - errores `{error:{code,message}}` con 400/401/404/409/422
  *
  * Solo se envían los términos: el servidor congela precios y calcula totales.
@@ -38,12 +41,28 @@ export type QuoteShareLink = {
   readonly revokedAt: string | null;
 };
 
+/** Fila de `GET /api/quotes` que usa la interfaz (DECOR-49). */
+export type QuoteListItem = {
+  readonly id: string;
+  readonly number: number;
+  readonly version: number;
+  readonly status: QuoteStatus;
+  readonly packageId: string | null;
+  readonly totalCop: number;
+  readonly validUntil: string;
+  readonly createdAt: string;
+};
+
 export type QuotesClient = {
   createQuote(packageId: string, terms: QuoteTermsRequest): Promise<Result<CreatedQuote, ApiFailure>>;
   createQuoteVersion(quoteId: string, terms: QuoteTermsRequest): Promise<Result<CreatedQuote, ApiFailure>>;
   getShareLink(quoteId: string): Promise<Result<QuoteShareLink | null, ApiFailure>>;
   createShareLink(quoteId: string): Promise<Result<QuoteShareLink, ApiFailure>>;
   revokeShareLink(quoteId: string): Promise<Result<void, ApiFailure>>;
+  /** `PATCH /api/quotes/{id}/status` (DECOR-50); la transición la valida el servidor. */
+  changeStatus(quoteId: string, status: QuoteStatus): Promise<Result<void, ApiFailure>>;
+  /** `GET /api/quotes`: cotizaciones del dueño, de la más reciente a la más antigua. */
+  listQuotes(signal?: AbortSignal): Promise<Result<QuoteListItem[], ApiFailure>>;
 };
 
 function isCreatedQuote(value: unknown): value is CreatedQuote {
@@ -174,8 +193,89 @@ async function revokeShareLink(fetcher: typeof fetch, quoteId: string): Promise<
   return ok(undefined);
 }
 
+async function changeStatus(
+  fetcher: typeof fetch,
+  quoteId: string,
+  status: QuoteStatus,
+): Promise<Result<void, ApiFailure>> {
+  let response: Response;
+
+  try {
+    response = await fetcher(`/api/quotes/${encodeURIComponent(quoteId)}/status`, {
+      body: JSON.stringify({ status }),
+      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      method: "PATCH",
+    });
+  } catch {
+    return err(networkFailure());
+  }
+
+  if (!response.ok) return err(await readApiError(response));
+
+  return ok(undefined);
+}
+
+function isQuoteListItem(value: unknown): value is QuoteListItem {
+  if (typeof value !== "object" || value === null) return false;
+  const row = value as Record<string, unknown>;
+
+  return (
+    typeof row.id === "string" &&
+    typeof row.number === "number" &&
+    typeof row.version === "number" &&
+    isQuoteStatus(row.status) &&
+    (typeof row.packageId === "string" || row.packageId === null) &&
+    typeof row.totalCop === "number" &&
+    typeof row.validUntil === "string" &&
+    typeof row.createdAt === "string"
+  );
+}
+
+async function listQuotes(
+  fetcher: typeof fetch,
+  signal?: AbortSignal,
+): Promise<Result<QuoteListItem[], ApiFailure>> {
+  let response: Response;
+
+  try {
+    response = await fetcher("/api/quotes", {
+      cache: "no-store",
+      headers: { Accept: "application/json" },
+      signal,
+    });
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return err(networkFailure());
+  }
+
+  if (!response.ok) return err(await readApiError(response));
+
+  const body = await readJsonBody(response);
+  if (!body.ok) return body;
+
+  const { quotes } = (body.value ?? {}) as { quotes?: unknown };
+  if (!Array.isArray(quotes) || !quotes.every(isQuoteListItem)) {
+    return err(unexpectedResponseFailure(response.status));
+  }
+
+  return ok(
+    quotes.map(({ id, number, version, status, packageId, totalCop, validUntil, createdAt }) => ({
+      createdAt,
+      id,
+      number,
+      packageId,
+      status,
+      totalCop,
+      validUntil,
+      version,
+    })),
+  );
+}
+
 export function createHttpQuotesClient(fetcher: typeof fetch = fetch): QuotesClient {
   return {
+    changeStatus: (quoteId, status) => changeStatus(fetcher, quoteId, status),
+    listQuotes: (signal) => listQuotes(fetcher, signal),
     createQuote: (packageId, terms) =>
       postTerms(fetcher, `/api/packages/${encodeURIComponent(packageId)}/quotes`, terms),
     createQuoteVersion: (quoteId, terms) =>

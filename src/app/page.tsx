@@ -87,7 +87,7 @@ export default function Home() {
 
           {/* Sin sesión, el proxy lleva a /login y el login regresa a /packages. */}
           <Link
-            className="mt-6 inline-flex min-h-14 items-center gap-3 rounded-full bg-decor-copper px-8 py-3 text-base font-medium text-white no-underline shadow-[0_8px_24px_-12px_var(--color-decor-copper-dark)] transition duration-150 hover:bg-decor-copper-dark focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-decor-ink active:scale-[0.98] active:bg-decor-copper-dark motion-reduce:transition-none motion-reduce:active:scale-100 lg:mt-9"
+            className="mt-6 inline-flex min-h-14 items-center gap-3 rounded-full bg-decor-copper-dark px-8 py-3 text-base font-medium text-white no-underline shadow-[0_8px_24px_-12px_var(--color-decor-copper-dark)] transition duration-150 hover:bg-decor-copper-deep focus-visible:outline-3 focus-visible:outline-offset-4 focus-visible:outline-decor-ink active:scale-[0.98] active:bg-decor-copper-deep motion-reduce:transition-none motion-reduce:active:scale-100 lg:mt-9"
             href="/packages"
           >
             Empezar a Decorar

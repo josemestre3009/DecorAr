@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { DomainError } from "@/shared/domain/domain-error";
@@ -64,7 +64,8 @@ describe("PackagesPage", () => {
 
     expect(screen.getByRole("heading", { name: "Eventos" })).toBeInTheDocument();
     expect(screen.getByRole("region", { name: "Plantillas" })).toBeInTheDocument();
-    expect(screen.getAllByRole("listitem")).toHaveLength(2);
+    // Solo los eventos: los pasos del recorrido (DECOR-49) también son una lista.
+    expect(within(screen.getByRole("region", { name: "Eventos" })).getAllByRole("listitem")).toHaveLength(2);
     expect(screen.getByText("Boda de Ana")).toBeInTheDocument();
     expect(screen.getByText(/Ana · Salón social/)).toBeInTheDocument();
     expect(screen.getAllByText(/Actualizado el/)).toHaveLength(2);
