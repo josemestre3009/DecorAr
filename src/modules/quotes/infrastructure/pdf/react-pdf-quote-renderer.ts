@@ -3,9 +3,8 @@ import "server-only";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
-import type { QuoteDto } from "../../application/dtos/quote.dto";
 import type { QuotePdfRenderer } from "../../application/ports/quote-pdf-renderer.port";
-import { buildQuoteDocument } from "../../application/quote-document";
+import { buildQuoteDocument, type QuoteDocumentSource } from "../../application/quote-document";
 
 /** `public/` se copia junto al servidor standalone (`scripts/build.mjs`). */
 export const DEFAULT_LOGO_PATH = join(process.cwd(), "public", "brand", "logo.png");
@@ -30,7 +29,7 @@ export class ReactPdfQuoteRenderer implements QuotePdfRenderer {
     return this.logo;
   }
 
-  async render(quote: QuoteDto): Promise<Uint8Array> {
+  async render(quote: QuoteDocumentSource): Promise<Uint8Array> {
     const [{ renderToBuffer }, { QuotePdfDocument }, logo] = await Promise.all([
       import("@react-pdf/renderer"),
       import("./quote-pdf-document"),
@@ -39,7 +38,11 @@ export class ReactPdfQuoteRenderer implements QuotePdfRenderer {
 
     // La plantilla no usa hooks: se invoca directo para entregar el <Document>.
     const buffer = await renderToBuffer(
-      QuotePdfDocument({ createdAt: new Date(quote.createdAt), document: buildQuoteDocument(quote), logo }),
+      QuotePdfDocument({
+        createdAt: quote.createdAt ? new Date(quote.createdAt) : undefined,
+        document: buildQuoteDocument(quote),
+        logo,
+      }),
     );
     return new Uint8Array(buffer);
   }

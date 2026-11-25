@@ -1880,6 +1880,12 @@ body:has(.catalog-page) {
   gap: 0.75rem;
 }
 
+.quote-actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
 .quote-actions-form {
   display: grid;
   gap: 0.75rem;

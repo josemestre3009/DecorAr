@@ -62,4 +62,27 @@ describe("ReactPdfQuoteRenderer (DECOR-52)", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     warn.mockRestore();
   }, 30_000);
+
+  it("renderiza un PublicQuoteDto sin estado ni createdAt (DECOR-56)", async () => {
+    const pdf = await new ReactPdfQuoteRenderer(DEFAULT_LOGO_PATH).render({
+      client: QUOTE_FIXTURE.client,
+      conditions: QUOTE_FIXTURE.conditions,
+      event: QUOTE_FIXTURE.event,
+      lines: QUOTE_FIXTURE.lines.map(({ lineTotalCop, name, position, quantity, unitPriceCop }) => ({
+        lineTotalCop,
+        name,
+        position,
+        quantity,
+        unitPriceCop,
+      })),
+      number: QUOTE_FIXTURE.number,
+      terms: QUOTE_FIXTURE.terms,
+      totals: QUOTE_FIXTURE.totals,
+      validUntil: QUOTE_FIXTURE.validUntil,
+      version: QUOTE_FIXTURE.version,
+    });
+
+    expect(decoder.decode(pdf).startsWith("%PDF-")).toBe(true);
+    expect(pageCount(pdf)).toBe(1);
+  }, 30_000);
 });

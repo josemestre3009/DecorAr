@@ -103,7 +103,7 @@ La validación está repartida en dos niveles a propósito. `getClaims()` es bar
 
 El alcance de "sin coste de red" para `getClaims()` es condicional y conviene no leerlo como una propiedad de la librería. El proyecto firma con una clave asimétrica, comprobado sobre `GET /auth/v1/.well-known/jwks.json`, que devuelve una clave `ES256`: en ese caso la única descarga es la del JWKS en el primer acierto de caché, y Supabase lo cachea diez minutos en el edge. Con la clave simétrica heredada (HS256), `getClaims()` recurre a `getUser()` y sí paga una llamada de red por petición.
 
-Las rutas se protegen por defecto, no por lista. `src/proxy.ts` declara `PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup"]` y trata como protegida cualquier otra ruta de página, de modo que una página nueva nace protegida y sólo queda pública si alguien la añade ahí a propósito. `/api` queda exenta porque sus Route Handlers validan la identidad por su cuenta. La convención de grupos es que toda página se cree dentro de `(public)/` o de `(protected)/`, y `src/app/route-inventory.test.ts` falla si aparece una página fuera de ambos grupos. `/api/health` se atiende en el proxy antes de crear el cliente de Supabase, para que el healthcheck del contenedor no dependa de él.
+Las rutas se protegen por defecto, no por lista. `src/proxy.ts` declara `PUBLIC_PAGE_PREFIXES = ["/", "/login", "/signup", "/docs/components.html", "/c"]` y trata como protegida cualquier otra ruta de página, de modo que una página nueva nace protegida y sólo queda pública si alguien la añade ahí a propósito. `/api` queda exenta porque sus Route Handlers validan la identidad por su cuenta (y `/c/` + `/api/c/` reciben además `Cache-Control: no-store` y `Referrer-Policy: no-referrer`). La convención de grupos es que toda página se cree dentro de `(public)/` o de `(protected)/`, y `src/app/route-inventory.test.ts` falla si aparece una página fuera de ambos grupos. `/api/health` se atiende en el proxy antes de crear el cliente de Supabase, para que el healthcheck del contenedor no dependa de él.
 
 El cliente server propaga los encabezados `Cache-Control`, `Expires` y `Pragma` que entrega la librería a través del callback `setAll`, y el proxy los adjunta a la respuesta que reenvía.
 
@@ -341,7 +341,7 @@ La suite `e2e/mobile-mvp/` recorre el flujo de demo en un **Pixel 5** contra la 
    - verifica que `arco`, `mesa` y `pista` están activos con GLB y USDZ HTTPS. No los activa: si faltan, falla y remite a `npm run catalog:publish-assets` (DECOR-36).
 3. **Flujo** (`mvp-flow.spec.ts`, usuario A):
    - espacio Casa de 30 m² y pista desde el catálogo;
-   - capacidad excedida con una vista obsoleta: dos pestañas de A abren un paquete propio de 30 m². Una agrega la pista y la otra, que todavía ve 30 m² libres, pide otra. La API responde `422 package.capacity_exceeded` con "(32/30 m²)"; esa pestaña no muestra la pista ni cambia el área, y al recargar ve solo la pista guardada. Con la vista al día, el selector de cantidad (DECOR-42) ya impide pedirla;
+   - capacidad excedida con una vista obsoleta (histórico v1, previo a DECOR-44): originalmente `mvp-flow.spec.ts` verificaba `422 package.capacity_exceeded` en vista obsoleta; desde DECOR-44 la capacidad excedida ya no bloquea y sólo actualiza el diagnóstico espacial;
    - Zona de bienvenida (Composite);
    - total confirmado igual a `GET /budget`;
    - resincronización al recuperar la conexión;
@@ -400,6 +400,14 @@ Persistencia: una migración aditiva a DECOR-44 (`supabase/migrations/2026101600
 Eventos y presupuesto: agregar emite `package.module.added`; `delete_contents` emite `package.module.removed` por cada hoja del subárbol; mover una instancia y `move_to_root` emiten `package.module.moved` (identidad `itemId`/`moduleId` y `fromGroupId`/`toGroupId`), sin borrar ni recrear el item. Renombrar o reparentar no producen eventos de módulo, sólo suben la versión. El consumidor de Presupuesto acepta también `moved` y reconcilia contra la versión final releyendo el paquete.
 
 Compatibilidad DECOR-44: `create_event_template_from_package` y `create_package_from_event_template` no cambian; siguen copiando `package_groups`/`package_items` por profundidad con IDs nuevos, así que el snapshot de plantilla conserva la jerarquía editada y permanece independiente del origen.
+
+### 2.2.12 DecorAR V2: escena, cotizaciones, PDF, enlace público y WhatsApp
+
+- **Escena persistida y alcance AR (DECOR-46, DECOR-47/48)**: `GET|PUT /api/packages/{id}/scene` (`SceneController`, `src/modules/ar`) persiste la posición y rotación horizontal de cada objeto del paquete mediante `save_package_scene` (`SECURITY INVOKER`, `service_role`). Las tareas de montaje multiobjeto y WebXR (`DECOR-47/48`) fueron canceladas por el equipo; se conserva el visor 3D/AR individual (`/packages/{id}/modules/{moduleId}`) como respaldo (Android Scene Viewer/WebXR e iOS Quick Look con aviso explícito en navegadores integrados como WhatsApp/Instagram para abrir en Safari).
+- **Recorrido guiado (DECOR-49)**: `FlowSteps` (`src/app/(protected)/_flow/flow-steps.tsx`) y `NextStep` guían el flujo móvil `Evento → Objetos → Montaje 3D → Cotización → Compartir` con controles táctiles `>= 44 px` y foco visible.
+- **Cotizaciones versionadas y vista previa (DECOR-50, DECOR-51)**: `src/modules/quotes` congela líneas, tasas en puntos básicos y totales enteros en COP (`POST /api/packages/{id}/quotes`, `GET /api/quotes`, `GET /api/quotes/{id}`, `POST /api/quotes/{id}/versions`, `PATCH /api/quotes/{id}/status`). La vista previa vive en `/quotes/{quoteId}`.
+- **PDF server-side (DECOR-52, DECOR-56)**: `ReactPdfQuoteRenderer` (`@react-pdf/renderer`, runtime Node.js) genera el PDF A4 desde `GET /api/quotes/{id}/pdf` (propietario) y `GET /api/c/{token}/pdf` (cliente sin sesión vía `SharedQuotePdfController`, con `Cache-Control: no-store` y `Referrer-Policy: no-referrer`).
+- **Enlace público y WhatsApp (DECOR-53, DECOR-54)**: `POST|GET|DELETE /api/quotes/{id}/share-link` emite enlaces revocables firmados con HMAC-SHA256 (`DECOR_SHARE_LINK_SECRET`, `DECOR_PUBLIC_APP_URL`) abiertos en `/c/{token}` sin sesión (`notFound()` uniforme ante cualquier rechazo). `WhatsappShareActions` ofrece Web Share API, enlace `wa.me` y copia al portapapeles.
 
 ### 2.3 Diagrama de contenedores
 

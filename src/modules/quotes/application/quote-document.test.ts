@@ -95,4 +95,28 @@ describe("buildQuoteDocument (DECOR-52)", () => {
     expect(quoteFileName(QUOTE_FIXTURE)).toBe("cotizacion-12-v2.pdf");
     expect(buildQuoteDocument(QUOTE_FIXTURE).fileName).toBe("cotizacion-12-v2.pdf");
   });
+
+  it("acepta PublicQuoteDto sin estado ni fecha de emisión", () => {
+    const document = buildQuoteDocument({
+      client: QUOTE_FIXTURE.client,
+      conditions: QUOTE_FIXTURE.conditions,
+      event: QUOTE_FIXTURE.event,
+      lines: QUOTE_FIXTURE.lines.map(({ lineTotalCop, name, position, quantity, unitPriceCop }) => ({
+        lineTotalCop,
+        name,
+        position,
+        quantity,
+        unitPriceCop,
+      })),
+      number: QUOTE_FIXTURE.number,
+      terms: QUOTE_FIXTURE.terms,
+      totals: QUOTE_FIXTURE.totals,
+      validUntil: QUOTE_FIXTURE.validUntil,
+      version: QUOTE_FIXTURE.version,
+    });
+
+    expect(document.statusLabel).toBeNull();
+    expect(document.issuedOn).toBeNull();
+    expect(document.title).toBe(quoteTitle(12, 2));
+  });
 });

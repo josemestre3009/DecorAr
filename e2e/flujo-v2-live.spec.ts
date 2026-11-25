@@ -14,7 +14,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 
-import { expect, test, type Locator, type Page } from "@playwright/test";
+import { devices, expect, test, type Locator, type Page } from "@playwright/test";
 
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -82,8 +82,8 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     expect(overflow).toBe(false);
   }
 
-  test("de crear el evento a compartir la cotización, siempre se ve el siguiente paso", async ({ page }) => {
-    // Recorrido completo con visor 3D y cotización: más largo que el límite por defecto.
+  test("de crear el evento a compartir la cotización, siempre se ve el siguiente paso", async ({ browser, page }) => {
+    // Recorrido completo con visor 3D, cotización y PDF público: más largo que el límite por defecto.
     test.setTimeout(180_000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
@@ -162,8 +162,30 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     await expect(page.getByRole("heading", { name: "Enlace para el cliente" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByRole("heading", { name: "Compartir con tu cliente" })).toHaveCount(0);
     await page.getByRole("button", { name: "Crear enlace" }).click();
-    await expect(page.getByRole("textbox", { name: "Enlace público" })).toHaveValue(/\/c\//);
+    const shareUrl = await page.getByRole("textbox", { name: "Enlace público" }).inputValue();
+    expect(shareUrl).toMatch(/\/c\//);
     await expect(page.getByRole("link", { name: "Enviar por WhatsApp" })).toBeVisible();
+
+    // 6 · Cliente sin sesión abre el enlace público y descarga el PDF (DECOR-56).
+    const anonymous = await browser.newContext({ ...devices["Pixel 7"], baseURL: test.info().project.use.baseURL });
+    try {
+      const publicPage = await anonymous.newPage();
+      const publicResponse = await publicPage.goto(new URL(shareUrl).pathname);
+      expect(publicResponse?.status()).toBe(200);
+      await expectNoHorizontalOverflow(publicPage);
+
+      const downloadLink = publicPage.getByRole("link", { name: "Descargar PDF" });
+      await expectTouchTarget(downloadLink);
+      const pdfHref = await downloadLink.getAttribute("href");
+      expect(pdfHref).toMatch(/^\/api\/c\/.+\/pdf$/);
+
+      const pdfResponse = await anonymous.request.get(pdfHref!);
+      expect(pdfResponse.status()).toBe(200);
+      expect(pdfResponse.headers()["content-type"]).toContain("application/pdf");
+      expect((await pdfResponse.body()).subarray(0, 5).toString("latin1")).toBe("%PDF-");
+    } finally {
+      await anonymous.close();
+    }
 
     // De vuelta a Cotizaciones, la cotización queda a mano y ya figura como enviada.
     await page.getByRole("link", { name: "Cotizaciones", exact: true }).first().click();

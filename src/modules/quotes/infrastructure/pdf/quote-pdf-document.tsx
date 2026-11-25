@@ -116,7 +116,7 @@ export type QuotePdfDocumentProps = {
   /** PNG del logo (ya incluye el nombre); sin logo se escribe "DecorAR". */
   readonly logo: Buffer | null;
   /** Fecha de creación de la versión: el PDF no depende de la hora actual. */
-  readonly createdAt: Date;
+  readonly createdAt?: Date;
 };
 
 /**
@@ -148,9 +148,9 @@ export function QuotePdfDocument({ document, logo, createdAt }: QuotePdfDocument
           </View>
           <View style={styles.headerMeta}>
             <Text style={styles.title}>{document.title}</Text>
-            <Text style={styles.meta}>Emitida el {document.issuedOn}</Text>
+            {document.issuedOn ? <Text style={styles.meta}>Emitida el {document.issuedOn}</Text> : null}
             <Text style={styles.meta}>Válida hasta {document.validUntil}</Text>
-            <Text style={styles.status}>{document.statusLabel}</Text>
+            {document.statusLabel ? <Text style={styles.status}>{document.statusLabel}</Text> : null}
           </View>
         </View>
 
