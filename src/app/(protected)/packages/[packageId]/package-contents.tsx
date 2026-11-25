@@ -6,6 +6,7 @@ import { useMemo, useRef, useState, useTransition } from "react";
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
 import type { Result } from "@/shared/domain/result";
 
+import { Icon } from "../../_ui/icon";
 import type { ApiFailure } from "../_lib/api-error";
 import { rowSubtotal, toContentRows, type ContentRow } from "../_lib/configurator-view";
 import { formatAreaM2, formatCop } from "../_lib/format";
@@ -78,6 +79,8 @@ export function PackageContents({
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, RowError>>({});
   const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  // Acciones de cada fila tras el botón "⋯" (rediseño visual móvil).
+  const [openActions, setOpenActions] = useState<Record<string, boolean>>({});
   const [announcement, setAnnouncement] = useState("");
   const focusTargetRef = useRef<string | null>(null);
   const [isRefreshing, startTransition] = useTransition();
@@ -104,6 +107,10 @@ export function PackageContents({
   function closeEditor(focusKey: string) {
     focusTargetRef.current = focusKey;
     setEditor(null);
+  }
+
+  function toggleActions(key: string) {
+    setOpenActions((current) => ({ ...current, [key]: !(current[key] ?? false) }));
   }
 
   function errorFor(key: string): string | null {
@@ -446,6 +453,7 @@ export function PackageContents({
             const zone = zoneById.get(row.groupId);
             const editing = editor && "groupId" in editor && editor.groupId === row.groupId ? editor : null;
             const error = errorFor(`zone:${row.groupId}`);
+            const actionsOpen = openActions[key] ?? false;
 
             return (
               <li key={key}>
@@ -457,6 +465,9 @@ export function PackageContents({
                     onClick={() => setExpanded((current) => ({ ...current, [key]: !isOpen }))}
                     type="button"
                   >
+                    <span aria-hidden="true" className="group-avatar">
+                      <Icon name="folder" size={18} />
+                    </span>
                     <span aria-hidden="true" className="group-caret">
                       {isOpen ? "▾" : "▸"}
                     </span>
@@ -468,18 +479,29 @@ export function PackageContents({
                   <p className="content-subtotal">
                     {formatCop(subtotal.priceCop)} · {formatAreaM2(subtotal.areaM2)}
                   </p>
+                  <button
+                    aria-controls={`zone-${row.groupId}-actions`}
+                    aria-expanded={actionsOpen}
+                    aria-label={`Opciones de ${row.name}`}
+                    className="icon-button content-options"
+                    onClick={() => toggleActions(key)}
+                    type="button"
+                  >
+                    <Icon name="more" />
+                  </button>
                 </div>
 
                 {editing ? (
                   renderZoneEditor(editing, row)
                 ) : (
-                  <div className="zone-actions">
+                  <div className="zone-actions" hidden={!actionsOpen} id={`zone-${row.groupId}-actions`}>
                     <button
                       className="text-button"
                       onClick={() => openRename(row.groupId, row.name)}
                       ref={focusRef(`zone-${row.groupId}`)}
                       type="button"
                     >
+                      <Icon name="pencil" size={16} />
                       Renombrar
                     </button>
                     <button
@@ -488,9 +510,11 @@ export function PackageContents({
                       onClick={() => openSubzone(row.groupId)}
                       type="button"
                     >
+                      <Icon name="folder" size={16} />
                       Crear subzona
                     </button>
                     <button className="text-button" onClick={() => zone && openMoveZone(zone)} type="button">
+                      <Icon name="move" size={16} />
                       Mover
                     </button>
                     <button
@@ -498,6 +522,7 @@ export function PackageContents({
                       onClick={() => openDeleteZone(row.groupId)}
                       type="button"
                     >
+                      <Icon name="trash" size={16} />
                       Eliminar
                     </button>
                     {zone ? <span className="zone-depth">Nivel {zone.depth}</span> : null}
@@ -528,10 +553,12 @@ export function PackageContents({
           const isRemoving = pendingKey === `remove:${key}`;
           const removeErrorId = `${focusSlug(key)}-remove-error`;
           const subtotal = rowSubtotal(row);
+          const itemActionsOpen = openActions[key] ?? false;
+          const itemActionsId = `${focusSlug(key)}-actions`;
 
           return (
             <li key={key}>
-              <div className="content-row">
+              <div className="content-row content-item">
                 <p className="content-main">
                   <span className="content-name">{row.name}</span>
                   <span className="content-qty">×{row.itemIds.length}</span>
@@ -544,12 +571,24 @@ export function PackageContents({
                   aria-describedby={removeError ? removeErrorId : undefined}
                   aria-disabled={isBusy ? true : undefined}
                   aria-label={isRemoving ? `Quitando ${row.name}` : `Quitar una unidad de ${row.name}`}
-                  className="secondary-button content-remove"
+                  className="icon-button content-remove"
                   onClick={() => removeOne(key, row)}
                   type="button"
                 >
-                  {isRemoving ? "Quitando…" : "Quitar uno"}
+                  {isRemoving ? <span aria-hidden="true" className="spinner" /> : <Icon name="minus" />}
                 </button>
+                {zones.length > 0 && !moveEditor ? (
+                  <button
+                    aria-controls={itemActionsId}
+                    aria-expanded={itemActionsOpen}
+                    aria-label={`Opciones de ${row.name}`}
+                    className="icon-button content-options"
+                    onClick={() => toggleActions(key)}
+                    type="button"
+                  >
+                    <Icon name="more" />
+                  </button>
+                ) : null}
               </div>
 
               {removeError ? (
@@ -601,13 +640,14 @@ export function PackageContents({
                     </div>
                   </form>
                 ) : (
-                  <div className="zone-actions">
+                  <div className="zone-actions" hidden={!itemActionsOpen} id={itemActionsId}>
                     <button
                       className="text-button"
                       onClick={() => openMoveItem(row.itemIds[row.itemIds.length - 1], key, parentGroupId)}
                       ref={focusRef(`item-${focusSlug(key)}`)}
                       type="button"
                     >
+                      <Icon name="move" size={16} />
                       Mover de zona
                     </button>
                   </div>

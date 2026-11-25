@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 
 import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalog-module.dto";
 
+import { Icon } from "../../_ui/icon";
 import { fetchCatalogModules } from "../_lib/catalog-client";
 import { getPackagesClient, type PackagesClient } from "../_lib/packages-client";
 import type { ZoneOption } from "../_lib/zone-tree";
@@ -30,6 +31,14 @@ type PackageCatalogProps = {
 
 const IDLE: AddState = { status: "idle" };
 
+/** Cuánto se ve el aviso de "agregado" (rediseño visual móvil). */
+const TOAST_MS = 3200;
+
+/** Búsqueda sin tildes ni mayúsculas: "mesa" encuentra "Mesa auxiliar". */
+function normalize(value: string): string {
+  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
 export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts, zones }: PackageCatalogProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
@@ -44,6 +53,15 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     readonly version?: number;
   }>({ counts: {}, usedM2: 0, version: packageVersion });
   const [announcement, setAnnouncement] = useState("");
+  const [query, setQuery] = useState("");
+  // Aviso visual al agregar (la región viva de arriba ya lo anuncia).
+  const [toast, setToast] = useState<{ readonly id: number; readonly text: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -105,6 +123,10 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
           ? `${module.name} se agregó a tu evento.`
           : `${quantity} unidades de ${module.name} se agregaron a tu evento.`,
       );
+      setToast((current) => ({
+        id: (current?.id ?? 0) + 1,
+        text: quantity === 1 ? `${module.name} agregado` : `${quantity} × ${module.name} agregados`,
+      }));
       // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
       if (packages.mode === "live") {
         router.refresh();
@@ -139,8 +161,13 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     return count > 0 ? { count, status: "added" } : IDLE;
   }
 
+  const normalizedQuery = normalize(query.trim());
+  const visibleModules = catalog.status === "ready"
+    ? catalog.modules.filter((module) => normalizedQuery === "" || normalize(module.name).includes(normalizedQuery))
+    : [];
+
   return (
-    <section aria-busy={catalog.status === "loading"} aria-labelledby="catalog-title">
+    <section aria-busy={catalog.status === "loading"} aria-labelledby="catalog-title" className="package-catalog">
       <h2 className="section-title" id="catalog-title">
         Catálogo
       </h2>
@@ -185,8 +212,26 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
       ) : null}
 
       {catalog.status === "ready" && catalog.modules.length > 0 ? (
+        <label className="catalog-search">
+          <Icon name="search" />
+          <span className="visually-hidden">Buscar en el catálogo</span>
+          <input
+            autoComplete="off"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar mesas, sillas, arcos…"
+            type="search"
+            value={query}
+          />
+        </label>
+      ) : null}
+
+      {catalog.status === "ready" && catalog.modules.length > 0 && visibleModules.length === 0 ? (
+        <p className="catalog-state catalog-empty">No encontramos elementos con «{query.trim()}».</p>
+      ) : null}
+
+      {catalog.status === "ready" && visibleModules.length > 0 ? (
         <ul className="module-grid">
-          {catalog.modules.map((module) => (
+          {visibleModules.map((module) => (
             <li key={module.id}>
               <ModuleCard
                 addState={cardAddState(module.id)}
@@ -201,6 +246,15 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {toast ? (
+        <div aria-hidden="true" className="catalog-toast" key={toast.id}>
+          <span className="catalog-toast-icon">
+            <Icon name="check" size={18} />
+          </span>
+          <span className="catalog-toast-text">{toast.text}</span>
+        </div>
       ) : null}
     </section>
   );
