@@ -79,6 +79,8 @@ async function expectVisibleFocus(control: Locator) {
  * el área son metadatos opcionales que se completan después.
  */
 async function createEvent(page: Page, name = "Evento de prueba") {
+  // El formulario vive en la hoja "Nuevo evento" (rediseño visual).
+  await page.getByRole("button", { name: "Nuevo evento" }).click();
   await page.getByLabel("Nombre del evento").fill(name);
   await page.getByRole("button", { name: "Crear evento" }).click();
 }
@@ -89,6 +91,20 @@ async function createEvent(page: Page, name = "Evento de prueba") {
  * del número exacto de controles que el configurador interpone antes del
  * catálogo, que cambia según el modo simulado o live.
  */
+/**
+ * Rediseño visual móvil: con la API real el evento se divide en secciones y
+ * el catálogo vive en la suya; en modo simulado sigue en la misma página.
+ */
+async function openCatalog(page: Page) {
+  const link = page
+    .getByRole("navigation", { name: "Secciones del evento" })
+    .getByRole("link", { name: "Catálogo", exact: true });
+  if ((await link.count()) > 0) {
+    await link.click();
+    await expect(page).toHaveURL(/seccion=catalogo/);
+  }
+}
+
 async function tabUntilVisibleFocus(page: Page, control: Locator, maxTabs = 30) {
   for (let tab = 0; tab < maxTabs; tab += 1) {
     if (await control.evaluate((element) => element === document.activeElement).catch(() => false)) {
@@ -143,7 +159,7 @@ test.describe("creación de evento y catálogo", () => {
     await serveCatalog(page);
     await signIn(page);
 
-    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Organiza tus eventos");
+    await expect(page.getByRole("heading", { level: 1 })).toHaveText("Tus eventos");
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
     await createEvent(page, "Boda de prueba");
@@ -152,6 +168,7 @@ test.describe("creación de evento y catálogo", () => {
     // En live el título es el nombre del evento; en simulado, el genérico.
     await expect(page.getByRole("heading", { level: 1 })).toHaveText(/Boda de prueba|Tu evento/);
 
+    await openCatalog(page);
     const cards = page.getByRole("article");
     await expect(cards).toHaveCount(3);
     await expect(cards.first()).toContainText("Mesa redonda");
@@ -159,13 +176,19 @@ test.describe("creación de evento y catálogo", () => {
     await expect(cards.first()).toContainText("4 m²");
     expect(await hasNoHorizontalOverflow(page)).toBe(true);
 
-    const increaseMesa = page.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
+    // Varias unidades desde la hoja inferior (rediseño visual móvil).
+    await cards.first().getByRole("button", { name: "Agregar Mesa redonda" }).click();
+    const sheet = page.getByRole("dialog", { name: "Mesa redonda" });
+    await expect(sheet).toBeVisible();
+    const increaseMesa = sheet.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
     await increaseMesa.click();
     await increaseMesa.click();
-    await expect(cards.first()).toContainText("×3");
-    await page.getByRole("button", { name: "Agregar 3 unidades de Mesa redonda" }).click();
+    await expect(sheet.getByRole("status")).toHaveText("3");
+    expect(await hasNoHorizontalOverflow(page)).toBe(true);
+    await sheet.getByRole("button", { name: "Agregar 3 unidades de Mesa redonda" }).click();
 
     await expect(page.getByText("3 unidades de Mesa redonda se agregaron a tu evento.")).toBeAttached();
+    await expect(sheet).toBeHidden();
     await expect(cards.first()).toContainText("Agregado 3 veces");
 
     expect(postgrestCalls).toEqual([]);
@@ -181,6 +204,7 @@ test.describe("creación de evento y catálogo", () => {
     });
     await signIn(page);
     await createEvent(page);
+    await openCatalog(page);
 
     await expect(page.getByText("Cargando catálogo…")).toBeVisible();
 
@@ -208,6 +232,7 @@ test.describe("creación de evento y catálogo", () => {
     await page.route("https://example.com/**", (route) => route.abort());
     await signIn(page);
     await createEvent(page);
+    await openCatalog(page);
 
     await expect(appAlert(page)).toContainText("No pudimos cargar el catálogo.");
 
@@ -225,11 +250,18 @@ test.describe("creación de evento y catálogo", () => {
     // el recorrido debe empezar desde el principio de la página.
     await page.goto("/packages");
 
-    // Crear el evento (DECOR-44): solo el nombre es obligatorio. Los detalles
-    // opcionales quedan plegados y no interrumpen el recorrido.
+    // El menú de cuenta y "Nuevo evento" se alcanzan con Tab y foco visible.
     await page.keyboard.press("Tab");
+    await expectVisibleFocus(page.getByRole("button", { name: "Tu cuenta" }));
+    await page.keyboard.press("Tab");
+    const newEvent = page.getByRole("button", { name: "Nuevo evento" });
+    await expectVisibleFocus(newEvent);
+    await page.keyboard.press("Enter");
+
+    // Crear el evento (DECOR-44) en la hoja: el foco empieza en el nombre, que es
+    // lo único obligatorio. Los detalles opcionales quedan plegados.
     const name = page.getByLabel("Nombre del evento");
-    await expectVisibleFocus(name);
+    await expect(name).toBeFocused();
     await page.keyboard.type("Evento de teclado");
 
     await page.keyboard.press("Tab");
@@ -238,39 +270,39 @@ test.describe("creación de evento y catálogo", () => {
     await page.keyboard.press("Tab");
     const submit = page.getByRole("button", { name: "Crear evento" });
     await expectVisibleFocus(submit);
-
-    await page.keyboard.press("Tab");
-    await expectVisibleFocus(page.getByRole("button", { name: "Cerrar sesión" }));
-
-    await page.keyboard.press("Shift+Tab");
-    await expect(submit).toBeFocused();
     await page.keyboard.press("Enter");
 
     // Catálogo: al llegar, el foco pasa al título para que el recorrido empiece
     // arriba de la página nueva y no donde estaba el formulario.
     await expect(page).toHaveURL(/\/packages\/[^/]+$/);
     await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
+    await openCatalog(page);
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
     await expect(page.getByRole("article")).toHaveCount(3);
 
-    // La tarjeta de la mesa es la primera del catálogo; se alcanza con Tab desde
-    // el título aunque el configurador interponga otros controles.
-    const decreaseMesa = page.getByRole("button", { name: "Reducir cantidad de Mesa redonda" });
-    await tabUntilVisibleFocus(page, decreaseMesa);
-
-    await page.keyboard.press("Tab");
-    const increaseMesa = page.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
-    await expectVisibleFocus(increaseMesa);
+    // El "+" de la mesa (primera tarjeta) se alcanza con Tab desde el título y
+    // abre la hoja inferior con Enter.
+    const openMesa = page.getByRole("button", { name: "Agregar Mesa redonda" });
+    await tabUntilVisibleFocus(page, openMesa);
     await page.keyboard.press("Enter");
-    await expect(page.getByRole("button", { name: "Agregar 2 unidades de Mesa redonda" })).toBeVisible();
+    const sheet = page.getByRole("dialog", { name: "Mesa redonda" });
+    await expect(sheet).toBeVisible();
+
+    // Dentro de la hoja el foco queda atrapado y se recorre con Tab.
+    const increaseMesa = sheet.getByRole("button", { name: "Aumentar cantidad de Mesa redonda" });
+    await tabUntilVisibleFocus(page, increaseMesa);
+    await page.keyboard.press("Enter");
+    await expect(sheet.getByRole("status")).toHaveText("2");
 
     await page.keyboard.press("Tab");
-    const addMesa = page.getByRole("button", { name: "Agregar 2 unidades de Mesa redonda" });
+    const addMesa = sheet.getByRole("button", { name: "Agregar 2 unidades de Mesa redonda" });
     await expectVisibleFocus(addMesa);
 
     await page.keyboard.press("Enter");
 
     await expect(page.getByText("2 unidades de Mesa redonda se agregaron a tu evento.")).toBeAttached();
-    // Tras el éxito la cantidad vuelve a 1 y el nombre accesible del botón cambia.
+    // Tras el éxito la hoja se cierra y el foco vuelve al "+" de la tarjeta.
+    await expect(sheet).toBeHidden();
     await expectVisibleFocus(page.getByRole("button", { name: "Agregar Mesa redonda" }));
   });
 });

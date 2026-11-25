@@ -168,3 +168,19 @@ export function spatialDiagnosticText(spatial: SpatialDiagnosticDto): SpatialDia
 function formatArea(value: number): string {
   return `${new Intl.NumberFormat("es-CO", { maximumFractionDigits: 2 }).format(value)} m²`;
 }
+
+/** Todas las hojas del árbol, en orden de lectura, sin los grupos que las contienen. */
+function collectLeafNodes(nodes: readonly PackageDetailNode[]): PackageDetailNode[] {
+  return nodes.flatMap((node) => (node.kind === "leaf" ? [node] : collectLeafNodes(node.children)));
+}
+
+/**
+ * Contenido sin zonas (las zonas se retiraron de la interfaz): una fila por
+ * módulo con todas sus unidades, estén o no dentro de un grupo guardado en el
+ * servidor. Un evento creado con zonas se sigue viendo completo.
+ */
+export function toFlatContentRows(nodes: readonly PackageDetailNode[]): Extract<ContentRow, { kind: "leaves" }>[] {
+  return toContentRows(collectLeafNodes(nodes)).filter(
+    (row): row is Extract<ContentRow, { kind: "leaves" }> => row.kind === "leaves",
+  );
+}

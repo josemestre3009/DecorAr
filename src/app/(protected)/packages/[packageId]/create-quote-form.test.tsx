@@ -134,7 +134,7 @@ describe("CreateQuoteForm sin elementos (DECOR-49)", () => {
     expect(screen.queryByRole("button", { name: "Generar cotización" })).toBeNull();
     expect(screen.queryByRole("form", { name: "Generar cotización" })).toBeNull();
     expect(screen.getByText(/Agrega al menos un elemento del catálogo para poder cotizar/)).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Ir al catálogo" })).toHaveAttribute("href", "#catalogo");
+    expect(screen.getByRole("link", { name: "Ir al catálogo" })).toHaveAttribute("href", "/packages/pkg-1?seccion=catalogo");
     expect(createQuote).not.toHaveBeenCalled();
   });
 });

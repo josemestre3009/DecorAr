@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import type { Metadata } from "next";
+import Image from "next/image";
 
 import { signOutAction } from "@/app/actions";
 import { createPackageListQueryDependencies } from "@/composition/server";
@@ -8,9 +9,11 @@ import { requireSessionUser } from "@/composition/session-guard";
 import type { PackageSummary } from "@/modules/packages/application/ports/package-reader.port";
 
 import { FlowSteps } from "../_flow/flow-steps";
+import { Icon } from "../_ui/icon";
 import { resolvePackagesMode } from "./_lib/packages-client";
+import { AccountMenu } from "./account-menu";
 import { EventHistory } from "./event-history";
-import { EventForm } from "./event-form";
+import { NewEventSheet } from "./new-event-sheet";
 import { TemplateManager } from "./template-manager";
 
 export const metadata: Metadata = {
@@ -48,64 +51,65 @@ export default async function PackagesPage({ searchParams }: PackagesPageProps) 
   const { logout } = await searchParams;
   const logoutFailed = logout === "error";
 
-  return (
-    <main className="packages-page">
-      <div className="packages-layout">
-        <section className="auth packages-create">
-          <h1 className="auth-title">Organiza tus eventos</h1>
+  const eventCount = history?.status === "ready" ? history.packages.length : null;
 
-          {logoutFailed ? (
-            <p className="auth-error" role="alert">
-              No pudimos cerrar tu sesión. Inténtalo de nuevo.
-            </p>
+  return (
+    <main className="packages-page events-home">
+      <header className="events-topbar">
+        <Image alt="DecorAR" className="events-logo" height={240} priority src="/landing/logo.webp" width={242} />
+        <AccountMenu email={user.email ?? ""} signOutAction={signOutAction} />
+      </header>
+
+      {logoutFailed ? (
+        <p className="auth-error" role="alert">
+          No pudimos cerrar tu sesión. Inténtalo de nuevo.
+        </p>
+      ) : null}
+
+      <section aria-labelledby="events-home-title" className="events-hero">
+        <h1 className="events-title" id="events-home-title">
+          Tus eventos
+        </h1>
+        <p className="page-lead">
+          Crea un evento y decóralo paso a paso: elementos, montaje 3D y cotización. Cliente, fecha y lugar pueden
+          completarse después.
+        </p>
+        <NewEventSheet />
+        {/* Recorrido V2 (DECOR-49): el primer paso es crear o abrir un evento. */}
+        <FlowSteps current="evento" />
+      </section>
+
+      <div className="packages-layout">
+        <section aria-labelledby="events-title" className="package-history events-history">
+          <div className="section-header">
+            <h2 className="section-title" id="events-title">
+              Eventos
+            </h2>
+            {eventCount ? <span className="events-count">{eventCount}</span> : null}
+          </div>
+
+          {history === null ? (
+            <p className="package-history-empty">El historial persistente está disponible en modo live.</p>
           ) : null}
 
-          <p className="page-lead">
-            Crea un evento con su nombre. Cliente, fecha, lugar y área pueden completarse
-            después, al configurar la decoración.
-          </p>
+          {history?.status === "error" ? (
+            <p className="auth-error" role="alert">No pudimos cargar tus eventos. Intenta de nuevo.</p>
+          ) : null}
 
-          {/* Recorrido V2 (DECOR-49): el primer paso es crear o abrir un evento. */}
-          <FlowSteps current="evento" />
-
-          <EventForm />
-
-          <div className="session-bar">
-            <p className="auth-notice">Sesión activa: {user.email}</p>
-
-            <form action={signOutAction}>
-              <button className="secondary-button" type="submit">
-                Cerrar sesión
-              </button>
-            </form>
-          </div>
-        </section>
-
-        <section aria-labelledby="events-title" className="package-history events-history">
-            <div>
-              <h2 className="section-title" id="events-title">
-                Eventos
-              </h2>
+          {history?.status === "ready" && history.packages.length === 0 ? (
+            <div className="events-empty">
+              <span aria-hidden="true" className="events-empty-icon">
+                <Icon name="calendar" size={28} />
+              </span>
+              <p className="events-empty-title">Aún no tienes eventos.</p>
+              <p className="events-empty-text">Crea el primero y empieza a decorarlo.</p>
+              <NewEventSheet label="Crear tu primer evento" variant="secondary" />
             </div>
+          ) : null}
 
-            {history === null ? (
-              <p className="package-history-empty">El historial persistente está disponible en modo live.</p>
-            ) : null}
-
-            {history?.status === "error" ? (
-              <p className="auth-error" role="alert">No pudimos cargar tus eventos. Intenta de nuevo.</p>
-            ) : null}
-
-            {history?.status === "ready" && history.packages.length === 0 ? (
-              <div className="package-history-empty">
-                <p>Aún no tienes eventos.</p>
-                <p>Crea el primero con el formulario.</p>
-              </div>
-            ) : null}
-
-            {history?.status === "ready" && history.packages.length > 0 ? (
-              <EventHistory packages={history.packages} />
-            ) : null}
+          {history?.status === "ready" && history.packages.length > 0 ? (
+            <EventHistory packages={history.packages} />
+          ) : null}
         </section>
 
         <TemplateManager />

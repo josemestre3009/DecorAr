@@ -76,6 +76,7 @@ test.describe.serial("DECOR-22 configurador contra la API real", () => {
    * diagnóstico espacial tenga datos.
    */
   async function createEvent(page: Page, name: string, spaceLabel?: string, capacity?: string) {
+    await page.getByRole("button", { name: "Nuevo evento" }).click();
     if (spaceLabel !== undefined || capacity !== undefined) {
       await page.getByText("Agregar detalles (opcional)", { exact: true }).click();
     }

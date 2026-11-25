@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 
 export default function LoginPage() {
   return (
-    <main className="flex min-h-dvh items-center justify-center bg-decor-bg px-6 py-10 font-decor text-decor-ink">
+    <main className="auth-screen">
       <AuthForm action={signInAction} mode="login" />
     </main>
   );
