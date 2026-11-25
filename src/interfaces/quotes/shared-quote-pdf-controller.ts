@@ -3,12 +3,15 @@ import { randomUUID } from "node:crypto";
 import type { QuotePdfRenderer } from "../../modules/quotes/application/ports/quote-pdf-renderer.port";
 import { quoteFileName } from "../../modules/quotes/application/quote-document";
 import type { GetSharedQuoteUseCase } from "../../modules/quotes/application/use-cases/get-shared-quote.use-case";
+import type { Logger } from "../../shared/application/ports";
 
 const CORRELATION_ID_HEADER = "x-correlation-id";
 
 export type SharedQuotePdfControllerDependencies = {
   readonly getSharedQuote: Pick<GetSharedQuoteUseCase, "execute">;
   readonly pdfRenderer: QuotePdfRenderer;
+  /** Logger inyectado (regla `logger-only` de DECOR-55): nunca recibe el token. */
+  readonly logger: Logger;
 };
 
 function correlationIdFor(request: Request): string {
@@ -43,7 +46,11 @@ export class SharedQuotePdfController {
           );
         }
 
-        console.error(`[SharedQuotePdfController.getPdf] (${correlationId}):`, result.error.code, result.error.message);
+        this.deps.logger.error("shared_quote_pdf.request_failed", {
+          code: result.error.code,
+          component: "SharedQuotePdfController.getPdf",
+          correlationId,
+        });
         return Response.json(
           { error: { code: "internal_error", message: "No pudimos completar la operación." } },
           { headers: { ...SECURITY_HEADERS, [CORRELATION_ID_HEADER]: correlationId }, status: 500 },
@@ -63,7 +70,11 @@ export class SharedQuotePdfController {
         },
       });
     } catch (cause) {
-      console.error(`[SharedQuotePdfController.getPdf] Error inesperado (${correlationId}):`, cause);
+      this.deps.logger.error("shared_quote_pdf.unexpected_error", {
+        component: "SharedQuotePdfController.getPdf",
+        correlationId,
+        error: cause,
+      });
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
         { headers: { ...SECURITY_HEADERS, [CORRELATION_ID_HEADER]: correlationId }, status: 500 },

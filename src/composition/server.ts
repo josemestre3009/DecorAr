@@ -500,6 +500,7 @@ export function createSharedQuotePdfController(): SharedQuotePdfController {
 
   return new SharedQuotePdfController({
     getSharedQuote,
+    logger: serverLogger,
     pdfRenderer: quotePdfRenderer,
   });
 }

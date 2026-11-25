@@ -27,6 +27,10 @@ const PUBLIC_QUOTE: PublicQuoteDto = {
   version: QUOTE_FIXTURE.version,
 };
 
+function fakeLogger() {
+  return { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() };
+}
+
 describe("SharedQuotePdfController (DECOR-56)", () => {
   it("devuelve el PDF con cabeceras anti-caché y attachment para un token válido", async () => {
     const pdfBytes = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
@@ -34,6 +38,7 @@ describe("SharedQuotePdfController (DECOR-56)", () => {
     const execute = vi.fn().mockResolvedValue(ok(PUBLIC_QUOTE));
     const controller = new SharedQuotePdfController({
       getSharedQuote: { execute },
+      logger: fakeLogger(),
       pdfRenderer: { render },
     });
 
@@ -56,6 +61,7 @@ describe("SharedQuotePdfController (DECOR-56)", () => {
       .mockResolvedValue(err(new DomainError("quote.share_link_not_found", "Este enlace no está disponible.")));
     const controller = new SharedQuotePdfController({
       getSharedQuote: { execute },
+      logger: fakeLogger(),
       pdfRenderer: { render },
     });
 
@@ -64,5 +70,24 @@ describe("SharedQuotePdfController (DECOR-56)", () => {
     expect(response.status).toBe(404);
     expect(response.headers.get("cache-control")).toBe("no-store");
     expect(render).not.toHaveBeenCalled();
+  });
+
+  it("responde 500 y registra el fallo con el logger inyectado, sin el token", async () => {
+    const logger = fakeLogger();
+    const controller = new SharedQuotePdfController({
+      getSharedQuote: { execute: vi.fn().mockResolvedValue(ok(PUBLIC_QUOTE)) },
+      logger,
+      pdfRenderer: { render: vi.fn().mockRejectedValue(new Error("render roto")) },
+    });
+
+    const response = await controller.handleGetPdf(new Request("http://localhost/api/c/tok-secreto/pdf"), "tok-secreto");
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("cache-control")).toBe("no-store");
+    expect(logger.error).toHaveBeenCalledWith(
+      "shared_quote_pdf.unexpected_error",
+      expect.objectContaining({ component: "SharedQuotePdfController.getPdf" }),
+    );
+    expect(JSON.stringify(logger.error.mock.calls)).not.toContain("tok-secreto");
   });
 });
