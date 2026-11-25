@@ -1,6 +1,7 @@
 /**
- * DECOR-49: navegación principal del recorrido V2 en celular, contra la API
- * real: Evento → Objetos → Montaje 3D → Cotización → Compartir.
+ * DECOR-49 + rediseño visual móvil: navegación principal del recorrido V2 en
+ * celular, contra la API real: Evento → Objetos → Montaje 3D → Cotización →
+ * Compartir. El evento se recorre con la barra inferior de secciones.
  *
  * Opt-in: solo corre con DECOR_LIVE_SMOKE=1 y las variables de Supabase, porque
  * crea un usuario real (admin API, `email_confirm: true`) que se elimina al
@@ -64,8 +65,11 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     await expect(page).toHaveURL(/\/packages$/);
   }
 
+  /** Pasos del recorrido en la lista de eventos (DECOR-49). */
   const steps = (page: Page) => page.getByRole("navigation", { name: "Pasos para preparar tu evento" });
-  const currentStep = (page: Page) => steps(page).locator("[aria-current='step']");
+  /** Barra inferior de secciones del evento (rediseño visual móvil). */
+  const sections = (page: Page) => page.getByRole("navigation", { name: "Secciones del evento" });
+  const currentSection = (page: Page) => sections(page).locator("[aria-current='page']");
 
   async function expectTouchTarget(target: Locator) {
     const box = await target.boundingBox();
@@ -79,56 +83,68 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
   }
 
   test("de crear el evento a compartir la cotización, siempre se ve el siguiente paso", async ({ browser, page }) => {
+    // Recorrido completo con visor 3D, cotización y PDF público: más largo que el límite por defecto.
+    test.setTimeout(180_000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
 
     // 1 · Evento
     await signIn(page);
-    await expect(currentStep(page)).toHaveText(/Evento/);
+    await expect(steps(page).locator("[aria-current='step']")).toHaveText(/Evento/);
     await expectNoHorizontalOverflow(page);
+    await page.getByRole("button", { name: "Nuevo evento" }).click();
     await page.getByLabel("Nombre del evento").fill(`Flujo V2 ${randomUUID().slice(0, 8)}`);
     await page.getByRole("button", { name: "Crear evento" }).click();
     await expect(page).toHaveURL(PACKAGE_URL, { timeout: 60_000 });
     const packageId = PACKAGE_URL.exec(page.url())![1]!;
 
-    // 2 · Objetos: sin elementos, el siguiente paso es el catálogo y no se puede cotizar.
-    await expect(currentStep(page)).toHaveText(/Objetos/);
+    // La sección Evento abre por defecto y dice qué sigue.
+    await expect(currentSection(page)).toHaveAttribute("aria-label", "Evento");
     await expect(page.getByRole("heading", { name: "Agrega los elementos de tu evento" })).toBeVisible();
+    for (const link of await sections(page).getByRole("link").all()) await expectTouchTarget(link);
+    await expectNoHorizontalOverflow(page);
+
+    // 2 · Objetos: sin elementos no se puede cotizar.
+    await sections(page).getByRole("link", { name: "Cotizaciones" }).click();
+    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=cotizar$`));
     await expect(page.getByText(/Agrega al menos un elemento del catálogo para poder cotizar/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Generar cotización" })).toHaveCount(0);
-    for (const link of await steps(page).getByRole("link").all()) await expectTouchTarget(link);
-    await expectNoHorizontalOverflow(page);
 
     const catalog = (await (await page.request.get("/api/modules")).json()) as CatalogModule[];
     expect(catalog.length, "el catálogo live debe tener módulos activos").toBeGreaterThan(0);
     const moduleName = catalog[0]!.name;
 
-    // El aviso de cotización también ofrece "Ir al catálogo"; se usa el del siguiente paso.
-    await page.getByRole("complementary", { name: "Agrega los elementos de tu evento" })
-      .getByRole("link", { name: "Ir al catálogo" })
-      .click();
-    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}#catalogo$`));
+    await page.getByRole("link", { name: "Ir al catálogo" }).click();
+    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=catalogo$`));
+    await expect(currentSection(page)).toHaveAttribute("aria-label", "Catálogo");
+
+    // Agregar desde la hoja inferior: dos unidades y el aviso de confirmación.
     await page.getByRole("button", { name: `Agregar ${moduleName}`, exact: true }).click();
+    const sheet = page.getByRole("dialog", { name: moduleName });
+    await expect(sheet).toBeVisible();
+    await expectTouchTarget(sheet.getByRole("button", { name: `Aumentar cantidad de ${moduleName}` }));
+    await sheet.getByRole("button", { name: `Aumentar cantidad de ${moduleName}` }).click();
+    await sheet.getByRole("button", { name: `Agregar 2 unidades de ${moduleName}` }).click();
+    await expect(sheet).toBeHidden({ timeout: 30_000 });
+    await expect(page.locator(".catalog-toast")).toContainText(`2 × ${moduleName} agregados`);
+    // El contador de Objetos de la barra inferior refleja las unidades.
+    await expect(sections(page).getByRole("link", { name: "Objetos (2)" })).toBeVisible({ timeout: 30_000 });
 
-    // Con elementos, el siguiente paso invita a verlos en 3D y a cotizar.
-    await expect(page.getByRole("heading", { name: "Mira tu montaje y crea la cotización" })).toBeVisible({
-      timeout: 30_000,
-    });
-    await expect(currentStep(page)).toHaveText(/Cotización/);
-    await expectTouchTarget(page.getByRole("link", { name: "Crear la cotización" }));
-
-    // 3 · Montaje 3D: el visor individual, con su paso marcado.
-    await steps(page).getByRole("link", { name: "Montaje 3D" }).click();
-    await expect(page.locator("#montaje")).toBeInViewport();
+    // 3 · Montaje 3D: el visor individual dentro de la sección Catálogo.
     await page.getByRole("link", { name: `Ver ${moduleName} en 3D` }).click();
     await expect(page).toHaveURL(new RegExp(`/packages/${packageId}/modules/`), { timeout: 60_000 });
-    await expect(currentStep(page)).toHaveText(/Montaje 3D/);
+    await expect(currentSection(page)).toHaveAttribute("aria-label", "Catálogo");
     await expectNoHorizontalOverflow(page);
-    await page.getByRole("link", { name: "← Volver al catálogo" }).click();
-    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}#catalogo$`));
+    await page.getByRole("link", { name: "Volver al catálogo", exact: true }).click();
+    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=catalogo$`), { timeout: 30_000 });
 
-    // 4 · Cotización: se crea desde su sección y la lista del evento la muestra.
+    // El evento ahora invita a cotizar.
+    await sections(page).getByRole("link", { name: "Evento", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "Crea la cotización" })).toBeVisible();
     await page.getByRole("link", { name: "Crear la cotización" }).click();
+    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=cotizar$`));
+
+    // 4 · Cotización
     await expect(page.getByRole("region", { name: "Tus cotizaciones" })).toContainText(
       "Todavía no has creado cotizaciones para este evento.",
     );
@@ -136,8 +152,7 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     await page.getByLabel("Válida hasta").fill(new Date(Date.now() + 30 * DAY_MS).toISOString().slice(0, 10));
     await page.getByRole("button", { name: "Generar y revisar" }).click();
     await expect(page).toHaveURL(QUOTE_URL, { timeout: 60_000 });
-    await expect(currentStep(page)).toHaveText(/Cotización/);
-    await expect(steps(page).getByRole("link", { name: "Compartir" })).toHaveAttribute("href", /#compartir$/);
+    await expect(currentSection(page)).toHaveAttribute("aria-label", "Cotizaciones");
     await expectNoHorizontalOverflow(page);
 
     // 5 · Compartir: marcar como enviada habilita el enlace público y WhatsApp.
@@ -145,7 +160,6 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     await expectTouchTarget(send);
     await send.click();
     await expect(page.getByRole("heading", { name: "Enlace para el cliente" })).toBeVisible({ timeout: 30_000 });
-    await expect(currentStep(page)).toHaveText(/Compartir/);
     await expect(page.getByRole("heading", { name: "Compartir con tu cliente" })).toHaveCount(0);
     await page.getByRole("button", { name: "Crear enlace" }).click();
     const shareUrl = await page.getByRole("textbox", { name: "Enlace público" }).inputValue();
@@ -173,9 +187,9 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
       await anonymous.close();
     }
 
-    // De vuelta al evento, la cotización queda a mano y ya figura como enviada.
-    await page.getByRole("link", { name: "← Evento" }).click();
-    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}$`));
+    // De vuelta a Cotizaciones, la cotización queda a mano y ya figura como enviada.
+    await page.getByRole("link", { name: "Cotizaciones", exact: true }).first().click();
+    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=cotizar$`));
     const quotes = page.getByRole("region", { name: "Tus cotizaciones" });
     await expect(quotes.getByRole("link", { name: /Cotización N\.º \d+ · versión 1/ })).toBeVisible();
     await expect(quotes).toContainText("Enviada");
@@ -183,21 +197,22 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     expect(errors).toEqual([]);
   });
 
-  test("con teclado el foco es visible en los pasos", async ({ page }) => {
+  test("con teclado el foco es visible en la barra de secciones", async ({ page }) => {
     await signIn(page);
     const created = await page.request.post("/api/packages", { data: { name: "Evento teclado V2" } });
     expect(created.status(), await created.text()).toBe(201);
     const { id } = (await created.json()) as { id: string };
     await page.goto(`/packages/${id}`);
+    // Al cargar, el título toma el foco (PageHeading): se espera para que no
+    // le quite el foco a la barra a mitad de la prueba.
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
 
-    // Evento vacío: "Objetos" es el paso actual (sin enlace), así que Shift+Tab
-    // desde "Montaje 3D" llega a "Evento" por teclado y aplica :focus-visible.
-    const firstStep = steps(page).getByRole("link", { name: "Evento" });
-    await expect(currentStep(page)).toHaveText(/Objetos/);
-    await steps(page).getByRole("link", { name: "Montaje 3D" }).focus();
-    await page.keyboard.press("Shift+Tab");
-    await expect(firstStep).toBeFocused();
-    const outline = await firstStep.evaluate((element) => getComputedStyle(element).outlineStyle);
+    // Se llega con Tab desde la sección actual para que aplique :focus-visible.
+    await sections(page).getByRole("link", { name: "Evento", exact: true }).focus();
+    await page.keyboard.press("Tab");
+    const objetos = sections(page).getByRole("link", { name: "Objetos", exact: true });
+    await expect(objetos).toBeFocused();
+    const outline = await objetos.evaluate((element) => getComputedStyle(element).outlineStyle);
     expect(outline).not.toBe("none");
   });
 });

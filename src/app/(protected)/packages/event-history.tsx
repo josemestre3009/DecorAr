@@ -5,6 +5,7 @@ import { useState } from "react";
 
 import type { PackageSummary } from "@/modules/packages/application/ports/package-reader.port";
 
+import { Icon } from "../_ui/icon";
 import { spaceTypeLabel } from "./_lib/configurator-view";
 import { formatAreaM2, formatEventDate } from "./_lib/format";
 
@@ -32,19 +33,24 @@ export function EventHistory({ packages }: { readonly packages: readonly Package
       <ul className="package-history-list" role="list">
         {visiblePackages.map((pkg) => (
           <li className="package-history-card" key={pkg.id}>
-            <div>
+            <span aria-hidden="true" className="event-card-date">
+              <Icon name="calendar" />
+            </span>
+            <div className="event-card-body">
               <h3>{pkg.name || "Evento sin nombre"}</h3>
               <p className="package-history-meta">{summaryLine(pkg)}</p>
+              <p className="package-history-date">
+                {formatEventDate(pkg.eventDate) ? `${formatEventDate(pkg.eventDate)} · ` : ""}
+                Actualizado el {formatEventDate(pkg.updatedAt) ?? "—"}
+              </p>
             </div>
-            <p className="package-history-date">
-              Actualizado el {formatEventDate(pkg.updatedAt) ?? "—"}
-            </p>
+            {/* El enlace cubre toda la tarjeta (::after): se toca en cualquier parte. */}
             <Link
               aria-label={`Continuar con ${pkg.name || "evento sin nombre"}`}
-              className="secondary-button package-history-link"
+              className="package-history-link"
               href={`/packages/${pkg.id}`}
             >
-              Continuar
+              <Icon name="chevron" />
             </Link>
           </li>
         ))}

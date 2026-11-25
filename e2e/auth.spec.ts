@@ -116,6 +116,7 @@ test.describe("formulario accesible y responsive", () => {
     const controles = [
       page.getByLabel("Correo electrónico"),
       page.getByLabel("Contraseña"),
+      page.getByRole("button", { name: "Mostrar contraseña" }),
       page.locator("form button[type=submit]"),
       page.getByRole("link", { name: "Regístrate" }),
     ];
@@ -190,11 +191,14 @@ test.describe("sesión real", () => {
     await signIn(page);
 
     await expect(page).toHaveURL(/\/packages$/);
+    // La sesión vive en el menú de cuenta (rediseño visual).
+    await page.getByRole("button", { name: "Tu cuenta" }).click();
     await expect(page.getByText(`Sesión activa: ${email}`)).toBeVisible();
 
     await page.reload();
 
     await expect(page).toHaveURL(/\/packages$/);
+    await page.getByRole("button", { name: "Tu cuenta" }).click();
     await expect(page.getByText(`Sesión activa: ${email}`)).toBeVisible();
 
     await page.getByRole("button", { name: "Cerrar sesión" }).click();

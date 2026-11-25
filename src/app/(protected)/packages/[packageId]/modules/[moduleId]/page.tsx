@@ -3,7 +3,10 @@ import Link from "next/link";
 
 import { requireSessionUser } from "@/composition/session-guard";
 
-import { FlowSteps } from "../../../../_flow/flow-steps";
+import { Icon } from "../../../../_ui/icon";
+import { eventSectionHref } from "../../../_lib/event-sections";
+import { resolvePackagesMode } from "../../../_lib/packages-client";
+import { EventNav } from "../../event-nav";
 import { PageHeading } from "../../page-heading";
 import { ModuleViewer } from "./module-viewer";
 
@@ -21,22 +24,32 @@ export default async function ModulePage({ params }: ModulePageProps) {
   await requireSessionUser();
 
   const { packageId, moduleId } = await params;
+  // Las secciones del evento solo existen con la API real (DECOR-20).
+  const isLive = resolvePackagesMode(process.env.NEXT_PUBLIC_DECOR_PACKAGES_API) === "live";
+  const catalogHref = isLive ? eventSectionHref(packageId, "catalogo") : `/packages/${encodeURIComponent(packageId)}`;
 
-  return (
-    <main className="catalog-page">
-      <header className="catalog-header">
-        <Link className="auth-link" href={`/packages/${encodeURIComponent(packageId)}#catalogo`}>
-          ← Volver al catálogo
+  const content = (
+    <main className={isLive ? "catalog-page event-main" : "catalog-page"}>
+      <header className="event-header">
+        <Link className="back-link" href={catalogHref}>
+          <Icon name="back" size={18} />
+          Volver al catálogo
         </Link>
+        <p className="event-kicker">Montaje 3D</p>
         <PageHeading>Ver en 3D</PageHeading>
-        <p className="page-lead">
-          Gira el modelo y ábrelo en tu espacio para verlo a su tamaño real.
-        </p>
+        <p className="page-lead">Gira el modelo y ábrelo en tu espacio para verlo a su tamaño real.</p>
       </header>
 
-      <FlowSteps current="montaje" packageId={packageId} />
-
-      <ModuleViewer moduleId={moduleId} packageId={packageId} />
+      <ModuleViewer catalogHref={catalogHref} moduleId={moduleId} packageId={packageId} />
     </main>
+  );
+
+  return isLive ? (
+    <div className="event-shell">
+      <EventNav active="catalogo" packageId={packageId} />
+      {content}
+    </div>
+  ) : (
+    content
   );
 }

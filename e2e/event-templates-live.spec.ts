@@ -74,6 +74,9 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
     page.getByRole("region", { name: "Contenido del evento", exact: true });
   const templates = (page: Page) =>
     page.getByRole("region", { name: "Plantillas", exact: true });
+  /** El evento se divide en secciones: Evento (datos), Objetos (contenido) y Más (plantilla). */
+  const section = (page: Page, packageId: string, name?: "objetos" | "mas") =>
+    page.goto(name ? `/packages/${packageId}?seccion=${name}` : `/packages/${packageId}`);
   const saveTemplate = (page: Page) =>
     page.getByRole("region", { name: "Plantilla", exact: true });
 
@@ -91,6 +94,7 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
     await signIn(page);
 
     // Evento mínimo: solo el nombre, sin espacio ni área.
+    await page.getByRole("button", { name: "Nuevo evento" }).click();
     await page.getByLabel("Nombre del evento").fill(`Boda mínima ${randomUUID().slice(0, 8)}`);
     await page.getByRole("button", { name: "Crear evento" }).click();
     await expect(page).toHaveURL(PACKAGE_URL);
@@ -108,8 +112,9 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
       data: { moduleId: catalogModule.id },
     });
     expect(added.status(), await added.text()).toBe(201);
-    await page.reload();
+    await section(page, sourceId, "objetos");
     await expect(contents(page)).toContainText(catalogModule.name);
+    await section(page, sourceId);
 
     // Datos específicos del evento fuente: cliente, fecha y lugar.
     await page.getByRole("button", { name: "Editar datos" }).click();
@@ -123,6 +128,7 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
 
     // Guardar como plantilla y anuncio accesible del resultado.
     const templateName = `Plantilla E2E ${randomUUID().slice(0, 8)}`;
+    await section(page, sourceId, "mas");
     const saveRegion = saveTemplate(page);
     await saveRegion.getByRole("button", { name: "Guardar como plantilla" }).click();
     await saveRegion.getByLabel("Nombre de la plantilla").fill(templateName);
@@ -130,7 +136,7 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
     await expect(saveRegion.getByRole("status")).toContainText(`Plantilla "${templateName}" guardada.`);
 
     // La plantilla privada aparece en /packages.
-    await page.getByRole("link", { name: "← Eventos" }).click();
+    await page.getByRole("link", { name: "Eventos", exact: true }).click();
     await expect(page).toHaveURL(/\/packages$/);
     const list = templates(page);
     await expect(list.getByRole("heading", { name: templateName })).toBeVisible();
@@ -146,7 +152,9 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
     expect(secondId).not.toBe(sourceId);
 
     // Configuración copiada, pero sin cliente, fecha ni lugar heredados.
+    await section(page, secondId, "objetos");
     await expect(contents(page)).toContainText(catalogModule.name);
+    await section(page, secondId);
     expect(await fact(summary(page), "Cliente").innerText()).toBe("Sin definir");
     expect(await fact(summary(page), "Fecha").innerText()).toBe("Sin definir");
     expect(await fact(summary(page), "Lugar").innerText()).toBe("Sin definir");
@@ -172,6 +180,7 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
     expect(ids.size).toBe(3);
 
     // Modificar el segundo evento no altera la plantilla ni el evento fuente.
+    await section(page, secondId, "objetos");
     await contents(page).getByRole("button", { name: `Quitar una unidad de ${catalogModule.name}` }).click();
     await expect(contents(page)).toContainText("Tu evento todavía no tiene elementos.");
 
@@ -199,7 +208,7 @@ test.describe.serial("DECOR-44 eventos y plantillas contra la API real", () => {
 
     for (const viewport of VIEWPORTS) {
       await page.setViewportSize({ height: viewport.height, width: viewport.width });
-      await page.goto(`/packages/${packageId}`);
+      await section(page, packageId, "mas");
 
       const region = saveTemplate(page);
       const toggle = region.getByRole("button", { name: "Guardar como plantilla" });

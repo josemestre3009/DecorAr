@@ -5,9 +5,9 @@ import { useEffect, useState } from "react";
 
 import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalog-module.dto";
 
+import { Icon } from "../../_ui/icon";
 import { fetchCatalogModules } from "../_lib/catalog-client";
 import { getPackagesClient, type PackagesClient } from "../_lib/packages-client";
-import type { ZoneOption } from "../_lib/zone-tree";
 import { ModuleCard, type AddState } from "./module-card";
 
 type CatalogState =
@@ -24,13 +24,19 @@ type PackageCatalogProps = {
   /** Unidades confirmadas por el servidor por `moduleId`; reconcilia el eco local tras un refresco (DECOR-22). */
   readonly serverCounts?: Readonly<Record<string, number>>;
   readonly remainingM2?: number;
-  /** Zonas del evento para elegir el destino al agregar; la raíz es la acción rápida. */
-  readonly zones?: readonly ZoneOption[];
 };
 
 const IDLE: AddState = { status: "idle" };
 
-export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts, zones }: PackageCatalogProps) {
+/** Cuánto se ve el aviso de "agregado" (rediseño visual móvil). */
+const TOAST_MS = 3200;
+
+/** Búsqueda sin tildes ni mayúsculas: "mesa" encuentra "Mesa auxiliar". */
+function normalize(value: string): string {
+  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+export function PackageCatalog({ packageId, packageVersion, client, fetcher, remainingM2, serverCounts }: PackageCatalogProps) {
   const router = useRouter();
   const packages = client ?? getPackagesClient();
   const [catalog, setCatalog] = useState<CatalogState>({ status: "loading" });
@@ -44,6 +50,15 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     readonly version?: number;
   }>({ counts: {}, usedM2: 0, version: packageVersion });
   const [announcement, setAnnouncement] = useState("");
+  const [query, setQuery] = useState("");
+  // Aviso visual al agregar (la región viva de arriba ya lo anuncia).
+  const [toast, setToast] = useState<{ readonly id: number; readonly text: string } | null>(null);
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = setTimeout(() => setToast(null), TOAST_MS);
+    return () => clearTimeout(timer);
+  }, [toast]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -74,17 +89,15 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     setAttempt((value) => value + 1);
   }
 
-  async function add(module: CatalogModuleDto, quantity: number, groupId: string | null): Promise<boolean> {
+  async function add(module: CatalogModuleDto, quantity: number): Promise<boolean> {
     setAddStates((states) => ({ ...states, [module.id]: { status: "adding" } }));
     setAnnouncement(
       quantity === 1 ? `Agregando ${module.name}…` : `Agregando ${quantity} unidades de ${module.name}…`,
     );
 
-    const result = groupId !== null
-      ? await packages.addItem(packageId, module.id, 1, groupId)
-      : quantity === 1
-        ? await packages.addItem(packageId, module.id)
-        : await packages.addItem(packageId, module.id, quantity);
+    const result = quantity === 1
+      ? await packages.addItem(packageId, module.id)
+      : await packages.addItem(packageId, module.id, quantity);
 
     if (result.ok) {
       setLocalChanges((changes) => {
@@ -105,6 +118,10 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
           ? `${module.name} se agregó a tu evento.`
           : `${quantity} unidades de ${module.name} se agregaron a tu evento.`,
       );
+      setToast((current) => ({
+        id: (current?.id ?? 0) + 1,
+        text: quantity === 1 ? `${module.name} agregado` : `${quantity} × ${module.name} agregados`,
+      }));
       // Con la API real, el contenido y el área usada se vuelven a leer del servidor (DECOR-22).
       if (packages.mode === "live") {
         router.refresh();
@@ -139,8 +156,13 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
     return count > 0 ? { count, status: "added" } : IDLE;
   }
 
+  const normalizedQuery = normalize(query.trim());
+  const visibleModules = catalog.status === "ready"
+    ? catalog.modules.filter((module) => normalizedQuery === "" || normalize(module.name).includes(normalizedQuery))
+    : [];
+
   return (
-    <section aria-busy={catalog.status === "loading"} aria-labelledby="catalog-title">
+    <section aria-busy={catalog.status === "loading"} aria-labelledby="catalog-title" className="package-catalog">
       <h2 className="section-title" id="catalog-title">
         Catálogo
       </h2>
@@ -158,10 +180,22 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
       </p>
 
       {catalog.status === "loading" ? (
-        <p className="catalog-state" role="status">
-          <span aria-hidden="true" className="spinner" />
-          Cargando catálogo…
-        </p>
+        <>
+          <p className="catalog-state" role="status">
+            <span aria-hidden="true" className="spinner" />
+            Cargando catálogo…
+          </p>
+          {/* Tarjetas esqueleto: anticipan la forma del catálogo mientras carga. */}
+          <ul aria-hidden="true" className="module-grid module-grid-skeleton">
+            {[0, 1, 2, 3].map((index) => (
+              <li className="module-skeleton" key={index}>
+                <span className="skeleton-block skeleton-media" />
+                <span className="skeleton-block skeleton-line" />
+                <span className="skeleton-block skeleton-line skeleton-line-short" />
+              </li>
+            ))}
+          </ul>
+        </>
       ) : null}
 
       {catalog.status === "error" ? (
@@ -185,15 +219,32 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
       ) : null}
 
       {catalog.status === "ready" && catalog.modules.length > 0 ? (
+        <label className="catalog-search">
+          <Icon name="search" />
+          <span className="visually-hidden">Buscar en el catálogo</span>
+          <input
+            autoComplete="off"
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Buscar mesas, sillas, arcos…"
+            type="search"
+            value={query}
+          />
+        </label>
+      ) : null}
+
+      {catalog.status === "ready" && catalog.modules.length > 0 && visibleModules.length === 0 ? (
+        <p className="catalog-state catalog-empty">No encontramos elementos con «{query.trim()}».</p>
+      ) : null}
+
+      {catalog.status === "ready" && visibleModules.length > 0 ? (
         <ul className="module-grid">
-          {catalog.modules.map((module) => (
+          {visibleModules.map((module) => (
             <li key={module.id}>
               <ModuleCard
                 addState={cardAddState(module.id)}
                 module={module}
                 onAdd={add}
                 packageId={packageId}
-                zones={zones}
                 remainingM2={remainingM2 === undefined
                   ? undefined
                   : Math.max(0, remainingM2 - (localChanges.version === packageVersion ? localChanges.usedM2 : 0))}
@@ -201,6 +252,15 @@ export function PackageCatalog({ packageId, packageVersion, client, fetcher, rem
             </li>
           ))}
         </ul>
+      ) : null}
+
+      {toast ? (
+        <div aria-hidden="true" className="catalog-toast" key={toast.id}>
+          <span className="catalog-toast-icon">
+            <Icon name="check" size={18} />
+          </span>
+          <span className="catalog-toast-text">{toast.text}</span>
+        </div>
       ) : null}
     </section>
   );
