@@ -111,7 +111,7 @@ export function SaveTemplateButton({ packageId, eventName, client }: SaveTemplat
       </div>
 
       <p className="content-hint">
-        La plantilla guarda módulos, cantidades, zonas y preferencias. No copia cliente, fecha ni lugar.
+        La plantilla guarda módulos, cantidades y preferencias. No copia cliente, fecha ni lugar.
       </p>
 
       <p aria-live="polite" className="visually-hidden" role="status">

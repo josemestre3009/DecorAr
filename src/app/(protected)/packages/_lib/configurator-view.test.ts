@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { PackageDetailNode } from "@/modules/packages/application/dtos/package-detail.dto";
 
-import { countUnitsByModule, rowSubtotal, spaceTypeLabel, spatialDiagnosticText, toContentRows } from "./configurator-view";
+import { countUnitsByModule, rowSubtotal, spaceTypeLabel, spatialDiagnosticText, toContentRows, toFlatContentRows } from "./configurator-view";
 
 const leaf = (itemId: string, moduleId: string, name: string, areaM2: number, priceCop: number): PackageDetailNode => ({
   areaM2,
@@ -141,5 +141,41 @@ describe("spatialDiagnosticText (DECOR-44)", () => {
 
     expect(text.title).toBe("Compatibilidad espacial excedida");
     expect(text.tone).toBe("warning");
+  });
+});
+
+describe("toFlatContentRows (zonas retiradas de la interfaz)", () => {
+  it("junta por módulo todas las unidades, también las guardadas dentro de grupos anidados", () => {
+    const rows = toFlatContentRows([
+      {
+        areaM2: 6,
+        children: [
+          { areaM2: 2, itemId: "a1", kind: "leaf", moduleId: "arco", name: "Arco floral", priceCop: 200000 },
+          {
+            areaM2: 4,
+            children: [{ areaM2: 4, itemId: "m1", kind: "leaf", moduleId: "mesa", name: "Mesa redonda", priceCop: 250000 }],
+            groupId: "g-2",
+            kind: "group",
+            name: "Interna",
+            priceCop: 250000,
+          },
+        ],
+        groupId: "g-1",
+        kind: "group",
+        name: "Zona",
+        priceCop: 450000,
+      },
+      { areaM2: 2, itemId: "a2", kind: "leaf", moduleId: "arco", name: "Arco floral", priceCop: 200000 },
+    ]);
+
+    expect(rows.map((row) => [row.name, row.itemIds])).toEqual([
+      ["Arco floral", ["a1", "a2"]],
+      ["Mesa redonda", ["m1"]],
+    ]);
+    expect(rows.every((row) => row.kind === "leaves")).toBe(true);
+  });
+
+  it("sin nodos no hay filas", () => {
+    expect(toFlatContentRows([])).toEqual([]);
   });
 });

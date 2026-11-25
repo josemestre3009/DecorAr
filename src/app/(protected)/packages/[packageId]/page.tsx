@@ -13,7 +13,6 @@ import { countUnitsByModule, type ConfiguratorBudget } from "../_lib/configurato
 import { eventSectionLabel, parseEventSection } from "../_lib/event-sections";
 import { formatCop } from "../_lib/format";
 import { resolvePackagesMode } from "../_lib/packages-client";
-import { buildZoneTree, flattenZones } from "../_lib/zone-tree";
 import { BudgetBar } from "./budget-bar";
 import { BudgetTotal } from "./budget-total";
 import { CreateQuoteForm } from "./create-quote-form";
@@ -101,8 +100,6 @@ export default async function PackagePage({ params, searchParams }: PackagePageP
   // eco local tras agregar o quitar (DECOR-22).
   const serverCounts = ready ? countUnitsByModule(ready.detail.nodes) : undefined;
   const detail = ready?.detail ?? null;
-  // Zonas planas para los selectores de destino del contenido y el catálogo.
-  const zones = detail ? flattenZones(buildZoneTree(detail.nodes)) : [];
   const unitCount = serverCounts ? Object.values(serverCounts).reduce((total, count) => total + count, 0) : 0;
   const totalLabel = ready?.budget.status === "confirmed" ? formatCop(ready.budget.totalCop) : null;
 
@@ -112,7 +109,6 @@ export default async function PackagePage({ params, searchParams }: PackagePageP
       packageVersion={detail?.version}
       remainingM2={detail?.remainingM2 ?? undefined}
       serverCounts={serverCounts}
-      zones={zones}
     />
   );
 

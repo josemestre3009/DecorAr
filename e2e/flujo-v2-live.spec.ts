@@ -180,6 +180,9 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     expect(created.status(), await created.text()).toBe(201);
     const { id } = (await created.json()) as { id: string };
     await page.goto(`/packages/${id}`);
+    // Al cargar, el título toma el foco (PageHeading): se espera para que no
+    // le quite el foco a la barra a mitad de la prueba.
+    await expect(page.getByRole("heading", { level: 1 })).toBeFocused();
 
     // Se llega con Tab desde la sección actual para que aplique :focus-visible.
     await sections(page).getByRole("link", { name: "Evento", exact: true }).focus();

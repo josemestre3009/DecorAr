@@ -8,7 +8,6 @@ import type { CatalogModuleDto } from "@/modules/catalog/application/dtos/catalo
 import { err, ok } from "@/shared/domain/result";
 
 import type { PackagesClient } from "../_lib/packages-client";
-import type { ZoneOption } from "../_lib/zone-tree";
 import { PackageCatalog } from "./package-catalog";
 
 const push = vi.fn();
@@ -403,67 +402,23 @@ describe("PackageCatalog: acceso a la vista 3D (DECOR-23)", () => {
   });
 });
 
-const ZONES: ZoneOption[] = [
-  { ancestorIds: [], depth: 1, descendantIds: [], groupId: "g-1", height: 1, name: "Recepción" },
-];
 
-describe("PackageCatalog: destino por zona para agregar módulos", () => {
+describe("PackageCatalog: sin zonas (retiradas de la interfaz)", () => {
   beforeEach(() => {
     push.mockReset();
     refresh.mockReset();
   });
 
-  it("agrega a la zona elegida con una sola instancia", async () => {
+  it("la hoja no ofrece elegir zona y agrega siempre al evento", async () => {
     const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
     const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
-    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" zones={ZONES} />);
-
-    const sheet = await openSheet("Arco floral");
-    fireEvent.click(sheet.getByRole("radio", { name: /Recepción/ }));
-    // En una zona se agrega de a uno: el contador desaparece.
-    expect(sheet.queryByRole("button", { name: "Aumentar cantidad de Arco floral" })).not.toBeInTheDocument();
-    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
-
-    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id, 1, "g-1"));
-    expect(refresh).toHaveBeenCalled();
-  });
-
-  it("mantiene la acción rápida a la raíz sin seleccionar zona", async () => {
-    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
-    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" zones={ZONES} />);
-
-    const sheet = await openSheet("Arco floral");
-    expect(sheet.getByRole("radio", { name: "Sin zona" })).toBeChecked();
-    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
-
-    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id));
-  });
-
-  it("no bloquea por exceso de área cuando se agrega a una zona", async () => {
-    const addItem = vi.fn<PackagesClient["addItem"]>().mockResolvedValue(ok({ itemId: "i-1", packageVersion: 2 }));
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
-    render(
-      <PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" remainingM2={3} zones={ZONES} />,
-    );
-
-    const sheet = await openSheet("Mesa redonda");
-    expect(sheet.getByRole("button", { name: "Agregar Mesa redonda" })).toHaveAttribute("aria-disabled", "true");
-
-    fireEvent.click(sheet.getByRole("radio", { name: /Recepción/ }));
-    const withZone = sheet.getByRole("button", { name: "Agregar Mesa redonda" });
-    expect(withZone).not.toHaveAttribute("aria-disabled");
-
-    fireEvent.click(withZone);
-    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[0]?.id, 1, "g-1"));
-  });
-
-  it("sin zonas no muestra el selector de destino", async () => {
-    const fetcher = vi.fn<typeof fetch>().mockResolvedValue(Response.json(fixture));
-    render(<PackageCatalog client={client()} fetcher={fetcher} packageId="p-1" />);
+    render(<PackageCatalog client={client(addItem)} fetcher={fetcher} packageId="p-1" />);
 
     const sheet = await openSheet("Arco floral");
     expect(sheet.queryByRole("radio")).not.toBeInTheDocument();
     expect(sheet.queryByRole("group", { name: "Zona" })).not.toBeInTheDocument();
+    fireEvent.click(sheet.getByRole("button", { name: "Agregar Arco floral" }));
+
+    await waitFor(() => expect(addItem).toHaveBeenCalledWith("p-1", fixture[1]?.id));
   });
 });
