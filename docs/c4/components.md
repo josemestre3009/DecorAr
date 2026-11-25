@@ -4,7 +4,7 @@ Vista simplificada del diseño interno de DecorAR. Muestra responsabilidades y d
 
 > [Abrir el diagrama interactivo detallado](../../public/docs/components.html) — permite enfocar componentes, seguir rutas, cambiar tema y abrir la evidencia exacta del código. En producción: `/docs/components.html`.
 
-El diagrama interactivo amplía esta vista con cuatro recorridos guiados: configuración de un evento, seguridad por capas, presupuesto en vivo y experiencia AR. El Mermaid siguiente permanece como respaldo ligero para lectores Markdown.
+El diagrama interactivo refleja el código actual e incluye cotizaciones versionadas, enlaces y PDF compartidos, persistencia de escenas, plantillas, endpoints y despliegue. El Mermaid siguiente permanece como respaldo ligero para lectores Markdown; es una vista resumida.
 
 ```mermaid
 %%{init: {
