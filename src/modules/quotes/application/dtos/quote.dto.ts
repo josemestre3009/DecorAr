@@ -64,18 +64,36 @@ export type CreateQuoteDto = {
   readonly ownerId: string;
   readonly packageId: string;
   readonly terms: QuoteTermsInput;
+  /** Cabecera `Idempotency-Key` sin validar (DECOR-55). */
+  readonly idempotencyKey: unknown;
 };
 
 export type CreateQuoteVersionDto = {
   readonly ownerId: string;
   readonly quote: QuoteDto;
   readonly terms: QuoteTermsInput;
+  /** Cabecera `Idempotency-Key` sin validar (DECOR-55). */
+  readonly idempotencyKey: unknown;
+  /** Última versión que vio el cliente; sin validar (DECOR-55). */
+  readonly expectedVersion: unknown;
 };
 
 export type ChangeQuoteStatusDto = {
   readonly ownerId: string;
   readonly quote: QuoteDto;
   readonly status: unknown;
+  /** Estado que vio el cliente antes de pedir el cambio; sin validar (DECOR-55). */
+  readonly expectedStatus: unknown;
+};
+
+/**
+ * Resultado de crear una cotización o una versión (DECOR-55). `replayed`
+ * indica que la misma `Idempotency-Key` ya había creado esta cotización y no
+ * se asignó otro número ni otra versión.
+ */
+export type CreatedQuoteResultDto = {
+  readonly quote: QuoteDto;
+  readonly replayed: boolean;
 };
 
 /**

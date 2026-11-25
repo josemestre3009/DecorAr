@@ -4,6 +4,7 @@ import type { AuthorizePackageAccessUseCase } from "../../modules/packages/appli
 import type { ObtenerEscenaUseCase } from "../../modules/ar/application/use-cases/obtener-escena.use-case";
 import type { GuardarEscenaUseCase } from "../../modules/ar/application/use-cases/guardar-escena.use-case";
 import type { TransformacionItem } from "../../modules/ar/domain/escena-montaje";
+import type { Logger } from "../../shared/application/ports";
 import { checkPackageAccess } from "../packages/package-access";
 
 const CORRELATION_ID_HEADER = "x-correlation-id";
@@ -16,10 +17,10 @@ function correlationIdFor(request: Request): string {
 }
 
 /** Estado HTTP de los errores de la escena (DECOR-46). */
-function sceneErrorStatus(code: string): number {
+export function sceneErrorStatus(code: string): number {
   if (code === "scene.version_conflict") return 409;
   if (code === "package.not_found" || code === "scene.item_not_found") return 404;
-  if (code.startsWith("scene.persistence_error") || code === "scene.invalid_body") return 500;
+  if (code.startsWith("scene.persistence_error")) return 500;
   if (
     code === "ar.scene_too_many_items" ||
     code === "ar.scene_invalid_item" ||
@@ -32,6 +33,11 @@ function sceneErrorStatus(code: string): number {
     return 422;
   }
   return 400;
+}
+
+function sqlState(cause: unknown): string | undefined {
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) return undefined;
+  return typeof cause.code === "string" ? cause.code : undefined;
 }
 
 function invalidBody(headers: Record<string, string>, message: string): Response {
@@ -88,6 +94,7 @@ export class SceneController {
     private readonly authorizePackageAccess: AuthorizePackageAccessUseCase,
     private readonly obtenerEscenaUseCase: ObtenerEscenaUseCase,
     private readonly guardarEscenaUseCase: GuardarEscenaUseCase,
+    private readonly logger: Pick<Logger, "error">,
     defaultHeaders: Record<string, string> = {},
   ) {
     this.defaultHeaders = defaultHeaders;
@@ -107,10 +114,20 @@ export class SceneController {
 
       if (!result.ok) {
         const { code, message } = result.error;
-        return Response.json(
-          { error: { code, message } },
-          { headers: responseHeaders, status: sceneErrorStatus(code) },
-        );
+        const status = sceneErrorStatus(code);
+        if (status === 500) {
+          this.logger.error("scene.request_failed", {
+            code,
+            component: "SceneController.handleGet",
+            correlationId,
+            dbCode: sqlState(result.error.cause),
+          });
+          return Response.json(
+            { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+            { headers: responseHeaders, status: 500 },
+          );
+        }
+        return Response.json({ error: { code, message } }, { headers: responseHeaders, status });
       }
 
       return Response.json(
@@ -127,8 +144,7 @@ export class SceneController {
         { headers: responseHeaders, status: 200 },
       );
     } catch (cause) {
-      const errorCorrelationId = randomUUID();
-      console.error(`[SceneController.handleGet] Error inesperado (${errorCorrelationId}):`, cause);
+      this.logger.error("scene.unexpected_error", { component: "SceneController.handleGet", correlationId, error: cause });
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
         { headers: responseHeaders, status: 500 },
@@ -183,6 +199,19 @@ export class SceneController {
 
       if (!result.ok) {
         const { code, message } = result.error;
+        const status = sceneErrorStatus(code);
+        if (status === 500) {
+          this.logger.error("scene.request_failed", {
+            code,
+            component: "SceneController.handlePut",
+            correlationId,
+            dbCode: sqlState(result.error.cause),
+          });
+          return Response.json(
+            { error: { code: "internal_error", message: "No pudimos completar la operación." } },
+            { headers: responseHeaders, status: 500 },
+          );
+        }
         const currentSceneVersion = result.error.metadata.currentSceneVersion;
         return Response.json(
           {
@@ -191,14 +220,13 @@ export class SceneController {
               ? { currentSceneVersion }
               : {}),
           },
-          { headers: responseHeaders, status: sceneErrorStatus(code) },
+          { headers: responseHeaders, status },
         );
       }
 
       return Response.json({ sceneVersion: result.value }, { headers: responseHeaders, status: 200 });
     } catch (cause) {
-      const errorCorrelationId = randomUUID();
-      console.error(`[SceneController.handlePut] Error inesperado (${errorCorrelationId}):`, cause);
+      this.logger.error("scene.unexpected_error", { component: "SceneController.handlePut", correlationId, error: cause });
       return Response.json(
         { error: { code: "internal_error", message: "No pudimos completar la operación." } },
         { headers: responseHeaders, status: 500 },

@@ -4,7 +4,12 @@ const mockHandleGet = vi.fn();
 const mockHandlePut = vi.fn();
 
 vi.mock("server-only", () => ({}));
+const { mockLogger } = vi.hoisted(() => ({
+  mockLogger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+}));
+
 vi.mock("@/composition/server", () => ({
+  serverLogger: mockLogger,
   createSceneController: vi.fn(async () => ({
     handleGet: mockHandleGet,
     handlePut: mockHandlePut,
@@ -33,7 +38,6 @@ describe("GET /api/packages/[packageId]/scene", () => {
   });
 
   it("devuelve 500 controlado con correlationId si el controlador lanza", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockHandleGet.mockRejectedValue(new Error("Database failure"));
 
     const req = new Request("http://localhost/api/packages/pkg-42/scene");
@@ -44,7 +48,10 @@ describe("GET /api/packages/[packageId]/scene", () => {
     const body = await res.json();
     expect(body.error.code).toBe("internal_error");
     expect(typeof body.correlationId).toBe("string");
-    consoleSpy.mockRestore();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      "route.uncaught_error",
+      expect.objectContaining({ correlationId: body.correlationId }),
+    );
   });
 });
 
@@ -69,7 +76,6 @@ describe("PUT /api/packages/[packageId]/scene", () => {
   });
 
   it("devuelve 500 controlado con correlationId si el controlador lanza", async () => {
-    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
     mockHandlePut.mockRejectedValue(new Error("RPC timeout"));
 
     const req = new Request("http://localhost/api/packages/pkg-42/scene", { method: "PUT" });
@@ -80,6 +86,9 @@ describe("PUT /api/packages/[packageId]/scene", () => {
     const body = await res.json();
     expect(body.error.code).toBe("internal_error");
     expect(typeof body.correlationId).toBe("string");
-    consoleSpy.mockRestore();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      "route.uncaught_error",
+      expect.objectContaining({ correlationId: body.correlationId }),
+    );
   });
 });

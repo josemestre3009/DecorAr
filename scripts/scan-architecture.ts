@@ -36,6 +36,22 @@ const PACKAGES_ROOT = "src/modules/packages";
 const BUDGET_ROOT = "src/modules/budget";
 const BROWSER_FACTORY = "src/infrastructure/supabase/browser";
 
+/**
+ * DECOR-55: estas capas de servidor registran sólo con el puerto `Logger`
+ * (JSON sanitizado), nunca con `console.*`, para que un token o un dato
+ * sensible no llegue al log sin pasar por `sanitizeLogContext`. El alcance
+ * es el de DECOR-55 (cotizaciones, enlaces, escena y sus rutas); el resto
+ * del código conserva su forma actual hasta migrarlo.
+ */
+const LOGGER_ONLY_ROOTS = [
+  "src/interfaces/quotes",
+  "src/interfaces/ar",
+  "src/interfaces/http",
+  "src/app/api/quotes",
+  "src/app/api/packages/[packageId]/quotes",
+  "src/app/api/packages/[packageId]/scene",
+];
+
 const BUSINESS_TABLE_TOKENS = new Set([
   "catalog",
   "catalogs",
@@ -327,6 +343,26 @@ function businessTablesIn(sourceFile: ts.SourceFile): string[] {
   return [...found];
 }
 
+function usesConsole(sourceFile: ts.SourceFile): boolean {
+  let found = false;
+
+  const visit = (node: ts.Node): void => {
+    if (found) return;
+    if (
+      ts.isPropertyAccessExpression(node) &&
+      ts.isIdentifier(node.expression) &&
+      node.expression.text === "console"
+    ) {
+      found = true;
+      return;
+    }
+    ts.forEachChild(node, visit);
+  };
+
+  visit(sourceFile);
+  return found;
+}
+
 const DOMAIN_FORBIDDEN_TARGETS = new Set<Layer>([
   "application",
   "infrastructure",
@@ -429,6 +465,14 @@ export function analyzeFile(file: SourceFile): Violation[] {
         reason: `packages module must not import budget module (${specifier} -> ${resolved})`,
       });
     }
+  }
+
+  if (LOGGER_ONLY_ROOTS.some((root) => isUnder(path, root)) && usesConsole(sourceFile)) {
+    violations.push({
+      file: path,
+      rule: "logger-only",
+      reason: "use the injected Logger port instead of console.* (DECOR-55)",
+    });
   }
 
   if (isClient) {

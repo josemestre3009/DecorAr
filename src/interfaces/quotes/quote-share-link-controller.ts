@@ -4,7 +4,7 @@ import type { CreateQuoteShareLinkUseCase } from "../../modules/quotes/applicati
 import type { GetQuoteShareLinkUseCase } from "../../modules/quotes/application/use-cases/get-quote-share-link.use-case";
 import type { RevokeQuoteShareLinkUseCase } from "../../modules/quotes/application/use-cases/revoke-quote-share-link.use-case";
 import type { QuoteReader } from "../../modules/quotes/application/ports/quote-repository.port";
-import type { SessionGateway } from "../../shared/application/ports";
+import type { Logger, SessionGateway } from "../../shared/application/ports";
 import { checkQuoteAccess } from "./quote-access";
 
 const CORRELATION_ID_HEADER = "x-correlation-id";
@@ -16,6 +16,7 @@ export type QuoteShareLinkControllerDependencies = {
   readonly getQuoteShareLink: Pick<GetQuoteShareLinkUseCase, "execute">;
   readonly revokeQuoteShareLink: Pick<RevokeQuoteShareLinkUseCase, "execute">;
   readonly publicAppUrl: string;
+  readonly logger: Logger;
   readonly defaultHeaders?: Record<string, string>;
 };
 
@@ -59,7 +60,7 @@ export class QuoteShareLinkController {
     const headers = this.headers(correlationId);
 
     if (status === 500) {
-      console.error(`[QuoteShareLinkController.${logLabel}] (${correlationId}):`, code, message);
+      this.deps.logger.error("share_link.request_failed", { code, component: `QuoteShareLinkController.${logLabel}`, correlationId });
       return this.internalError(correlationId);
     }
 
@@ -77,6 +78,7 @@ export class QuoteShareLinkController {
     return checkQuoteAccess(
       {
         currentUser: () => this.deps.sessionGateway.currentUser(),
+        logger: this.deps.logger,
         reader: this.deps.quoteReader,
       },
       quoteId,
@@ -101,14 +103,14 @@ export class QuoteShareLinkController {
       }
 
       const { token, ...link } = result.value;
-      console.info(`[QuoteShareLinkController.create] (${correlationId}): linkId=${link.id} quoteId=${quoteId}`);
+      this.deps.logger.info("share_link.created", { component: "QuoteShareLinkController.create", correlationId, linkId: link.id, quoteId });
 
       return Response.json(
         { ...link, url: this.urlFor(token) },
         { headers: this.headers(correlationId), status: 201 },
       );
     } catch (cause) {
-      console.error(`[QuoteShareLinkController.create] Error inesperado (${correlationId}):`, cause);
+      this.deps.logger.error("share_link.unexpected_error", { component: "QuoteShareLinkController.create", correlationId, error: cause });
       return this.internalError(correlationId);
     }
   }
@@ -135,7 +137,7 @@ export class QuoteShareLinkController {
         { headers: this.headers(correlationId) },
       );
     } catch (cause) {
-      console.error(`[QuoteShareLinkController.get] Error inesperado (${correlationId}):`, cause);
+      this.deps.logger.error("share_link.unexpected_error", { component: "QuoteShareLinkController.get", correlationId, error: cause });
       return this.internalError(correlationId);
     }
   }
@@ -152,11 +154,11 @@ export class QuoteShareLinkController {
         return this.errorResponse(correlationId, result.error.code, result.error.message, "revoke");
       }
 
-      console.info(`[QuoteShareLinkController.revoke] (${correlationId}): linkId=${result.value.id} quoteId=${quoteId}`);
+      this.deps.logger.info("share_link.revoked", { component: "QuoteShareLinkController.revoke", correlationId, linkId: result.value.id, quoteId });
 
       return Response.json(result.value, { headers: this.headers(correlationId) });
     } catch (cause) {
-      console.error(`[QuoteShareLinkController.revoke] Error inesperado (${correlationId}):`, cause);
+      this.deps.logger.error("share_link.unexpected_error", { component: "QuoteShareLinkController.revoke", correlationId, error: cause });
       return this.internalError(correlationId);
     }
   }

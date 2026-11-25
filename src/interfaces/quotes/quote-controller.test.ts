@@ -14,10 +14,13 @@ function build(overrides: Record<string, unknown> = {}) {
   const deps: Record<string, unknown> = {
     authorizePackageAccess: { execute: vi.fn().mockResolvedValue(ok(USER)) },
     changeQuoteStatus: { execute: vi.fn().mockResolvedValue(ok({ ...QUOTE, status: "sent" })) },
-    createQuote: { execute: vi.fn().mockResolvedValue(ok(QUOTE)) },
-    createQuoteVersion: { execute: vi.fn().mockResolvedValue(ok({ ...QUOTE, version: 2 })) },
+    createQuote: { execute: vi.fn().mockResolvedValue(ok({ quote: QUOTE, replayed: false })) },
+    createQuoteVersion: {
+      execute: vi.fn().mockResolvedValue(ok({ quote: { ...QUOTE, version: 2 }, replayed: false })),
+    },
     defaultHeaders: {},
     listQuotes: { execute: vi.fn().mockResolvedValue(ok([])) },
+    logger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
     quoteReader: { getQuote: vi.fn().mockResolvedValue(ok(QUOTE)) },
     sessionGateway: { currentUser: vi.fn().mockResolvedValue(USER) },
     ...overrides,
@@ -25,10 +28,12 @@ function build(overrides: Record<string, unknown> = {}) {
   return { controller: new QuoteController(deps as never), deps: deps as Record<string, Record<string, ReturnType<typeof vi.fn>>> };
 }
 
-const jsonRequest = (url: string, body: unknown, method = "POST") =>
+const IDEMPOTENCY_KEY = "eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee";
+
+const jsonRequest = (url: string, body: unknown, method = "POST", headers: Record<string, string> = {}) =>
   new Request(`http://localhost${url}`, {
     body: typeof body === "string" ? body : JSON.stringify(body),
-    headers: { "content-type": "application/json", "x-correlation-id": "corr-1" },
+    headers: { "content-type": "application/json", "x-correlation-id": "corr-1", ...headers },
     method,
   });
 
@@ -105,13 +110,117 @@ describe("QuoteController.handleCreate", () => {
         execute: vi.fn().mockResolvedValue(err(new DomainError("quote.persistence_error", "secret detail"))),
       },
     });
-    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-
     const response = await controller.handleCreate(jsonRequest("/x", {}), PACKAGE_ID);
 
     expect(response.status).toBe(500);
     expect(JSON.stringify(await response.json())).not.toContain("secret detail");
-    spy.mockRestore();
+  });
+});
+
+describe("QuoteController idempotencia y concurrencia (DECOR-55)", () => {
+  it("POST quotes pasa la Idempotency-Key y responde la cotización con 201", async () => {
+    const { controller, deps } = build();
+
+    const response = await controller.handleCreate(
+      jsonRequest("/x", { validUntil: "2026-12-01" }, "POST", { "Idempotency-Key": IDEMPOTENCY_KEY }),
+      PACKAGE_ID,
+    );
+
+    expect(response.status).toBe(201);
+    expect(await response.json()).toEqual(QUOTE);
+    expect(response.headers.get("idempotent-replayed")).toBeNull();
+    expect(deps.createQuote.execute.mock.calls[0][0].idempotencyKey).toBe(IDEMPOTENCY_KEY);
+  });
+
+  it("un reintento devuelve la misma cotización, 201 y Idempotent-Replayed: true", async () => {
+    const { controller } = build({
+      createQuote: { execute: vi.fn().mockResolvedValue(ok({ quote: QUOTE, replayed: true })) },
+    });
+
+    const response = await controller.handleCreate(
+      jsonRequest("/x", {}, "POST", { "Idempotency-Key": IDEMPOTENCY_KEY }),
+      PACKAGE_ID,
+    );
+
+    expect(response.status).toBe(201);
+    expect(response.headers.get("idempotent-replayed")).toBe("true");
+    expect(await response.json()).toEqual(QUOTE);
+  });
+
+  it("sin clave o con clave inválida → 400; clave reutilizada con otra solicitud → 422", async () => {
+    const invalid = build({
+      createQuote: {
+        execute: vi.fn().mockResolvedValue(err(new DomainError("idempotency.key_invalid", "Falta la clave"))),
+      },
+    });
+    const reused = build({
+      createQuote: {
+        execute: vi.fn().mockResolvedValue(err(new DomainError("idempotency.key_reused", "Otra solicitud"))),
+      },
+    });
+
+    const a = await invalid.controller.handleCreate(jsonRequest("/x", {}), PACKAGE_ID);
+    const b = await reused.controller.handleCreate(jsonRequest("/x", {}), PACKAGE_ID);
+
+    expect(a.status).toBe(400);
+    expect((await a.json()).error.code).toBe("idempotency.key_invalid");
+    expect(b.status).toBe(422);
+  });
+
+  it("POST versions pasa expectedVersion y la clave; un conflicto → 409 con currentVersion", async () => {
+    const conflict = new DomainError("quote.version_conflict", "Recarga", undefined, { currentVersion: 3 });
+    const { controller, deps } = build({ createQuoteVersion: { execute: vi.fn().mockResolvedValue(err(conflict)) } });
+
+    const response = await controller.handleCreateVersion(
+      jsonRequest("/x", { expectedVersion: 2, validUntil: "2026-12-01" }, "POST", {
+        "Idempotency-Key": IDEMPOTENCY_KEY,
+      }),
+      QUOTE_ID,
+    );
+
+    expect(response.status).toBe(409);
+    expect(await response.json()).toEqual({
+      currentVersion: 3,
+      error: { code: "quote.version_conflict", message: "Recarga" },
+    });
+    expect(deps.createQuoteVersion.execute.mock.calls[0][0]).toMatchObject({
+      expectedVersion: 2,
+      idempotencyKey: IDEMPOTENCY_KEY,
+    });
+  });
+
+  it("PATCH status con un estado que ya cambió → 409 con currentStatus", async () => {
+    const conflict = new DomainError("quote.status_conflict", "Recarga", undefined, { currentStatus: "accepted" });
+    const { controller } = build({ changeQuoteStatus: { execute: vi.fn().mockResolvedValue(err(conflict)) } });
+
+    const response = await controller.handleChangeStatus(
+      jsonRequest("/x", { expectedStatus: "draft", status: "sent" }, "PATCH"),
+      QUOTE_ID,
+    );
+
+    expect(response.status).toBe(409);
+    expect((await response.json()).currentStatus).toBe("accepted");
+  });
+
+  it("un 500 se registra con el Logger sin el detalle crudo de Postgres", async () => {
+    const cause = { code: "23505", details: "Key (client_name)=(Ana Pérez)", message: "duplicate key" };
+    const { controller, deps } = build({
+      createQuote: {
+        execute: vi
+          .fn()
+          .mockResolvedValue(err(new DomainError("quote.persistence_error", "Error en create_quote", { cause }))),
+      },
+    });
+
+    await controller.handleCreate(jsonRequest("/x", {}), PACKAGE_ID);
+
+    expect(deps.logger.error).toHaveBeenCalledWith("quote.request_failed", {
+      code: "quote.persistence_error",
+      component: "QuoteController.create",
+      correlationId: "corr-1",
+      dbCode: "23505",
+    });
+    expect(JSON.stringify(deps.logger.error.mock.calls)).not.toContain("Ana Pérez");
   });
 });
 
@@ -167,13 +276,18 @@ describe("QuoteController escrituras sobre una cotización", () => {
   it("PATCH status → 200 con el estado nuevo", async () => {
     const { controller, deps } = build();
     const response = await controller.handleChangeStatus(
-      jsonRequest(`/api/quotes/${QUOTE_ID}/status`, { status: "sent" }, "PATCH"),
+      jsonRequest(`/api/quotes/${QUOTE_ID}/status`, { expectedStatus: "draft", status: "sent" }, "PATCH"),
       QUOTE_ID,
     );
 
     expect(response.status).toBe(200);
     expect((await response.json()).status).toBe("sent");
-    expect(deps.changeQuoteStatus.execute).toHaveBeenCalledWith({ ownerId: USER.id, quote: QUOTE, status: "sent" });
+    expect(deps.changeQuoteStatus.execute).toHaveBeenCalledWith({
+      expectedStatus: "draft",
+      ownerId: USER.id,
+      quote: QUOTE,
+      status: "sent",
+    });
   });
 
   it("no escribe sobre una cotización ajena", async () => {
@@ -224,15 +338,14 @@ describe("QuoteController.handleGetPdf (DECOR-52)", () => {
   });
 
   it("500 sin detalles si falla el render", async () => {
-    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const { controller } = build({ pdfRenderer: { render: vi.fn().mockRejectedValue(new Error("font")) } });
+    const { controller, deps } = build({ pdfRenderer: { render: vi.fn().mockRejectedValue(new Error("font")) } });
 
     const response = await controller.handleGetPdf(new Request("http://localhost/x"), QUOTE_ID);
     const body = await response.json();
 
     expect(response.status).toBe(500);
     expect(body).toEqual({ error: { code: "internal_error", message: "No pudimos completar la operación." } });
-    spy.mockRestore();
+    expect(deps.logger.error).toHaveBeenCalledWith("quote.unexpected_error", expect.objectContaining({ component: "QuoteController.getPdf" }));
   });
 });
 
@@ -243,6 +356,10 @@ describe("quoteErrorStatus", () => {
     ["package.not_found", 404],
     ["quote.package_version_conflict", 409],
     ["quote.snapshot_mismatch", 409],
+    ["quote.version_conflict", 409],
+    ["quote.status_conflict", 409],
+    ["idempotency.key_invalid", 400],
+    ["idempotency.key_reused", 422],
     ["quote.invalid_body", 400],
     ["quote.invalid_status_transition", 422],
     ["quote.empty_package", 422],

@@ -1,11 +1,13 @@
 import type { Clock } from "../../../../shared/application/ports";
 import { DomainError } from "../../../../shared/domain/domain-error";
 import { err, type Result } from "../../../../shared/domain/result";
+import { parseIdempotencyKey } from "../../domain/idempotency-key";
 import { validarTerminosCotizacion } from "../../domain/quote-terms";
 import { calculateQuote } from "../../domain/quote-totals";
-import type { CreateQuoteVersionDto, QuoteDto } from "../dtos/quote.dto";
+import type { CreatedQuoteResultDto, CreateQuoteVersionDto } from "../dtos/quote.dto";
 import type { QuoteRepository } from "../ports/quote-repository.port";
 import type { QuoteSourceReader } from "../ports/quote-source-reader.port";
+import { quoteRequestFingerprint } from "../quote-request-fingerprint";
 import { todayIso } from "../today";
 
 const packageMissing = () =>
@@ -21,6 +23,11 @@ const packageMissing = () =>
  * vez la instantánea del evento actual con los términos nuevos; conserva el
  * número y no modifica ninguna versión anterior. `dto.quote` es la versión ya
  * autorizada para el dueño (puede ser cualquiera del mismo número).
+ *
+ * DECOR-55: `expectedVersion` es la última versión que vio el cliente; si
+ * otra pestaña ya creó una más nueva, el RPC responde `quote.version_conflict`
+ * en vez de reemplazarla en silencio. Un reintento con la misma
+ * `Idempotency-Key` devuelve la versión ya creada.
  */
 export class CreateQuoteVersionUseCase {
   constructor(
@@ -29,9 +36,19 @@ export class CreateQuoteVersionUseCase {
     private readonly clock: Clock,
   ) {}
 
-  async execute(dto: CreateQuoteVersionDto): Promise<Result<QuoteDto, DomainError>> {
+  async execute(dto: CreateQuoteVersionDto): Promise<Result<CreatedQuoteResultDto, DomainError>> {
     if (!dto.ownerId || dto.ownerId.trim().length === 0) {
       return err(new DomainError("auth.unauthenticated", "Inicia sesión para continuar."));
+    }
+
+    const idempotencyKey = parseIdempotencyKey(dto.idempotencyKey);
+    if (!idempotencyKey.ok) return idempotencyKey;
+
+    const expectedVersion = dto.expectedVersion;
+    if (typeof expectedVersion !== "number" || !Number.isInteger(expectedVersion) || expectedVersion < 1) {
+      return err(
+        new DomainError("quote.invalid_body", "expectedVersion debe ser la última versión que viste (entero ≥ 1)."),
+      );
     }
 
     const terms = validarTerminosCotizacion(dto.terms, todayIso(this.clock));
@@ -49,8 +66,16 @@ export class CreateQuoteVersionUseCase {
     return this.repository.createVersion({
       calculation: calculation.value,
       expectedPackageVersion: source.value.packageVersion,
+      expectedVersion,
+      idempotencyKey: idempotencyKey.value,
       ownerId: dto.ownerId,
       quoteId: dto.quote.id,
+      requestFingerprint: quoteRequestFingerprint({
+        expectedVersion,
+        operation: "create_quote_version",
+        quoteId: dto.quote.id,
+        terms: terms.value,
+      }),
       terms: terms.value,
     });
   }

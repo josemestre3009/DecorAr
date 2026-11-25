@@ -10,6 +10,7 @@ import { CreateQuoteVersionUseCase } from "./create-quote-version.use-case";
 import { CreateQuoteUseCase } from "./create-quote.use-case";
 import { ListQuotesUseCase } from "./list-quotes.use-case";
 
+const KEY = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 const OWNER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const PACKAGE = "cccccccc-cccc-4ccc-8ccc-cccccccccccc";
 // 2026-11-18 21:00 en Bogotá = 2026-11-19 02:00 UTC.
@@ -51,6 +52,7 @@ describe("CreateQuoteUseCase (DECOR-50)", () => {
     const repository = { create: vi.fn().mockResolvedValue(ok(QUOTE)) };
 
     const result = await new CreateQuoteUseCase(source, repository, clock).execute({
+      idempotencyKey: KEY,
       ownerId: OWNER,
       packageId: PACKAGE,
       terms: { ...TERMS, totalCop: 1 } as never,
@@ -68,6 +70,7 @@ describe("CreateQuoteUseCase (DECOR-50)", () => {
   it("acepta vigencia igual a hoy en Colombia aunque en UTC ya sea mañana", async () => {
     const repository = { create: vi.fn().mockResolvedValue(ok(QUOTE)) };
     const result = await new CreateQuoteUseCase(sourceReader(), repository, clock).execute({
+      idempotencyKey: KEY,
       ownerId: OWNER,
       packageId: PACKAGE,
       terms: { ...TERMS, validUntil: "2026-11-18" },
@@ -80,6 +83,7 @@ describe("CreateQuoteUseCase (DECOR-50)", () => {
     const repository = { create: vi.fn() };
 
     const result = await new CreateQuoteUseCase(source, repository, clock).execute({
+      idempotencyKey: KEY,
       ownerId: OWNER,
       packageId: PACKAGE,
       terms: { ...TERMS, discountRateBp: -1 },
@@ -93,6 +97,7 @@ describe("CreateQuoteUseCase (DECOR-50)", () => {
   it("evento ajeno o inexistente → package.not_found", async () => {
     const repository = { create: vi.fn() };
     const result = await new CreateQuoteUseCase(sourceReader(null), repository, clock).execute({
+      idempotencyKey: KEY,
       ownerId: OWNER,
       packageId: PACKAGE,
       terms: TERMS,
@@ -107,7 +112,7 @@ describe("CreateQuoteUseCase (DECOR-50)", () => {
       sourceReader({ ...SOURCE, lines: [] }),
       repository,
       clock,
-    ).execute({ ownerId: OWNER, packageId: PACKAGE, terms: TERMS });
+    ).execute({ idempotencyKey: KEY, ownerId: OWNER, packageId: PACKAGE, terms: TERMS });
     expect(!result.ok && result.error.code).toBe("quote.empty_package");
   });
 
@@ -117,12 +122,13 @@ describe("CreateQuoteUseCase (DECOR-50)", () => {
       { read: vi.fn().mockResolvedValue(err(failure)) },
       { create: vi.fn() },
       clock,
-    ).execute({ ownerId: OWNER, packageId: PACKAGE, terms: TERMS });
+    ).execute({ idempotencyKey: KEY, ownerId: OWNER, packageId: PACKAGE, terms: TERMS });
     expect(result).toEqual(err(failure));
   });
 
   it("sin dueño → auth.unauthenticated", async () => {
     const result = await new CreateQuoteUseCase(sourceReader(), { create: vi.fn() }, clock).execute({
+      idempotencyKey: KEY,
       ownerId: "",
       packageId: PACKAGE,
       terms: TERMS,
@@ -137,6 +143,8 @@ describe("CreateQuoteVersionUseCase (DECOR-50)", () => {
     const repository = { createVersion: vi.fn().mockResolvedValue(ok(QUOTE)) };
 
     await new CreateQuoteVersionUseCase(source, repository, clock).execute({
+      expectedVersion: 1,
+      idempotencyKey: KEY,
       ownerId: OWNER,
       quote: QUOTE,
       terms: TERMS,
@@ -156,6 +164,8 @@ describe("CreateQuoteVersionUseCase (DECOR-50)", () => {
   ])("%s → quote.package_missing", async (_label, quote, source) => {
     const repository = { createVersion: vi.fn() };
     const result = await new CreateQuoteVersionUseCase(sourceReader(source), repository, clock).execute({
+      expectedVersion: 1,
+      idempotencyKey: KEY,
       ownerId: OWNER,
       quote,
       terms: TERMS,
@@ -168,19 +178,129 @@ describe("CreateQuoteVersionUseCase (DECOR-50)", () => {
 describe("ChangeQuoteStatusUseCase (DECOR-50)", () => {
   it("valida la transición y la delega", async () => {
     const repository = { changeStatus: vi.fn().mockResolvedValue(ok(QUOTE)) };
-    await new ChangeQuoteStatusUseCase(repository).execute({ ownerId: OWNER, quote: QUOTE, status: "sent" });
-    expect(repository.changeStatus).toHaveBeenCalledWith({ ownerId: OWNER, quoteId: "q-1", status: "sent" });
+    await new ChangeQuoteStatusUseCase(repository).execute({ expectedStatus: "draft", ownerId: OWNER, quote: QUOTE, status: "sent" });
+    expect(repository.changeStatus).toHaveBeenCalledWith({ expectedStatus: "draft", ownerId: OWNER, quoteId: "q-1", status: "sent" });
   });
 
   it("rechaza una transición inválida sin escribir", async () => {
     const repository = { changeStatus: vi.fn() };
     const result = await new ChangeQuoteStatusUseCase(repository).execute({
+      expectedStatus: "draft",
       ownerId: OWNER,
       quote: QUOTE,
       status: "accepted",
     });
     expect(!result.ok && result.error.code).toBe("quote.invalid_status_transition");
     expect(repository.changeStatus).not.toHaveBeenCalled();
+  });
+});
+
+describe("Idempotencia y concurrencia (DECOR-55)", () => {
+  const created = ok({ quote: QUOTE, replayed: false });
+
+  it.each([null, "", "no-es-uuid"])("crear sin Idempotency-Key válida (%s) → idempotency.key_invalid", async (key) => {
+    const source = sourceReader();
+    const repository = { create: vi.fn() };
+    const result = await new CreateQuoteUseCase(source, repository, clock).execute({
+      idempotencyKey: key,
+      ownerId: OWNER,
+      packageId: PACKAGE,
+      terms: TERMS,
+    });
+    expect(!result.ok && result.error.code).toBe("idempotency.key_invalid");
+    expect(source.read).not.toHaveBeenCalled();
+    expect(repository.create).not.toHaveBeenCalled();
+  });
+
+  it("crear pasa la clave normalizada y una huella estable de la solicitud", async () => {
+    const repository = { create: vi.fn().mockResolvedValue(created) };
+    const useCase = new CreateQuoteUseCase(sourceReader(), repository, clock);
+    const dto = { idempotencyKey: KEY.toUpperCase(), ownerId: OWNER, packageId: PACKAGE, terms: TERMS };
+
+    await useCase.execute(dto);
+    await useCase.execute(dto);
+    await useCase.execute({ ...dto, terms: { ...TERMS, taxRateBp: 0 } });
+
+    const [first, retry, changed] = repository.create.mock.calls.map(([params]) => params);
+    expect(first.idempotencyKey).toBe(KEY);
+    expect(retry.requestFingerprint).toBe(first.requestFingerprint);
+    expect(changed.requestFingerprint).not.toBe(first.requestFingerprint);
+  });
+
+  it.each([undefined, 0, 1.5, "2"])("versión con expectedVersion inválida (%s) → quote.invalid_body", async (expected) => {
+    const repository = { createVersion: vi.fn() };
+    const result = await new CreateQuoteVersionUseCase(sourceReader(), repository, clock).execute({
+      expectedVersion: expected,
+      idempotencyKey: KEY,
+      ownerId: OWNER,
+      quote: QUOTE,
+      terms: TERMS,
+    });
+    expect(!result.ok && result.error.code).toBe("quote.invalid_body");
+    expect(repository.createVersion).not.toHaveBeenCalled();
+  });
+
+  it("versión pasa expectedVersion al repositorio y la incluye en la huella", async () => {
+    const repository = { createVersion: vi.fn().mockResolvedValue(created) };
+    const useCase = new CreateQuoteVersionUseCase(sourceReader(), repository, clock);
+    const dto = { expectedVersion: 2, idempotencyKey: KEY, ownerId: OWNER, quote: QUOTE, terms: TERMS };
+
+    await useCase.execute(dto);
+    await useCase.execute({ ...dto, expectedVersion: 3 });
+
+    const [a, b] = repository.createVersion.mock.calls.map(([params]) => params);
+    expect(a).toMatchObject({ expectedVersion: 2, idempotencyKey: KEY, quoteId: "q-1" });
+    expect(b.requestFingerprint).not.toBe(a.requestFingerprint);
+  });
+
+  it("propaga quote.version_conflict del repositorio sin reintentar", async () => {
+    const conflict = new DomainError("quote.version_conflict", "conflicto", undefined, { currentVersion: 3 });
+    const repository = { createVersion: vi.fn().mockResolvedValue(err(conflict)) };
+    const result = await new CreateQuoteVersionUseCase(sourceReader(), repository, clock).execute({
+      expectedVersion: 2,
+      idempotencyKey: KEY,
+      ownerId: OWNER,
+      quote: QUOTE,
+      terms: TERMS,
+    });
+    expect(result).toEqual(err(conflict));
+    expect(repository.createVersion).toHaveBeenCalledTimes(1);
+  });
+
+  it("estado: si ya está en el estado pedido devuelve la cotización sin escribir", async () => {
+    const repository = { changeStatus: vi.fn() };
+    const sent = { ...QUOTE, status: "sent" } as QuoteDto;
+    const result = await new ChangeQuoteStatusUseCase(repository).execute({
+      expectedStatus: "draft",
+      ownerId: OWNER,
+      quote: sent,
+      status: "sent",
+    });
+    expect(result).toEqual(ok(sent));
+    expect(repository.changeStatus).not.toHaveBeenCalled();
+  });
+
+  it("estado: si cambió a otro estado → quote.status_conflict con el actual", async () => {
+    const repository = { changeStatus: vi.fn() };
+    const result = await new ChangeQuoteStatusUseCase(repository).execute({
+      expectedStatus: "draft",
+      ownerId: OWNER,
+      quote: { ...QUOTE, status: "expired" } as QuoteDto,
+      status: "sent",
+    });
+    expect(!result.ok && result.error.code).toBe("quote.status_conflict");
+    expect(!result.ok && result.error.metadata).toEqual({ currentStatus: "expired" });
+    expect(repository.changeStatus).not.toHaveBeenCalled();
+  });
+
+  it("estado: expectedStatus ausente o inválido → quote.invalid_status", async () => {
+    const result = await new ChangeQuoteStatusUseCase({ changeStatus: vi.fn() }).execute({
+      expectedStatus: undefined,
+      ownerId: OWNER,
+      quote: QUOTE,
+      status: "sent",
+    });
+    expect(!result.ok && result.error.code).toBe("quote.invalid_status");
   });
 });
 

@@ -6,7 +6,7 @@ import type { SessionUser } from "../../shared/domain/session";
 import type { AuthorizePackageAccessUseCase } from "../../modules/packages/application/authorize-package-access.use-case";
 import type { ObtenerEscenaUseCase } from "../../modules/ar/application/use-cases/obtener-escena.use-case";
 import type { GuardarEscenaUseCase } from "../../modules/ar/application/use-cases/guardar-escena.use-case";
-import { SceneController } from "./scene-controller";
+import { SceneController, sceneErrorStatus } from "./scene-controller";
 
 const dummyUser: SessionUser = { email: "test@example.com", id: "user-1" };
 const VALID_ITEM_ID = "11111111-1111-4111-8111-111111111111";
@@ -39,13 +39,16 @@ function createMocks(
     execute: vi.fn().mockResolvedValue(ok(3)),
   };
 
+  const logger = { error: vi.fn() };
+
   const controller = new SceneController(
     authorizePackageAccess as unknown as AuthorizePackageAccessUseCase,
     obtenerEscenaUseCase as unknown as ObtenerEscenaUseCase,
     guardarEscenaUseCase as unknown as GuardarEscenaUseCase,
+    logger,
   );
 
-  return { authorizePackageAccess, controller, guardarEscenaUseCase, obtenerEscenaUseCase };
+  return { authorizePackageAccess, controller, guardarEscenaUseCase, logger, obtenerEscenaUseCase };
 }
 
 function putRequest(body: unknown): Request {
@@ -113,6 +116,23 @@ describe("SceneController.handleGet", () => {
 
     expect(response.status).toBe(200);
     expect(json).toEqual({ sceneVersion: 0, transforms: [] });
+  });
+
+  it("DECOR-55: un error inesperado se registra con el Logger y el correlationId de la solicitud", async () => {
+    const { controller, logger, obtenerEscenaUseCase } = createMocks();
+    obtenerEscenaUseCase.execute.mockRejectedValue(new Error("boom"));
+
+    const response = await controller.handleGet(
+      new Request("https://example.com", { headers: { "x-correlation-id": "corr-1" } }),
+      "pkg-1",
+    );
+
+    expect(response.status).toBe(500);
+    expect(response.headers.get("x-correlation-id")).toBe("corr-1");
+    expect(logger.error).toHaveBeenCalledWith(
+      "scene.unexpected_error",
+      expect.objectContaining({ correlationId: "corr-1" }),
+    );
   });
 });
 
@@ -290,5 +310,27 @@ describe("SceneController.handlePut", () => {
 
     expect(response.status).toBe(400);
     expect(guardarEscenaUseCase.execute).not.toHaveBeenCalled();
+  });
+
+  it("DECOR-55: un 500 de persistencia oculta el detalle y registra scene.request_failed; scene.invalid_body es 400", async () => {
+    expect(sceneErrorStatus("scene.invalid_body")).toBe(400);
+
+    const { controller, guardarEscenaUseCase, logger } = createMocks();
+    guardarEscenaUseCase.execute.mockResolvedValue(
+      err(new DomainError("scene.persistence_error", "Error al guardar la escena", { cause: { code: "XX000", details: "fila" } })),
+    );
+
+    const response = await controller.handlePut(putRequest({ expectedSceneVersion: 0, transforms: [] }), "pkg-1");
+
+    expect(response.status).toBe(500);
+    expect(await response.json()).toEqual({
+      error: { code: "internal_error", message: "No pudimos completar la operación." },
+    });
+    expect(logger.error).toHaveBeenCalledWith("scene.request_failed", {
+      code: "scene.persistence_error",
+      component: "SceneController.handlePut",
+      correlationId: expect.any(String),
+      dbCode: "XX000",
+    });
   });
 });

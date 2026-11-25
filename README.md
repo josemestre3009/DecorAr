@@ -121,6 +121,7 @@ Los Route Handlers viven en `src/app/api`; los controladores en `src/interfaces`
 - `/api/modules`: catalogo activo.
 - `/api/packages`: crear y listar paquetes propios.
 - `/api/packages/{id}/items`, `/items/{itemId}`, `/groups`, `/clone`, `/budget`: configuracion, eliminacion, clonacion persistida y presupuesto.
+- `/api/packages/{id}/quotes`, `/api/quotes/{id}/versions`, `/api/quotes/{id}/status`: cotizaciones. Crear exige la cabecera `Idempotency-Key`; versionar y cambiar estado exigen `expectedVersion`/`expectedStatus` y responden 409 ante un cambio concurrente (DECOR-55, ver [`docs/security-v2.md`](docs/security-v2.md)).
 
 Las respuestas fallidas usan codigos controlados como `auth.unauthenticated`, `package.not_found`, `package.version_conflict` e `internal_error`, mas `x-correlation-id`. `src/infrastructure/logging/json-logger.ts` genera logs JSON y `src/shared/application/sanitize-log-context.ts` censura secretos. La recuperacion usa outbox durable, reintentos e idempotencia; Realtime solo notifica y el cliente resincroniza desde PostgreSQL.
 
