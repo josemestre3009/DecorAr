@@ -155,7 +155,7 @@ describe("DECOR-53: enlace público revocable de una cotización", () => {
     const { totals } = calculation.value;
 
     const result = await db.query<{ result: QuoteRow }>(
-      `SELECT public.create_quote($1, $2, 1, $3::jsonb, $4::jsonb) AS result`,
+      `SELECT public.create_quote($1, $2, 1, $3::jsonb, $4::jsonb, $5, $6) AS result`,
       [
         owner,
         packageId,
@@ -170,13 +170,15 @@ describe("DECOR-53: enlace público revocable de una cotización", () => {
           ...TERMS,
         }),
         JSON.stringify(calculation.value.lines),
+        randomUUID(),
+        randomUUID(),
       ],
     );
     return result.rows[0].result;
   }
 
   async function sendQuote(quoteId: string, owner = USER_A): Promise<void> {
-    await db.query(`SELECT public.change_quote_status($1, $2, 'sent')`, [owner, quoteId]);
+    await db.query(`SELECT public.change_quote_status($1, $2, 'sent', 'draft')`, [owner, quoteId]);
   }
 
   async function createLink(
@@ -226,7 +228,7 @@ describe("DECOR-53: enlace público revocable de una cotización", () => {
     const packageId = await seedEvent();
     const quote = await createQuote(packageId);
     await sendQuote(quote.id);
-    await db.query(`SELECT public.change_quote_status($1, $2, 'accepted')`, [USER_A, quote.id]);
+    await db.query(`SELECT public.change_quote_status($1, $2, 'accepted', 'sent')`, [USER_A, quote.id]);
 
     const { link } = await createLink(quote.id);
     expect(link.quoteId).toBe(quote.id);
@@ -298,7 +300,7 @@ describe("DECOR-53: enlace público revocable de una cotización", () => {
 
     // Vencer la cotización no cambia el enlace en sí, pero get_shared_quote
     // ya no debe devolver nada porque el estado deja de ser compartible.
-    await db.query(`SELECT public.change_quote_status($1, $2, 'expired')`, [USER_A, quote.id]);
+    await db.query(`SELECT public.change_quote_status($1, $2, 'expired', 'sent')`, [USER_A, quote.id]);
     expect(await getSharedQuote(token)).toBeNull();
   });
 
@@ -343,7 +345,7 @@ describe("DECOR-53: enlace público revocable de una cotización", () => {
     if (!calculation.ok) throw calculation.error;
     const { totals } = calculation.value;
     await db.query(
-      `SELECT public.create_quote_version($1, $2, 1, $3::jsonb, $4::jsonb)`,
+      `SELECT public.create_quote_version($1, $2, 1, $3::jsonb, $4::jsonb, 1, $5, $6)`,
       [
         USER_A,
         v1.id,
@@ -358,6 +360,8 @@ describe("DECOR-53: enlace público revocable de una cotización", () => {
           ...TERMS,
         }),
         JSON.stringify(calculation.value.lines),
+        randomUUID(),
+        randomUUID(),
       ],
     );
 

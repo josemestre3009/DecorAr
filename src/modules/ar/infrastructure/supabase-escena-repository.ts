@@ -22,13 +22,7 @@ const INVALID_TEXT_REPRESENTATION = "22P02";
 type RpcError = { readonly code?: string; readonly details?: string; readonly message: string };
 
 const persistenceError = (cause: unknown, fallback: string): DomainError =>
-  new DomainError(
-    "scene.persistence_error",
-    typeof cause === "object" && cause !== null && "message" in cause
-      ? String((cause as { message: unknown }).message)
-      : fallback,
-    { cause },
-  );
+  new DomainError("scene.persistence_error", fallback, { cause });
 
 const toDomainError = (error: RpcError): DomainError => {
   const knownMessage = KNOWN_CODES.get(error.message);

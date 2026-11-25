@@ -1,6 +1,5 @@
-import { randomUUID } from "node:crypto";
-
-import { createQuoteController } from "@/composition/server";
+import { createQuoteController, serverLogger } from "@/composition/server";
+import { uncaughtRouteError } from "@/interfaces/http/uncaught-route-error";
 
 interface RouteContext {
   params: Promise<{ quoteId: string }> | { quoteId: string };
@@ -12,15 +11,6 @@ export async function PATCH(request: Request, context: RouteContext): Promise<Re
     const controller = await createQuoteController();
     return await controller.handleChangeStatus(request, quoteId);
   } catch (cause) {
-    const correlationId = randomUUID();
-    console.error(`[API PATCH /api/quotes/[quoteId]/status] Uncaught error (${correlationId}):`, cause);
-
-    return Response.json(
-      {
-        correlationId,
-        error: { code: "internal_error", message: "No pudimos completar la operación." },
-      },
-      { status: 500 },
-    );
+    return uncaughtRouteError(serverLogger, "PATCH /api/quotes/[quoteId]/status", cause);
   }
 }

@@ -173,6 +173,7 @@ describe("DECOR-50: cotizaciones versionadas", () => {
     { moduleId: MODULE_SILLA, name: "Silla", quantity: sillas, unitPriceCop: precioSilla },
   ];
 
+  // DECOR-55: cada llamada es una intención nueva (clave y huella propias).
   async function createQuote(
     packageId: string,
     owner = USER_A,
@@ -180,21 +181,36 @@ describe("DECOR-50: cotizaciones versionadas", () => {
     expectedVersion = 1,
   ): Promise<QuoteRow> {
     const result = await db.query<{ result: QuoteRow }>(
-      `SELECT public.create_quote($1, $2, $3, $4::jsonb, $5::jsonb) AS result`,
-      [owner, packageId, expectedVersion, JSON.stringify(data.quote), JSON.stringify(data.lines)],
+      `SELECT public.create_quote($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7) AS result`,
+      [owner, packageId, expectedVersion, JSON.stringify(data.quote), JSON.stringify(data.lines), randomUUID(), randomUUID()],
     );
     return result.rows[0].result;
   }
 
+  /** Por defecto envía como `expectedVersion` la versión más nueva del número (DECOR-55). */
   async function createVersion(
     quoteId: string,
     data = payload(snapshotOf()),
     expectedVersion = 1,
     owner = USER_A,
   ): Promise<QuoteRow> {
+    const latest = await db.query<{ version: number | null }>(
+      `SELECT max(q.version) AS version FROM public.quotes q
+        WHERE (q.owner_id, q.quote_number) = (SELECT owner_id, quote_number FROM public.quotes WHERE id = $1)`,
+      [quoteId],
+    );
     const result = await db.query<{ result: QuoteRow }>(
-      `SELECT public.create_quote_version($1, $2, $3, $4::jsonb, $5::jsonb) AS result`,
-      [owner, quoteId, expectedVersion, JSON.stringify(data.quote), JSON.stringify(data.lines)],
+      `SELECT public.create_quote_version($1, $2, $3, $4::jsonb, $5::jsonb, $6, $7, $8) AS result`,
+      [
+        owner,
+        quoteId,
+        expectedVersion,
+        JSON.stringify(data.quote),
+        JSON.stringify(data.lines),
+        latest.rows[0]?.version ?? 1,
+        randomUUID(),
+        randomUUID(),
+      ],
     );
     return result.rows[0].result;
   }
@@ -307,25 +323,26 @@ describe("DECOR-50: cotizaciones versionadas", () => {
 
     it("sigue las transiciones borrador → enviada → aceptada", async () => {
       const quote = await createQuote(await seedEvent());
-      const change = (status: string) =>
-        db.query<{ result: QuoteRow }>(`SELECT public.change_quote_status($1, $2, $3) AS result`, [
+      const change = (status: string, expected: string) =>
+        db.query<{ result: QuoteRow }>(`SELECT public.change_quote_status($1, $2, $3, $4) AS result`, [
           USER_A,
           quote.id,
           status,
+          expected,
         ]);
 
-      await expect(change("accepted")).rejects.toThrow("quote.invalid_status_transition");
-      expect((await change("sent")).rows[0].result.status).toBe("sent");
-      expect((await change("accepted")).rows[0].result.status).toBe("accepted");
-      await expect(change("draft")).rejects.toThrow("quote.invalid_status_transition");
-      await expect(change("cancelled")).rejects.toThrow("quote.invalid_status");
+      await expect(change("accepted", "draft")).rejects.toThrow("quote.invalid_status_transition");
+      expect((await change("sent", "draft")).rows[0].result.status).toBe("sent");
+      expect((await change("accepted", "sent")).rows[0].result.status).toBe("accepted");
+      await expect(change("draft", "accepted")).rejects.toThrow("quote.invalid_status_transition");
+      await expect(change("cancelled", "accepted")).rejects.toThrow("quote.invalid_status");
     });
 
     it("permite vencer un borrador o una enviada, y vencida es final", async () => {
       const quote = await createQuote(await seedEvent());
-      await db.query(`SELECT public.change_quote_status($1, $2, 'expired')`, [USER_A, quote.id]);
+      await db.query(`SELECT public.change_quote_status($1, $2, 'expired', 'draft')`, [USER_A, quote.id]);
       await expect(
-        db.query(`SELECT public.change_quote_status($1, $2, 'sent')`, [USER_A, quote.id]),
+        db.query(`SELECT public.change_quote_status($1, $2, 'sent', 'expired')`, [USER_A, quote.id]),
       ).rejects.toThrow("quote.invalid_status_transition");
     });
 
@@ -423,7 +440,7 @@ describe("DECOR-50: cotizaciones versionadas", () => {
       await expect(createQuote(packageId, USER_B)).rejects.toThrow("package.not_found");
       await expect(createVersion(quote.id, payload(snapshotOf()), 1, USER_B)).rejects.toThrow("quote.not_found");
       await expect(
-        db.query(`SELECT public.change_quote_status($1, $2, 'sent')`, [USER_B, quote.id]),
+        db.query(`SELECT public.change_quote_status($1, $2, 'sent', 'draft')`, [USER_B, quote.id]),
       ).rejects.toThrow("quote.not_found");
     });
 
@@ -459,8 +476,9 @@ describe("DECOR-50: cotizaciones versionadas", () => {
         `UPDATE public.quotes SET status = 'sent' WHERE id = '${quote.id}'`,
         `DELETE FROM public.quotes WHERE id = '${quote.id}'`,
         `DELETE FROM public.quote_lines WHERE quote_id = '${quote.id}'`,
-        `SELECT public.change_quote_status('${USER_A}', '${quote.id}', 'sent')`,
-        `SELECT public.create_quote('${USER_A}', '${randomUUID()}', 1, '{}'::jsonb, '[]'::jsonb)`,
+        `SELECT public.change_quote_status('${USER_A}', '${quote.id}', 'sent', 'draft')`,
+        `SELECT public.create_quote('${USER_A}', '${randomUUID()}', 1, '{}'::jsonb, '[]'::jsonb, '${randomUUID()}', 'fp')`,
+        `SELECT * FROM private.quote_idempotency_keys`,
         `SELECT * FROM private.quote_counters`,
       ]) {
         await expect(asRole(db, "authenticated", USER_A, () => db.query(sql))).rejects.toThrow(

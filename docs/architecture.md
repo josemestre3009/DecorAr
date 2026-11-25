@@ -41,6 +41,7 @@ flowchart LR
 | `client-server-import` | UI y cliente Supabase browser | Adaptadores server/admin, `server-only`, composition root |
 | `client-business-crud` | Auth y Realtime privados | `.from()` sobre catálogo, paquetes, elementos, presupuestos, eventos o plantillas |
 | `packages-budget-coupling` | Eventos o puertos compartidos | Import directo desde packages hacia budget |
+| `logger-only` | Puerto `Logger` inyectado (JSON sanitizado) | `console.*` en `src/interfaces/{quotes,ar,http}` y en las rutas de cotizaciones y escena (DECOR-55) |
 
 `scripts/scan-architecture.test.ts` valida el árbol real y casos negativos controlados. PostgREST es la Data API interna de Supabase, no un módulo ni despliegue separado.
 

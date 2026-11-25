@@ -158,11 +158,14 @@ test.describe.serial("DECOR-54 compartir cotización por WhatsApp (smoke live)",
         taxRateBp: 1_900,
         validUntil,
       },
+      headers: { "Idempotency-Key": randomUUID() },
     });
     expect(createdQuote.status(), await createdQuote.text()).toBe(201);
     const id = ((await createdQuote.json()) as { id: string }).id;
 
-    const sent = await page.request.patch(`/api/quotes/${id}/status`, { data: { status: "sent" } });
+    const sent = await page.request.patch(`/api/quotes/${id}/status`, {
+      data: { expectedStatus: "draft", status: "sent" },
+    });
     expect(sent.status(), await sent.text()).toBe(200);
 
     return id;

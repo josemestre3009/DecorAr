@@ -49,6 +49,25 @@ export class SupabaseQuoteReader implements QuoteReader {
     }
   }
 
+  async latestVersion(ownerId: string, quoteNumber: number): Promise<Result<number | null, DomainError>> {
+    try {
+      const { data, error } = await this.client
+        .from("quotes")
+        .select("version")
+        .eq("owner_id", ownerId)
+        .eq("quote_number", quoteNumber)
+        .order("version", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+
+      if (error) return persistenceError("Error al consultar la última versión", error);
+
+      return ok(data ? (data as { version: number }).version : null);
+    } catch (cause) {
+      return persistenceError("Error al consultar la última versión", cause);
+    }
+  }
+
   async listQuotes(ownerId: string): Promise<Result<QuoteSummaryDto[], DomainError>> {
     try {
       const { data, error } = await this.client

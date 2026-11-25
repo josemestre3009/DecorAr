@@ -33,7 +33,11 @@ describe("loadQuotePreview (Server Component de la vista previa, DECOR-51)", () 
   it("devuelve la versión guardada tal cual", async () => {
     depsMock.getQuote.execute.mockResolvedValue(ok(QUOTE_FIXTURE));
 
-    await expect(loadQuotePreview(QUOTE_FIXTURE.id)).resolves.toEqual({ quote: QUOTE_FIXTURE, status: "ready" });
+    await expect(loadQuotePreview(QUOTE_FIXTURE.id)).resolves.toEqual({
+      latestVersion: QUOTE_FIXTURE.version,
+      quote: QUOTE_FIXTURE,
+      status: "ready",
+    });
     expect(depsMock.getQuote.execute).toHaveBeenCalledWith(QUOTE_FIXTURE.id);
   });
 

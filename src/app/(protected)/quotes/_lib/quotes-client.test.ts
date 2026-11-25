@@ -11,6 +11,8 @@ const TERMS: QuoteTermsRequest = {
   validUntil: "2026-12-01",
 };
 
+const INTENT = { idempotencyKey: "11111111-1111-4111-8111-111111111111" };
+
 const json = (status: number, body: unknown) =>
   new Response(JSON.stringify(body), { headers: { "Content-Type": "application/json" }, status });
 
@@ -18,22 +20,50 @@ describe("createHttpQuotesClient (DECOR-51)", () => {
   it("crea la cotización enviando solo los términos", async () => {
     const fetcher = vi.fn().mockResolvedValue(json(201, { id: "q-1", version: 1, totals: {} }));
 
-    const result = await createHttpQuotesClient(fetcher).createQuote("pkg 1", TERMS);
+    const result = await createHttpQuotesClient(fetcher).createQuote("pkg 1", TERMS, INTENT);
 
     expect(result).toEqual({ ok: true, value: { id: "q-1", version: 1 } });
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/packages/pkg%201/quotes");
     expect(init.method).toBe("POST");
     expect(JSON.parse(init.body)).toEqual(TERMS);
+    expect(init.headers["Idempotency-Key"]).toBe(INTENT.idempotencyKey);
   });
 
   it("crea una versión nueva en /versions", async () => {
     const fetcher = vi.fn().mockResolvedValue(json(201, { id: "q-2", version: 2 }));
 
-    const result = await createHttpQuotesClient(fetcher).createQuoteVersion("q-1", TERMS);
+    const result = await createHttpQuotesClient(fetcher).createQuoteVersion("q-1", TERMS, { ...INTENT, expectedVersion: 1 });
 
     expect(result).toEqual({ ok: true, value: { id: "q-2", version: 2 } });
     expect(fetcher.mock.calls[0][0]).toBe("/api/quotes/q-1/versions");
+  });
+
+  it("DECOR-55: la versión nueva envía expectedVersion y la misma Idempotency-Key", async () => {
+    const fetcher = vi.fn().mockResolvedValue(json(201, { id: "q-2", version: 2 }));
+
+    await createHttpQuotesClient(fetcher).createQuoteVersion("q-1", TERMS, { ...INTENT, expectedVersion: 3 });
+
+    const [, init] = fetcher.mock.calls[0];
+    expect(JSON.parse(init.body)).toEqual({ ...TERMS, expectedVersion: 3 });
+    expect(init.headers["Idempotency-Key"]).toBe(INTENT.idempotencyKey);
+  });
+
+  it("DECOR-55: un 409 de versión muestra el mensaje del servidor para recargar", async () => {
+    const fetcher = vi.fn().mockResolvedValue(
+      json(409, {
+        currentVersion: 4,
+        error: { code: "quote.version_conflict", message: "La cotización cambió mientras la editabas. Recarga para verla." },
+      }),
+    );
+
+    const result = await createHttpQuotesClient(fetcher).createQuoteVersion("q-1", TERMS, {
+      ...INTENT,
+      expectedVersion: 3,
+    });
+
+    expect(result).toMatchObject({ error: { code: "quote.version_conflict", status: 409 }, ok: false });
+    if (!result.ok) expect(result.error.message).toContain("Recarga");
   });
 
   it("muestra el mensaje del servidor en un 422", async () => {
@@ -41,7 +71,7 @@ describe("createHttpQuotesClient (DECOR-51)", () => {
       .fn()
       .mockResolvedValue(json(422, { error: { code: "quote.invalid_valid_until", message: "La vigencia no puede ser una fecha pasada." } }));
 
-    const result = await createHttpQuotesClient(fetcher).createQuote("pkg-1", TERMS);
+    const result = await createHttpQuotesClient(fetcher).createQuote("pkg-1", TERMS, INTENT);
 
     expect(result.ok).toBe(false);
     if (!result.ok) {
@@ -54,8 +84,8 @@ describe("createHttpQuotesClient (DECOR-51)", () => {
     const unauthorized = vi.fn().mockResolvedValue(json(401, { error: { code: "auth.unauthenticated", message: "x" } }));
     const offline = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
 
-    const a = await createHttpQuotesClient(unauthorized).createQuote("pkg-1", TERMS);
-    const b = await createHttpQuotesClient(offline).createQuote("pkg-1", TERMS);
+    const a = await createHttpQuotesClient(unauthorized).createQuote("pkg-1", TERMS, INTENT);
+    const b = await createHttpQuotesClient(offline).createQuote("pkg-1", TERMS, INTENT);
 
     expect(!a.ok && a.error.kind).toBe("unauthorized");
     expect(!b.ok && b.error.kind).toBe("network");
@@ -64,7 +94,7 @@ describe("createHttpQuotesClient (DECOR-51)", () => {
   it("una respuesta 201 sin id se trata como error del servidor", async () => {
     const fetcher = vi.fn().mockResolvedValue(json(201, { ok: true }));
 
-    const result = await createHttpQuotesClient(fetcher).createQuote("pkg-1", TERMS);
+    const result = await createHttpQuotesClient(fetcher).createQuote("pkg-1", TERMS, INTENT);
 
     expect(!result.ok && result.error.kind).toBe("server");
   });
@@ -153,13 +183,13 @@ describe("createHttpQuotesClient — recorrido V2 (DECOR-49)", () => {
   it("changeStatus envía PATCH con el estado nuevo", async () => {
     const fetcher = vi.fn().mockResolvedValue(json(200, { id: "q 1", status: "sent" }));
 
-    const result = await createHttpQuotesClient(fetcher).changeStatus("q 1", "sent");
+    const result = await createHttpQuotesClient(fetcher).changeStatus("q 1", "sent", "draft");
 
     expect(result).toEqual({ ok: true, value: undefined });
     const [url, init] = fetcher.mock.calls[0];
     expect(url).toBe("/api/quotes/q%201/status");
     expect(init.method).toBe("PATCH");
-    expect(JSON.parse(init.body)).toEqual({ status: "sent" });
+    expect(JSON.parse(init.body)).toEqual({ expectedStatus: "draft", status: "sent" });
   });
 
   it("changeStatus devuelve el mensaje de una transición rechazada", async () => {
@@ -167,7 +197,7 @@ describe("createHttpQuotesClient — recorrido V2 (DECOR-49)", () => {
       json(422, { error: { code: "quote.invalid_status_transition", message: "No se puede pasar." } }),
     );
 
-    const result = await createHttpQuotesClient(fetcher).changeStatus("q-1", "sent");
+    const result = await createHttpQuotesClient(fetcher).changeStatus("q-1", "sent", "draft");
 
     expect(result).toMatchObject({ error: { code: "quote.invalid_status_transition", message: "No se puede pasar." }, ok: false });
   });
@@ -228,7 +258,7 @@ describe("createHttpQuotesClient — recorrido V2 (DECOR-49)", () => {
     const offline = vi.fn().mockRejectedValue(new TypeError("Failed to fetch"));
     const client = createHttpQuotesClient(offline);
 
-    expect(await client.changeStatus("q-1", "sent")).toMatchObject({ error: { kind: "network" }, ok: false });
+    expect(await client.changeStatus("q-1", "sent", "draft")).toMatchObject({ error: { kind: "network" }, ok: false });
     expect(await client.listQuotes()).toMatchObject({ error: { kind: "network" }, ok: false });
   });
 });

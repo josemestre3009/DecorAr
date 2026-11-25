@@ -13,6 +13,8 @@ import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { calculateQuote } from "../../src/modules/quotes/domain/quote-totals";
+
 const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? "";
 const publishableKey = process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY ?? "";
 const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY ?? "";
@@ -261,4 +263,87 @@ describe.skipIf(!enabled)("DECOR-30 autorización A/B contra Supabase", () => {
     expect(survivor.error).toBeNull();
     expect(survivor.data).toEqual({ client_name: null, id: created.id });
   });
+
+  // --- DECOR-55: cotizaciones bajo carrera real ---------------------------
+  //
+  // PGlite tiene una sola conexión; aquí cada RPC llega por su propia
+  // petición HTTP a PostgreSQL. Requiere la migración DECOR-55 aplicada.
+
+  const TERMS = { depositRateBp: 5_000, discountRateBp: 0, taxRateBp: 1_900 };
+
+  async function seedQuotablePackage(fixture: Fixture): Promise<{ lines: string; quote: string; version: number }> {
+    const catalogModule = await admin
+      .from("catalog_modules")
+      .select("id, name, price_cop")
+      .eq("status", "active")
+      .limit(1)
+      .single<{ id: string; name: string; price_cop: number }>();
+    if (catalogModule.error) throw catalogModule.error;
+
+    const items = await admin.from("package_items").insert([
+      { module_id: catalogModule.data.id, package_id: fixture.packageId },
+      { module_id: catalogModule.data.id, package_id: fixture.packageId },
+    ]);
+    if (items.error) throw items.error;
+
+    const pkg = await admin
+      .from("packages")
+      .select("version")
+      .eq("id", fixture.packageId)
+      .single<{ version: number }>();
+    if (pkg.error) throw pkg.error;
+
+    const calculation = calculateQuote(
+      [{ moduleId: catalogModule.data.id, name: catalogModule.data.name, quantity: 2, unitPriceCop: catalogModule.data.price_cop }],
+      TERMS,
+    );
+    if (!calculation.ok) throw calculation.error;
+    const { totals } = calculation.value;
+
+    return {
+      lines: JSON.stringify(calculation.value.lines),
+      quote: JSON.stringify({
+        conditions: null,
+        depositCop: totals.depositCop,
+        discountCop: totals.discountCop,
+        subtotalCop: totals.subtotalCop,
+        taxCop: totals.taxCop,
+        totalCop: totals.totalCop,
+        validUntil: "2099-12-31",
+        ...TERMS,
+      }),
+      version: pkg.data.version,
+    };
+  }
+
+  it("cinco reintentos simultáneos con la misma Idempotency-Key crean una sola cotización", async () => {
+    const data = await seedQuotablePackage(a);
+    const key = randomUUID();
+    const call = () =>
+      admin.rpc("create_quote", {
+        p_expected_package_version: data.version,
+        p_idempotency_key: key,
+        p_lines: JSON.parse(data.lines),
+        p_owner_id: a.id,
+        p_package_id: a.packageId,
+        p_quote: JSON.parse(data.quote),
+        p_request_fingerprint: "decor55-live",
+      });
+
+    const results = await Promise.all(Array.from({ length: 5 }, call));
+
+    for (const result of results) expect(result.error).toBeNull();
+    const ids = new Set(results.map((result) => (result.data as { id: string }).id));
+    expect(ids.size).toBe(1);
+    expect(results.filter((result) => (result.data as { replayed: boolean }).replayed === false)).toHaveLength(1);
+
+    const stored = await admin.from("quotes").select("id").eq("package_id", a.packageId);
+    expect(stored.data).toHaveLength(1);
+
+    // B no ve la cotización ni el registro de claves.
+    const foreign = await b.client.from("quotes").select("id").eq("package_id", a.packageId);
+    expect(foreign.data).toEqual([]);
+    const ledger = await a.client.schema("private").from("quote_idempotency_keys").select("owner_id");
+    expect(ledger.error).not.toBeNull();
+  }, 30_000);
 });

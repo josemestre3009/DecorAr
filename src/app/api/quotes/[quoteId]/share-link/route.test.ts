@@ -6,7 +6,12 @@ const { mockHandlers, mockCreateController } = vi.hoisted(() => ({
 }));
 
 vi.mock("server-only", () => ({}));
+const { mockLogger } = vi.hoisted(() => ({
+  mockLogger: { debug: vi.fn(), error: vi.fn(), info: vi.fn(), warn: vi.fn() },
+}));
+
 vi.mock("@/composition/server", () => ({
+  serverLogger: mockLogger,
   createQuoteShareLinkController: mockCreateController,
 }));
 
@@ -50,7 +55,6 @@ describe("rutas /api/quotes/q-1/share-link (DECOR-53)", () => {
 
   it("un error no controlado devuelve 500 internal_error con correlationId", async () => {
     mockCreateController.mockRejectedValue(new Error("boom"));
-    const spy = vi.spyOn(console, "error").mockImplementation(() => undefined);
     const request = new Request("http://localhost/api/quotes/q-1/share-link", { method: "POST" });
 
     const response = await POST(request, { params: Promise.resolve({ quoteId: "q-1" }) });
@@ -59,6 +63,9 @@ describe("rutas /api/quotes/q-1/share-link (DECOR-53)", () => {
     expect(response.status).toBe(500);
     expect(body.error.code).toBe("internal_error");
     expect(typeof body.correlationId).toBe("string");
-    spy.mockRestore();
+    expect(mockLogger.error).toHaveBeenCalledWith(
+      "route.uncaught_error",
+      expect.objectContaining({ correlationId: body.correlationId }),
+    );
   });
 });

@@ -1,5 +1,6 @@
 import type { QuoteDto } from "../../modules/quotes/application/dtos/quote.dto";
 import type { QuoteReader } from "../../modules/quotes/application/ports/quote-repository.port";
+import type { Logger } from "../../shared/application/ports";
 import type { SessionUser } from "../../shared/domain/session";
 
 const UUID = /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/;
@@ -11,6 +12,7 @@ export type QuoteAccess =
 export type QuoteAccessDependencies = {
   readonly currentUser: () => Promise<SessionUser | null>;
   readonly reader: Pick<QuoteReader, "getQuote">;
+  readonly logger: Pick<Logger, "error">;
 };
 
 /**
@@ -29,7 +31,7 @@ export async function checkQuoteAccess(
   try {
     user = await deps.currentUser();
   } catch (cause) {
-    console.error("[quote-access] session lookup failed", cause);
+    deps.logger.error("quote_access.session_lookup_failed", { component: "quote-access", error: cause });
     return { ok: false, response: internalError(headers) };
   }
 
@@ -51,12 +53,12 @@ export async function checkQuoteAccess(
   try {
     found = await deps.reader.getQuote(quoteId, user.id);
   } catch (cause) {
-    console.error("[quote-access] ownership lookup failed", cause);
+    deps.logger.error("quote_access.ownership_lookup_failed", { component: "quote-access", error: cause });
     return { ok: false, response: internalError(headers) };
   }
 
   if (!found.ok) {
-    console.error("[quote-access] ownership lookup failed", found.error);
+    deps.logger.error("quote_access.ownership_lookup_failed", { code: found.error.code, component: "quote-access" });
     return { ok: false, response: internalError(headers) };
   }
 

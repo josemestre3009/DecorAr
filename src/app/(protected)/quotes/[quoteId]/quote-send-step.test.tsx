@@ -40,7 +40,8 @@ describe("QuoteSendStep (DECOR-49)", () => {
     fireEvent.click(screen.getByRole("button", { name: "Marcar como enviada" }));
 
     await waitFor(() => expect(refresh).toHaveBeenCalledTimes(1));
-    expect(changeStatus).toHaveBeenCalledWith("q-1", "sent");
+    // DECOR-55: envía el estado que vio para que el servidor detecte un cambio concurrente.
+    expect(changeStatus).toHaveBeenCalledWith("q-1", "sent", "draft");
   });
 
   it("mientras guarda no permite un segundo envío", async () => {

@@ -27,7 +27,7 @@ type QuotePageProps = {
 };
 
 type QuotePreviewState =
-  | { readonly status: "ready"; readonly quote: QuoteDto }
+  | { readonly status: "ready"; readonly quote: QuoteDto; readonly latestVersion: number }
   | { readonly status: "error" };
 
 /**
@@ -36,7 +36,7 @@ type QuotePreviewState =
  * sin revelar que existe; sin sesión se vuelve a /login.
  */
 export async function loadQuotePreview(quoteId: string): Promise<QuotePreviewState> {
-  const { getQuote } = await createQuoteQueryDependencies();
+  const { getQuote, getLatestQuoteVersion } = await createQuoteQueryDependencies();
 
   const result = await getQuote.execute(quoteId);
   if (!result.ok) {
@@ -46,7 +46,8 @@ export async function loadQuotePreview(quoteId: string): Promise<QuotePreviewSta
     return { status: "error" };
   }
 
-  return { quote: result.value, status: "ready" };
+  const latestVersion = (await getLatestQuoteVersion?.(result.value.number)) ?? result.value.version;
+  return { latestVersion, quote: result.value, status: "ready" };
 }
 
 export default async function QuotePage({ params }: QuotePageProps) {
@@ -97,7 +98,10 @@ export default async function QuotePage({ params }: QuotePageProps) {
             quoteId={quote.id}
           />
           <QuotePreview quote={quote} />
-          <QuoteActions quote={quote} />
+          <QuoteActions
+            latestVersion={state?.status === "ready" ? state.latestVersion : quote.version}
+            quote={quote}
+          />
           <div className="flow-section quote-share-step" id="compartir">
             <QuoteSendStep quoteId={quote.id} status={quote.status} validUntil={quote.validUntil} />
             <ShareLinkSection

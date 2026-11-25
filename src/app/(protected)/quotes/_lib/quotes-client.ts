@@ -18,6 +18,10 @@ import {
  * - errores `{error:{code,message}}` con 400/401/404/409/422
  *
  * Solo se envían los términos: el servidor congela precios y calcula totales.
+ *
+ * DECOR-55: los dos POST exigen `Idempotency-Key` (UUID), la versión nueva
+ * envía `expectedVersion` y el cambio de estado `expectedStatus`; un 409 de
+ * concurrencia se muestra como "la cotización cambió, recarga".
  */
 
 /** Términos comerciales que acepta la API; tasas en puntos básicos (1 % = 100). */
@@ -53,14 +57,34 @@ export type QuoteListItem = {
   readonly createdAt: string;
 };
 
+/**
+ * Una intención de crear (DECOR-55): la misma `idempotencyKey` se reenvía en
+ * cada reintento, así un doble clic o un reintento tras un corte de red no
+ * crea otra cotización ni otra versión.
+ */
+export type CreateIntent = { readonly idempotencyKey: string };
+
 export type QuotesClient = {
-  createQuote(packageId: string, terms: QuoteTermsRequest): Promise<Result<CreatedQuote, ApiFailure>>;
-  createQuoteVersion(quoteId: string, terms: QuoteTermsRequest): Promise<Result<CreatedQuote, ApiFailure>>;
+  createQuote(
+    packageId: string,
+    terms: QuoteTermsRequest,
+    intent: CreateIntent,
+  ): Promise<Result<CreatedQuote, ApiFailure>>;
+  /** `expectedVersion`: la última versión que vio el usuario; si hay otra más nueva, 409. */
+  createQuoteVersion(
+    quoteId: string,
+    terms: QuoteTermsRequest,
+    intent: CreateIntent & { readonly expectedVersion: number },
+  ): Promise<Result<CreatedQuote, ApiFailure>>;
   getShareLink(quoteId: string): Promise<Result<QuoteShareLink | null, ApiFailure>>;
   createShareLink(quoteId: string): Promise<Result<QuoteShareLink, ApiFailure>>;
   revokeShareLink(quoteId: string): Promise<Result<void, ApiFailure>>;
   /** `PATCH /api/quotes/{id}/status` (DECOR-50); la transición la valida el servidor. */
-  changeStatus(quoteId: string, status: QuoteStatus): Promise<Result<void, ApiFailure>>;
+  changeStatus(
+    quoteId: string,
+    status: QuoteStatus,
+    expectedStatus: QuoteStatus,
+  ): Promise<Result<void, ApiFailure>>;
   /** `GET /api/quotes`: cotizaciones del dueño, de la más reciente a la más antigua. */
   listQuotes(signal?: AbortSignal): Promise<Result<QuoteListItem[], ApiFailure>>;
 };
@@ -80,14 +104,19 @@ function isCreatedQuote(value: unknown): value is CreatedQuote {
 async function postTerms(
   fetcher: typeof fetch,
   url: string,
-  terms: QuoteTermsRequest,
+  request: QuoteTermsRequest & { readonly expectedVersion?: number },
+  idempotencyKey: string,
 ): Promise<Result<CreatedQuote, ApiFailure>> {
   let response: Response;
 
   try {
     response = await fetcher(url, {
-      body: JSON.stringify(terms),
-      headers: { Accept: "application/json", "Content-Type": "application/json" },
+      body: JSON.stringify(request),
+      headers: {
+        Accept: "application/json",
+        "Content-Type": "application/json",
+        "Idempotency-Key": idempotencyKey,
+      },
       method: "POST",
     });
   } catch {
@@ -197,12 +226,13 @@ async function changeStatus(
   fetcher: typeof fetch,
   quoteId: string,
   status: QuoteStatus,
+  expectedStatus: QuoteStatus,
 ): Promise<Result<void, ApiFailure>> {
   let response: Response;
 
   try {
     response = await fetcher(`/api/quotes/${encodeURIComponent(quoteId)}/status`, {
-      body: JSON.stringify({ status }),
+      body: JSON.stringify({ expectedStatus, status }),
       headers: { Accept: "application/json", "Content-Type": "application/json" },
       method: "PATCH",
     });
@@ -274,12 +304,17 @@ async function listQuotes(
 
 export function createHttpQuotesClient(fetcher: typeof fetch = fetch): QuotesClient {
   return {
-    changeStatus: (quoteId, status) => changeStatus(fetcher, quoteId, status),
+    changeStatus: (quoteId, status, expectedStatus) => changeStatus(fetcher, quoteId, status, expectedStatus),
     listQuotes: (signal) => listQuotes(fetcher, signal),
-    createQuote: (packageId, terms) =>
-      postTerms(fetcher, `/api/packages/${encodeURIComponent(packageId)}/quotes`, terms),
-    createQuoteVersion: (quoteId, terms) =>
-      postTerms(fetcher, `/api/quotes/${encodeURIComponent(quoteId)}/versions`, terms),
+    createQuote: (packageId, terms, intent) =>
+      postTerms(fetcher, `/api/packages/${encodeURIComponent(packageId)}/quotes`, terms, intent.idempotencyKey),
+    createQuoteVersion: (quoteId, terms, intent) =>
+      postTerms(
+        fetcher,
+        `/api/quotes/${encodeURIComponent(quoteId)}/versions`,
+        { ...terms, expectedVersion: intent.expectedVersion },
+        intent.idempotencyKey,
+      ),
     createShareLink: (quoteId) => createShareLink(fetcher, quoteId),
     getShareLink: (quoteId) => getShareLink(fetcher, quoteId),
     revokeShareLink: (quoteId) => revokeShareLink(fetcher, quoteId),

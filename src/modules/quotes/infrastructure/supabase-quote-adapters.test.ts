@@ -10,6 +10,7 @@ import { groupItems, SupabaseQuoteSourceReader } from "./supabase-quote-source-r
 vi.mock("server-only", () => ({}));
 
 const OWNER = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
+const KEY = "dddddddd-dddd-4ddd-8ddd-dddddddddddd";
 
 const ROW: QuoteRow = {
   client_name: "Ana Pérez",
@@ -132,16 +133,20 @@ describe("SupabaseQuoteRepository", () => {
     const result = await new SupabaseQuoteRepository({ rpc } as unknown as SupabaseClient).create({
       calculation: calculation.value,
       expectedPackageVersion: 3,
+      idempotencyKey: KEY,
       ownerId: OWNER,
       packageId: "p-1",
+      requestFingerprint: "fp-1",
       terms,
     });
 
     expect(rpc).toHaveBeenCalledWith("create_quote", {
       p_expected_package_version: 3,
+      p_idempotency_key: KEY,
       p_lines: [{ lineTotalCop: 200000, moduleId: "m-silla", name: "Silla", position: 1, quantity: 10, unitPriceCop: 20000 }],
       p_owner_id: OWNER,
       p_package_id: "p-1",
+      p_request_fingerprint: "fp-1",
       p_quote: expect.objectContaining({
         conditions: "Pago anticipado",
         subtotalCop: 200000,
@@ -151,48 +156,92 @@ describe("SupabaseQuoteRepository", () => {
         validUntil: "2026-12-01",
       }),
     });
-    expect(result.ok && result.value.id).toBe("q-1");
+    expect(result.ok && result.value).toMatchObject({ quote: { id: "q-1" }, replayed: false });
   });
 
-  it("create_quote_version y change_quote_status usan el id de la cotización", async () => {
+  it("marca replayed cuando el RPC devuelve la cotización ya creada con esa clave (DECOR-55)", async () => {
+    const rpc = vi.fn().mockResolvedValue({ data: { ...ROW, replayed: true }, error: null });
+    const result = await new SupabaseQuoteRepository({ rpc } as unknown as SupabaseClient).create({
+      calculation: calculation.value,
+      expectedPackageVersion: 3,
+      idempotencyKey: KEY,
+      ownerId: OWNER,
+      packageId: "p-1",
+      requestFingerprint: "fp-1",
+      terms,
+    });
+
+    expect(result.ok && result.value.replayed).toBe(true);
+    expect(result.ok && "replayed" in result.value.quote).toBe(false);
+  });
+
+  it("create_quote_version y change_quote_status usan el id y el valor esperado", async () => {
     const rpc = vi.fn().mockResolvedValue({ data: ROW, error: null });
     const repository = new SupabaseQuoteRepository({ rpc } as unknown as SupabaseClient);
 
     await repository.createVersion({
       calculation: calculation.value,
       expectedPackageVersion: 3,
+      expectedVersion: 2,
+      idempotencyKey: KEY,
       ownerId: OWNER,
       quoteId: "q-1",
+      requestFingerprint: "fp-2",
       terms,
     });
-    await repository.changeStatus({ ownerId: OWNER, quoteId: "q-1", status: "sent" });
+    await repository.changeStatus({ expectedStatus: "draft", ownerId: OWNER, quoteId: "q-1", status: "sent" });
 
     expect(rpc.mock.calls[0][0]).toBe("create_quote_version");
-    expect(rpc.mock.calls[0][1]).toMatchObject({ p_quote_id: "q-1" });
+    expect(rpc.mock.calls[0][1]).toMatchObject({
+      p_expected_version: 2,
+      p_idempotency_key: KEY,
+      p_quote_id: "q-1",
+      p_request_fingerprint: "fp-2",
+    });
     expect(rpc).toHaveBeenLastCalledWith("change_quote_status", {
+      p_expected_status: "draft",
       p_owner_id: OWNER,
       p_quote_id: "q-1",
       p_status: "sent",
     });
   });
 
+  const status = { expectedStatus: "draft", ownerId: OWNER, quoteId: "q-1", status: "sent" } as const;
+
   it("traduce los códigos conocidos y oculta los demás como persistence_error", async () => {
     const known = vi.fn().mockResolvedValue({ data: null, error: { message: "quote.package_version_conflict" } });
-    const unknown = vi.fn().mockResolvedValue({ data: null, error: { message: "duplicate key" } });
+    const unknown = vi.fn().mockResolvedValue({
+      data: null,
+      error: { details: "Key (owner_id)=(secret-row-value)", message: "duplicate key" },
+    });
 
-    const conflict = await new SupabaseQuoteRepository({ rpc: known } as never).changeStatus({
-      ownerId: OWNER,
-      quoteId: "q-1",
-      status: "sent",
-    });
-    const hidden = await new SupabaseQuoteRepository({ rpc: unknown } as never).changeStatus({
-      ownerId: OWNER,
-      quoteId: "q-1",
-      status: "sent",
-    });
+    const conflict = await new SupabaseQuoteRepository({ rpc: known } as never).changeStatus(status);
+    const hidden = await new SupabaseQuoteRepository({ rpc: unknown } as never).changeStatus(status);
 
     expect(!conflict.ok && conflict.error.code).toBe("quote.package_version_conflict");
     expect(!hidden.ok && hidden.error.code).toBe("quote.persistence_error");
+    // DECOR-55: el texto crudo de Postgres no pasa al mensaje.
+    expect(!hidden.ok && hidden.error.message).not.toMatch(/duplicate|secret-row-value/);
+  });
+
+  it.each([
+    ["quote.version_conflict", "3", { currentVersion: 3 }],
+    ["quote.status_conflict", "accepted", { currentStatus: "accepted" }],
+    ["quote.version_conflict", "x", {}],
+    ["quote.status_conflict", "nope", {}],
+  ])("%s con DETAIL %s → metadata %o (DECOR-55)", async (code, details, metadata) => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { details, message: code } });
+    const result = await new SupabaseQuoteRepository({ rpc } as never).changeStatus(status);
+
+    expect(!result.ok && result.error.code).toBe(code);
+    expect(!result.ok && result.error.metadata).toEqual(metadata);
+    expect(!result.ok && result.error.message).toContain("Recarga");
+  });
+
+  it.each(["idempotency.key_invalid", "idempotency.key_reused"])("conserva %s (DECOR-55)", async (code) => {
+    const rpc = vi.fn().mockResolvedValue({ data: null, error: { message: code } });
+    const result = await new SupabaseQuoteRepository({ rpc } as never).changeStatus(status);
+    expect(!result.ok && result.error.code).toBe(code);
   });
 });
 
