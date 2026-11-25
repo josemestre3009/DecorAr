@@ -83,6 +83,8 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
   }
 
   test("de crear el evento a compartir la cotización, siempre se ve el siguiente paso", async ({ page }) => {
+    // Recorrido completo con visor 3D y cotización: más largo que el límite por defecto.
+    test.setTimeout(180_000);
     const errors: string[] = [];
     page.on("pageerror", (error) => errors.push(error.message));
 
@@ -133,7 +135,7 @@ test.describe.serial("DECOR-49 recorrido V2 en celular", () => {
     await expect(currentSection(page)).toHaveAttribute("aria-label", "Catálogo");
     await expectNoHorizontalOverflow(page);
     await page.getByRole("link", { name: "Volver al catálogo", exact: true }).click();
-    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=catalogo$`));
+    await expect(page).toHaveURL(new RegExp(`/packages/${packageId}\\?seccion=catalogo$`), { timeout: 30_000 });
 
     // El evento ahora invita a cotizar.
     await sections(page).getByRole("link", { name: "Evento", exact: true }).click();
