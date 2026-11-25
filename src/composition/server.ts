@@ -2,6 +2,7 @@ import "server-only";
 
 import { randomUUID } from "node:crypto";
 
+import { createJsonLogger } from "@/infrastructure/logging/json-logger";
 import { createAdminClient } from "@/infrastructure/supabase/admin";
 import { createClient, type SessionClientOptions } from "@/infrastructure/supabase/server";
 import { createPackageOwnerReader } from "@/infrastructure/supabase/package-owner-reader";
@@ -80,12 +81,14 @@ import {
 import { SupabaseQuoteSourceReader } from "@/modules/quotes/infrastructure/supabase-quote-source-reader";
 
 import { createAuthUseCases } from "@/shared/application/auth";
-import type { Clock, IdGenerator } from "@/shared/application/ports";
+import type { Clock, IdGenerator, Logger } from "@/shared/application/ports";
 import { err, ok } from "@/shared/domain/result";
 import { getShareLinkEnv } from "@/lib/env";
 
 const systemClock: Clock = { now: () => new Date() };
 const uuidGenerator: IdGenerator = { generate: () => randomUUID() };
+/** Logger JSON sanitizado (DECOR-31); los controladores de DECOR-55 lo reciben inyectado. */
+export const serverLogger: Logger = createJsonLogger(systemClock);
 
 /**
  * El cliente de Supabase se queda aquí dentro a propósito: la única puerta de
@@ -316,6 +319,7 @@ export async function createSceneController(
     authorizePackageAccess,
     obtenerEscenaUseCase,
     guardarEscenaUseCase,
+    serverLogger,
     pendingHeaders,
   );
 }
@@ -400,6 +404,7 @@ export async function createQuoteController(
     createQuoteVersion: new CreateQuoteVersionUseCase(quoteSource, quoteRepository, systemClock),
     defaultHeaders: pendingHeaders,
     listQuotes: new ListQuotesUseCase(quoteReader),
+    logger: serverLogger,
     pdfRenderer: quotePdfRenderer,
     quoteReader,
     sessionGateway,
@@ -413,12 +418,18 @@ export async function createQuoteController(
  */
 export async function createQuoteQueryDependencies(options: SessionClientOptions = {}) {
   const sessionClient = await createClient(options);
+  const reader = new SupabaseQuoteReader(sessionClient);
+  const session = createSessionGateway(sessionClient);
 
   return {
-    getQuote: new GetQuoteUseCase(
-      createSessionGateway(sessionClient),
-      new SupabaseQuoteReader(sessionClient),
-    ),
+    getQuote: new GetQuoteUseCase(session, reader),
+    // DECOR-55: al abrir una versión antigua, QuoteActions necesita la versión más nueva del número.
+    getLatestQuoteVersion: async (quoteNumber: number): Promise<number | null> => {
+      const user = await session.currentUser();
+      if (!user) return null;
+      const latest = await reader.latestVersion(user.id, quoteNumber);
+      return latest.ok ? latest.value : null;
+    },
   };
 }
 
@@ -455,6 +466,7 @@ export async function createQuoteShareLinkController(
     ),
     defaultHeaders: pendingHeaders,
     getQuoteShareLink: new GetQuoteShareLinkUseCase(shareLinkRepository, signer),
+    logger: serverLogger,
     publicAppUrl,
     quoteReader: new SupabaseQuoteReader(sessionClient),
     revokeQuoteShareLink: new RevokeQuoteShareLinkUseCase(shareLinkRepository),

@@ -41,7 +41,8 @@ export function QuoteSendStep({ quoteId, status, validUntil, client, today }: Qu
 
     setPending(true);
     setError(undefined);
-    const result = await quotes.changeStatus(quoteId, "sent");
+    // DECOR-55: si otra pestaña ya la cambió, el servidor responde 409 en vez de sobrescribir.
+    const result = await quotes.changeStatus(quoteId, "sent", status);
 
     if (result.ok) {
       router.refresh();

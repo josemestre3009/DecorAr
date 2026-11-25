@@ -29,27 +29,34 @@ Cotizaciones versionadas con precios congelados (DECOR-50). Cada versión es una
 - **Disparadores**: solo `status` puede cambiar, y solo por transiciones válidas. Las líneas nunca se actualizan. Error `quote.immutable`.
 - **RLS**: `SELECT` solo para el dueño. Ninguna escritura directa de anon/authenticated. `service_role` no puede actualizar ni borrar líneas.
 - **RPC** (`SECURITY INVOKER`, `search_path = ''`, solo `service_role`): `create_quote`, `create_quote_version` y `change_quote_status`. Las dos primeras bloquean el evento, exigen la versión leída y comparan la instantánea con `package_items` y `catalog_modules`.
+- **DECOR-55** (`20261020000000_decor_55_quote_idempotency_concurrency.sql`): `create_quote` y `create_quote_version` reciben la clave y la huella, y consultan `private.quote_idempotency_keys` bajo el bloqueo del contador del dueño; `create_quote_version` exige `p_expected_version` y `change_quote_status` exige `p_expected_status`. Las firmas anteriores se eliminan: migración y aplicación se despliegan juntas.
 
 ## API (`src/interfaces/quotes`)
 
 | Método y ruta | Uso |
 |---|---|
-| `POST /api/packages/{packageId}/quotes` | Crea la versión 1. Cuerpo: `validUntil`, `taxRateBp`, `discountRateBp?`, `depositRateBp?`, `conditions?`, `clientName?` |
+| `POST /api/packages/{packageId}/quotes` | Crea la versión 1. Cabecera `Idempotency-Key` (UUID). Cuerpo: `validUntil`, `taxRateBp`, `discountRateBp?`, `depositRateBp?`, `conditions?`, `clientName?` |
 | `GET /api/quotes` | Lista las cotizaciones del dueño |
 | `GET /api/quotes/{quoteId}` | Una versión con sus líneas |
-| `POST /api/quotes/{quoteId}/versions` | Versión nueva del mismo número, con el mismo cuerpo que la creación |
-| `PATCH /api/quotes/{quoteId}/status` | Cambia el estado. Cuerpo: `{ "status": "sent" }` |
+| `POST /api/quotes/{quoteId}/versions` | Versión nueva del mismo número. Cabecera `Idempotency-Key`. Cuerpo: el de la creación más `expectedVersion` (la última versión que vio el usuario) |
+| `PATCH /api/quotes/{quoteId}/status` | Cambia el estado. Cuerpo: `{ "status": "sent", "expectedStatus": "draft" }` |
 
 Los montos que envíe el cliente se ignoran.
 
 | Código | Cuándo |
 |---|---|
-| 400 | Cuerpo inválido |
+| 400 | Cuerpo inválido; `idempotency.key_invalid` (falta la clave o no es UUID) |
 | 401 | Sin sesión |
 | 404 | Recurso ajeno o inexistente (indistinguibles) |
-| 409 | El evento cambió mientras se cotizaba (`quote.package_version_conflict`, `quote.snapshot_mismatch`) |
-| 422 | Regla de negocio violada |
+| 409 | El evento cambió mientras se cotizaba (`quote.package_version_conflict`, `quote.snapshot_mismatch`); la cotización cambió desde que el usuario la vio (`quote.version_conflict` con `currentVersion`, `quote.status_conflict` con `currentStatus`) |
+| 422 | Regla de negocio violada; `idempotency.key_reused` (la clave ya se usó con otra solicitud) |
 | 500 | Error interno, sin detalle |
+
+### Reintentos y concurrencia (DECOR-55)
+
+- **Idempotencia**: la UI genera una `Idempotency-Key` por intención (`src/app/(protected)/quotes/_lib/intent-keys.ts`) y la reutiliza al reintentar la misma solicitud. Un reintento con la misma clave y la misma solicitud responde `201` con la cotización ya creada y la cabecera `Idempotent-Replayed: true`; no consume otro número ni otra versión. `quoteRequestFingerprint` (aplicación) arma la huella canónica de la solicitud y la base de datos guarda sólo su sha256 en `private.quote_idempotency_keys`, por dueño.
+- **Concurrencia optimista**: `expectedVersion` y `expectedStatus` evitan que dos pestañas se pisen. Repetir un cambio de estado que ya ocurrió responde `200` sin volver a aplicarlo.
+- **Logs**: los controladores registran con el `Logger` inyectado (`serverLogger`), con `correlationId` y sólo el SQLSTATE de un error de base de datos, nunca su detalle. La regla `logger-only` de `scripts/scan-architecture.ts` prohíbe `console.*` en estas capas.
 
 ## Enlace público (DECOR-53)
 

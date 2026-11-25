@@ -49,7 +49,29 @@ describe("QuoteActions (DECOR-51)", () => {
       discountRateBp: 1_000,
       taxRateBp: 1_900,
       validUntil: "2026-12-01",
-    });
+    }, { expectedVersion: QUOTE_FIXTURE.version, idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+  });
+
+  it("DECOR-55: si hay una versión más nueva muestra el aviso de recargar y no navega", async () => {
+    const createQuoteVersion = vi.fn().mockResolvedValue(
+      err({ code: "quote.version_conflict", kind: "invalid", message: "La cotización cambió. Recarga para verla.", status: 409 }),
+    );
+    render(<QuoteActions client={fakeClient(createQuoteVersion)} quote={QUOTE_FIXTURE} today={TODAY} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar cotización" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Recarga");
+    expect(push).not.toHaveBeenCalled();
+  });
+
+  it("DECOR-55: si se abre una versión antigua envía latestVersion como expectedVersion", async () => {
+    const createQuoteVersion = vi.fn().mockResolvedValue(ok({ id: "q-nueva", version: 4 }));
+    render(<QuoteActions client={fakeClient(createQuoteVersion)} latestVersion={3} quote={QUOTE_FIXTURE} today={TODAY} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Actualizar cotización" }));
+
+    await waitFor(() => expect(push).toHaveBeenCalledWith("/quotes/q-nueva"));
+    expect(createQuoteVersion.mock.calls[0][2]).toMatchObject({ expectedVersion: 3 });
   });
 
   it("con la vigencia vencida pide una fecha nueva antes de actualizar", async () => {

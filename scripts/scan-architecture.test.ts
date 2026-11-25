@@ -386,6 +386,27 @@ describe("scan-architecture", () => {
     });
   });
 
+  describe("logger-only (DECOR-55)", () => {
+    it.each([
+      "src/interfaces/quotes/quote-controller.ts",
+      "src/interfaces/ar/scene-controller.ts",
+      "src/app/api/quotes/[quoteId]/route.ts",
+      "src/app/api/packages/[packageId]/scene/route.ts",
+    ])("rechaza console.* en %s", (path) => {
+      const violation = onlyViolation(path, 'export const f = () => console.error("x", { token: "t" });');
+      expect(violation).toMatchObject({ file: path, rule: "logger-only" });
+    });
+
+    it("permite console fuera del alcance y menciones dentro de strings", () => {
+      expect(
+        analyzeFiles([
+          { path: "src/interfaces/packages/package-controller.ts", code: 'console.error("x");' },
+          { path: "src/interfaces/quotes/quote-controller.ts", code: 'export const doc = "console.error";' },
+        ]),
+      ).toEqual([]);
+    });
+  });
+
   it("no escanea fixtures ni pruebas como producción", async () => {
     const directory = mkdtempSync(join(tmpdir(), "decorar-architecture-"));
     directories.push(directory);

@@ -69,13 +69,14 @@ async function saveScene(params: {
   transforms: Transform[];
   expectedVersion?: number | null;
 }): Promise<number> {
+  // DECOR-55: la versión esperada es obligatoria; 0 = escena aún no guardada.
   const result = await db.query<{ version: number }>(
     `SELECT public.save_package_scene($1, $2, $3::jsonb, $4) AS version`,
     [
       params.packageId,
       params.userId ?? USER_A,
       JSON.stringify(params.transforms),
-      params.expectedVersion ?? null,
+      params.expectedVersion === undefined ? 0 : params.expectedVersion,
     ],
   );
   return result.rows[0].version;
@@ -202,6 +203,24 @@ describe("DECOR-46 migración: posición y rotación por unidad", () => {
     await expect(
       saveScene({ expectedVersion: 0, packageId, transforms: [{ itemId: itemA, rotationDeg: 0, x: 1, y: 0, z: 1 }] }),
     ).rejects.toMatchObject({ message: expect.stringContaining("scene.version_conflict") });
+
+    const rows = await db.query<{ x: number }>(
+      `SELECT x FROM public.package_item_transforms WHERE package_id = $1 AND item_id = $2`,
+      [packageId, itemA],
+    );
+    expect(rows.rows[0].x).toBe(0);
+  });
+
+  it("DECOR-55: sin versión esperada (NULL) o negativa no sobrescribe la escena", async () => {
+    const packageId = await newPackage();
+    const itemA = await newItem(packageId);
+    await saveScene({ packageId, transforms: [{ itemId: itemA, rotationDeg: 0, x: 0, y: 0, z: 0 }] });
+
+    for (const expectedVersion of [null, -1]) {
+      await expect(
+        saveScene({ expectedVersion, packageId, transforms: [{ itemId: itemA, rotationDeg: 0, x: 9, y: 0, z: 9 }] }),
+      ).rejects.toMatchObject({ message: expect.stringContaining("scene.invalid_body") });
+    }
 
     const rows = await db.query<{ x: number }>(
       `SELECT x FROM public.package_item_transforms WHERE package_id = $1 AND item_id = $2`,

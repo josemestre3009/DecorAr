@@ -6,11 +6,14 @@ import { useMemo, useState, type FormEvent } from "react";
 
 import type { QuoteDto } from "@/modules/quotes/application/dtos/quote.dto";
 
+import { createIntentKeys } from "../_lib/intent-keys";
 import { todayInBogota } from "../_lib/quote-format";
 import { createHttpQuotesClient, type QuotesClient } from "../_lib/quotes-client";
 
 type QuoteActionsProps = {
   readonly quote: QuoteDto;
+  /** Última versión del mismo número; evita un 409 falso si se abre una versión anterior. */
+  readonly latestVersion?: number;
   /** Inyectable para las pruebas. */
   readonly client?: QuotesClient;
   /** Inyectable para las pruebas; por defecto la fecha de hoy en Colombia. */
@@ -23,7 +26,7 @@ type QuoteActionsProps = {
  * PDF de esta versión (DECOR-52) e imprimir.
  * Ninguna versión anterior se modifica: "Actualizar" crea otra (DECOR-50).
  */
-export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
+export function QuoteActions({ quote, latestVersion, client, today }: QuoteActionsProps) {
   const router = useRouter();
   const quotes = useMemo(() => client ?? createHttpQuotesClient(), [client]);
   const minDate = today ?? todayInBogota();
@@ -32,6 +35,7 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
   const [pending, setPending] = useState(false);
   const [validUntilError, setValidUntilError] = useState<string>();
   const [error, setError] = useState<string>();
+  const [intentKeys] = useState(() => createIntentKeys());
 
   async function handleUpdate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,13 +50,20 @@ export function QuoteActions({ quote, client, today }: QuoteActionsProps) {
     setError(undefined);
     setPending(true);
 
-    const result = await quotes.createQuoteVersion(quote.id, {
+    const terms = {
       clientName: quote.client.name,
       conditions: quote.conditions,
       depositRateBp: quote.terms.depositRateBp,
       discountRateBp: quote.terms.discountRateBp,
       taxRateBp: quote.terms.taxRateBp,
       validUntil,
+    };
+    const expectedVersion = latestVersion ?? quote.version;
+    // DECOR-55: misma clave en cada reintento; `expectedVersion` evita reemplazar una versión más nueva.
+    const idempotencyKey = intentKeys.keyFor(JSON.stringify([quote.id, expectedVersion, terms]));
+    const result = await quotes.createQuoteVersion(quote.id, terms, {
+      expectedVersion,
+      idempotencyKey,
     });
 
     if (result.ok) {

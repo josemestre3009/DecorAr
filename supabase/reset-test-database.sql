@@ -24,6 +24,8 @@ DELETE FROM private.domain_events;
 -- Los enlaces públicos (DECOR-53) se borran en cascada con la cotización,
 -- pero se limpian aparte por si quedara alguno huérfano.
 DELETE FROM private.quote_share_links;
+-- Registro de Idempotency-Key (DECOR-55): también cae en cascada con la cotización.
+DELETE FROM private.quote_idempotency_keys;
 DELETE FROM public.quotes;
 DELETE FROM private.quote_counters;
 

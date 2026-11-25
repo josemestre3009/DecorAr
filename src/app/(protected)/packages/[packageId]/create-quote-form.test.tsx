@@ -76,7 +76,28 @@ describe("CreateQuoteForm (DECOR-51)", () => {
       discountRateBp: 1_250,
       taxRateBp: 1_900,
       validUntil: "2026-12-01",
-    });
+    }, { idempotencyKey: expect.stringMatching(/^[0-9a-f-]{36}$/) });
+  });
+
+  it("DECOR-55: reintentar con los mismos datos reutiliza la Idempotency-Key; cambiarlos genera otra", async () => {
+    const createQuote = vi.fn().mockResolvedValue(err({ kind: "network", message: "Sin conexión" }));
+    openForm(createQuote);
+    const submit = () => fireEvent.click(screen.getByRole("button", { name: "Generar y revisar" }));
+
+    fireEvent.change(screen.getByLabelText("Válida hasta"), { target: { value: "2026-12-01" } });
+    submit();
+    await waitFor(() => expect(createQuote).toHaveBeenCalledTimes(1));
+    await screen.findByRole("alert");
+    submit();
+    await waitFor(() => expect(createQuote).toHaveBeenCalledTimes(2));
+    await screen.findByRole("alert");
+    fireEvent.change(screen.getByLabelText("Descuento %"), { target: { value: "5" } });
+    submit();
+    await waitFor(() => expect(createQuote).toHaveBeenCalledTimes(3));
+
+    const [first, retry, changed] = createQuote.mock.calls.map((call) => call[2].idempotencyKey);
+    expect(retry).toBe(first);
+    expect(changed).not.toBe(first);
   });
 
   it("muestra el error de la API y no navega", async () => {

@@ -6,6 +6,7 @@ import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { MAX_CONDITIONS_LENGTH, MAX_QUOTE_CLIENT_NAME_LENGTH } from "@/modules/quotes/domain/quote-terms";
 
 import { parsePercentToBp, todayInBogota } from "../../quotes/_lib/quote-format";
+import { createIntentKeys } from "../../quotes/_lib/intent-keys";
 import { createHttpQuotesClient, type QuotesClient } from "../../quotes/_lib/quotes-client";
 
 type CreateQuoteFormProps = {
@@ -47,6 +48,7 @@ export function CreateQuoteForm({ packageId, clientName, client, today, hasItems
   const [errors, setErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string>();
   const [pending, setPending] = useState(false);
+  const [intentKeys] = useState(() => createIntentKeys());
   const firstFieldRef = useRef<HTMLInputElement>(null);
   const toggleRef = useRef<HTMLButtonElement>(null);
 
@@ -82,14 +84,17 @@ export function CreateQuoteForm({ packageId, clientName, client, today, hasItems
 
     setPending(true);
 
-    const result = await quotes.createQuote(packageId, {
+    const terms = {
       clientName: clientInput.trim() || null,
       conditions: conditions.trim() || null,
       depositRateBp: deposit.value,
       discountRateBp: discount.value,
       taxRateBp: tax.value,
       validUntil,
-    });
+    };
+    // Reintentar con los mismos datos reutiliza la clave: no se crea otra cotización (DECOR-55).
+    const idempotencyKey = intentKeys.keyFor(JSON.stringify([packageId, terms]));
+    const result = await quotes.createQuote(packageId, terms, { idempotencyKey });
 
     if (result.ok) {
       router.push(`/quotes/${encodeURIComponent(result.value.id)}`);
